@@ -1,0 +1,15 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": ["chrome", "node"],
+    "skipLibCheck": true
+  },
+  "include": [".wxt/wxt.d.ts", "src", "test", "scripts", "*.ts"]
+}
