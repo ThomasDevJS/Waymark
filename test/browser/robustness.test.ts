@@ -3,7 +3,8 @@
  * replay on mutated version B, report the find rate and any wrong matches.
  */
 import { describe, expect, it } from 'vitest';
-import { recordAll, replayAll, summarize, type Outcome } from './harness';
+import { matchOnce } from '../../src/core/matcher';
+import { recordAll, render, replayAll, summarize, type Outcome } from './harness';
 
 const A = { seed: 1, layoutSeed: 1 };
 
@@ -47,4 +48,20 @@ describe('mutation set B: changed button text', () => {
       expect(s.wrong).toEqual([]);
     });
   }
+});
+
+describe('custom toggles with a hidden native input (review M6)', () => {
+  it('are found on every layout and spotlighted through their label', () => {
+    const fps = recordAll(A);
+    for (const s of [1, 2, 3, 4, 5]) {
+      const keys = render({ seed: s, reorder: s > 1, wrap: s > 2, layoutSeed: s });
+      for (const k of ['tg-autosave', 'tg-beta']) {
+        const r = matchOnce(document, fps.get(k)!);
+        expect(r.status, `${k} layout ${s}`).toBe('found');
+        if (r.status !== 'found') continue;
+        expect(keys.get(k)).toContain(r.element);
+        expect(r.spotlight.localName, k).toBe('label');
+      }
+    }
+  });
 });
