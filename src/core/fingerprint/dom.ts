@@ -412,6 +412,21 @@ export function isVisible(el: Element): boolean {
   return r.width > 0 || r.height > 0;
 }
 
+/**
+ * The element whose box shows `el` on screen: `el` itself when visible, else the first visible
+ * <label> of a visually hidden form control. Custom checkboxes, switches and file inputs hide
+ * the native input (opacity 0 at 0x0, display:none) and style its label; a click on the label
+ * still reaches the input. Null when neither is visible (docs/DECISIONS.md R7).
+ */
+export function displayBox(el: Element, isVis: (e: Element) => boolean = isVisible): Element | null {
+  if (isVis(el)) return el;
+  const labels = (el as Partial<HTMLInputElement>).labels;
+  if (labels) {
+    for (const label of Array.from(labels)) if (isVis(label)) return label;
+  }
+  return null;
+}
+
 export function cssEscape(s: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(s);
   return s.replace(/([^\w-])/g, '\\$1').replace(/^(\d)/, '\\3$1 ');

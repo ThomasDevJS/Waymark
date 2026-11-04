@@ -1,7 +1,7 @@
 /** Fingerprint builder (SPEC: Element targeting, "At record time"). */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { accessibleName, getRole, inputTypeOf, isVisible as layoutVisible, ownText, tagOf } from './dom';
+import { accessibleName, displayBox, getRole, inputTypeOf, isVisible as layoutVisible, ownText, tagOf } from './dom';
 import { isGeneratedToken, safeLabel } from './filters';
 import {
   buildAncestors,
@@ -26,6 +26,7 @@ export interface BuildOptions {
 /** Builds a fingerprint for an element that has already been resolved to its meaningful target. */
 export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementFingerprint {
   const profile = opts.profile ?? {};
+  const isVis = opts.isVisible ?? layoutVisible;
   const doc = el.ownerDocument;
   const tag = tagOf(el);
   const fp: ElementFingerprint = {
@@ -37,7 +38,8 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
     ancestors: buildAncestors(el),
     shadowPath: buildShadowPath(el, profile),
     framePath: opts.framePath ?? [],
-    rect: docRect(el),
+    // A visually hidden control is on screen as its label (custom checkboxes; DECISIONS R7).
+    rect: docRect(displayBox(el, isVis) ?? el),
   };
   const guideId = stableGuideId(el);
   if (guideId) fp.guideId = guideId;
@@ -70,7 +72,7 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
     const p = linkPath(href, doc.URL);
     if (p && !(p.length > 200)) fp.hrefPath = p;
   }
-  const count = countIndistinguishable(doc, fp, { profile, isVisible: opts.isVisible ?? layoutVisible });
+  const count = countIndistinguishable(doc, fp, { profile, isVisible: isVis });
   fp.matchCount = Math.max(1, count);
   // Repeated only when the group shares what identifies an element (text, role + name, test id,
   // id), not just a group-level signal such as a shared `name` or link path (docs/DECISIONS.md R5).

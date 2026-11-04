@@ -5,7 +5,7 @@
  */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { getRole, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
+import { displayBox, getRole, isVisible as layoutVisible, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
 import { buildAncestors, buildCssPath, buildXPath, landmarksEqual, GUIDE_ID_ATTR } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
 import { isSamePageHref, linkPath } from '../url/url';
@@ -90,6 +90,8 @@ export interface ScoreContext {
   profile?: ProfileOptions;
   /** Base URL for link paths (the frame's document URL). */
   base: string;
+  /** Visibility test (defaults to layout); picks the box that shows a hidden control. */
+  isVisible?: (el: Element) => boolean;
 }
 
 export interface Scored {
@@ -165,7 +167,8 @@ function signalMatches(key: SignalKey, el: Element, fp: ElementFingerprint, ctx:
     case 'xpath':
       return buildXPath(el) === fp.xpath;
     case 'position':
-      return positionMatches(fp.rect, docRect(el));
+      // Same box as at record time: a visually hidden control is on screen as its label.
+      return positionMatches(fp.rect, docRect(displayBox(el, ctx.isVisible ?? layoutVisible) ?? el));
   }
 }
 
