@@ -4,7 +4,7 @@
  * with even if the guide is edited. Pure functions; the service worker persists them.
  */
 import type { Guide, RunState, Step } from '../model/schema';
-import { matchPath, routedPath } from '../url/url';
+import { matchPath, routedPath, urlMatches } from '../url/url';
 
 export type RunOp = 'done' | 'next' | 'back' | 'skip' | 'exit';
 
@@ -145,4 +145,18 @@ export interface MatchBoard {
   reports: Record<string, { frameId: number; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean }>;
   winner: string | null;
   topGaveUp: boolean;
+}
+
+/**
+ * On a full page load: if the current step is a click or submit whose page we just left, and
+ * the new page is the next step's page, the action happened even though its "done" report may
+ * have died with the old page (for example while the service worker was starting). See D32.
+ */
+export function shouldCatchUp(run: Run, url: string): boolean {
+  if (run.status !== 'running') return false;
+  const step = currentStep(run);
+  const next = run.guideSnapshot.steps[run.stepIndex + 1];
+  if (!step || !next || (step.kind !== 'click' && step.kind !== 'submit')) return false;
+  const origins = run.guideSnapshot.appOrigins;
+  return !urlMatches(step.url, url, origins) && urlMatches(next.url, url, origins);
 }

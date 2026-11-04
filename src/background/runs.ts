@@ -7,7 +7,7 @@ import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { GuideSchema, type Guide } from '../core/model/schema';
 import { recordReport } from '../core/player/board';
-import { applyRunOp, currentStep, NO_RUN, onStartPage, runView, startRun, type MatchBoard, type Run, type RunOp, type RunView } from '../core/player/run';
+import { applyRunOp, currentStep, NO_RUN, onStartPage, runView, shouldCatchUp, startRun, type MatchBoard, type Run, type RunOp, type RunView } from '../core/player/run';
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
@@ -168,9 +168,25 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   // The click that opened the tab also reports "step done" from the opener; let that land first
   // (the same 300 ms the player waits after any action), so the run moves on the right step.
   await new Promise((r) => setTimeout(r, CARRY_DELAY_MS));
+  // Only a tab opened on one of the guide's origins takes the run (not, say, a docs page or a
+  // new blank tab). Its URL is readable because the guide's site is granted.
+  let url = tab.pendingUrl ?? tab.url;
+  try {
+    const t = await chrome.tabs.get(newId);
+    url = t.pendingUrl || t.url || url;
+  } catch {
+    return;
+  }
+  let origin: string | null = null;
+  try {
+    origin = url ? new URL(url).origin : null;
+  } catch {
+    origin = null;
+  }
   const moved = await enqueue(async () => {
     const run = await getRun(opener);
     if (!run || run.status !== 'running' || (await getRun(newId))) return false;
+    if (!origin || !run.guideSnapshot.appOrigins.includes(origin)) return false;
     const carried: Run = { ...run, cause: 'resume' };
     run.status = 'paused';
     await chrome.storage.session.set({ [runKey(newId)]: carried, [runKey(opener)]: run });
@@ -183,9 +199,19 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   }
 }
 
-/** A new document in the top frame: the frames that reported for the current step are gone. */
-export async function onTopFrameLoad(tabId: number): Promise<void> {
-  await enqueue(() => chrome.storage.session.remove(boardKey(tabId)));
+/**
+ * A new document in the top frame: the frames that reported for the current step are gone, and
+ * a link or submit step whose report was lost on the way out is caught up (D32).
+ */
+export async function onTopFrameLoad(tabId: number, url: string): Promise<void> {
+  await enqueue(async () => {
+    await chrome.storage.session.remove(boardKey(tabId));
+    const run = await getRun(tabId);
+    const step = run ? currentStep(run) : undefined;
+    if (run && step && shouldCatchUp(run, url) && applyRunOp(run, 'done', step.id)) {
+      await chrome.storage.session.set({ [runKey(tabId)]: run });
+    }
+  });
 }
 
 export async function dropRun(tabId: number): Promise<void> {

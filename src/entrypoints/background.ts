@@ -52,7 +52,7 @@ const handlers: Handlers = {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
     const recording = await onRouteReport(payload, ctx);
-    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) await onTopFrameLoad(ctx.tabId);
+    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) await onTopFrameLoad(ctx.tabId, payload.url);
     return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
   },
   // Guides arrive in M5; content scripts only ever get guides for their own origin.

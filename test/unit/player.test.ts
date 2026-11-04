@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRunOp, currentStep, onStartPage, runView, startRun, stepForUrl } from '../../src/core/player/run';
+import { applyRunOp, currentStep, onStartPage, runView, shouldCatchUp, startRun, stepForUrl } from '../../src/core/player/run';
 import { emptyBoard, recordReport } from '../../src/core/player/board';
 import { spotlightPanels } from '../../src/core/player/spotlight';
 import type { Guide, Step } from '../../src/core/model/schema';
@@ -98,5 +98,17 @@ describe('spotlight', () => {
     const edge = spotlightPanels({ x: -20, y: -10, w: 50, h: 30 }, 1000, 800);
     expect(edge.hole).toEqual({ x: 0, y: 0, w: 36, h: 26 });
     expect(edge.panels.every((p) => p.w >= 0 && p.h >= 0)).toBe(true);
+  });
+});
+
+describe('catching up a lost link-click report', () => {
+  it('advances a click step when the new page is the next step page and not this one', () => {
+    const r = startRun(guide);
+    expect(shouldCatchUp(r, 'https://app.test/orders/12')).toBe(true);
+    expect(shouldCatchUp(r, 'https://app.test/')).toBe(false); // still on the step page
+    expect(shouldCatchUp(r, 'https://app.test/other')).toBe(false); // somewhere else: off track
+    expect(shouldCatchUp(r, 'https://evil.test/orders/12')).toBe(false);
+    applyRunOp(r, 'done', 'a');
+    expect(shouldCatchUp(r, 'https://app.test/orders/12')).toBe(false); // step b: same page as c
   });
 });

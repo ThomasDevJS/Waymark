@@ -46,7 +46,7 @@ const actions: ((app: Page) => Promise<void>)[] = [
   async () => undefined, // note step: Next during playback
   (app) => app.getByRole('link', { name: 'Continue' }).click(),
   (app) => app.frameLocator('iframe.partner-frame').getByRole('button', { name: 'Frame action' }).click(),
-  (app) => app.getByText('I agree to the terms').click(),
+  (app) => app.getByRole('form', { name: 'Agreement' }).getByText('I agree to the terms').click(),
   (app) => app.getByRole('button', { name: 'Finish' }).click(),
 ];
 
@@ -73,12 +73,16 @@ const tooltip = (f: Page | Frame) => f.locator('waymark-overlay .tip');
 
 /** Checks the spotlight ring surrounds the element the step is about. */
 async function expectSpotlightOn(f: Page | Frame, target: import('@playwright/test').Locator) {
-  const ring = await f.locator('waymark-overlay .ring').boundingBox();
-  const box = await target.boundingBox();
-  expect(ring && box).toBeTruthy();
-  expect(Math.abs(ring!.x + 6 - box!.x)).toBeLessThanOrEqual(2);
-  expect(Math.abs(ring!.y + 6 - box!.y)).toBeLessThanOrEqual(2);
-  expect(Math.abs(ring!.width - 12 - box!.width)).toBeLessThanOrEqual(2);
+  // The target may be scrolled into view smoothly first; the ring follows it.
+  await expect
+    .poll(async () => {
+      const ring = await f.locator('waymark-overlay .ring').boundingBox();
+      const box = await target.boundingBox();
+      if (!ring || !box) return 'missing';
+      const off = Math.max(Math.abs(ring.x + 6 - box.x), Math.abs(ring.y + 6 - box.y), Math.abs(ring.width - 12 - box.width), Math.abs(ring.height - 12 - box.height));
+      return off <= 2 ? 'aligned' : `off by ${off}`;
+    })
+    .toBe('aligned');
 }
 
 test('plays the scenario across 3 pages, an in-app route change, an iframe and a modal dialog', async ({ context, ext, site, extensionId }) => {
@@ -109,6 +113,7 @@ test('plays the scenario across 3 pages, an in-app route change, an iframe and a
 
   for (let i = 0; i < TITLES.length; i++) {
     const inFrame = i === 7;
+    if (inFrame) await expect.poll(() => app.frames().some((f) => f.url().includes('name=partner'))).toBe(true);
     const frame = inFrame ? app.frames().find((f) => f.url().includes('name=partner'))! : app;
     await expect.poll(() => marker(frame, 'player'), { message: `step ${i + 1} drawn`, timeout: 10_000 }).toBe(i === 5 ? `note:${i}` : `drawn:${i}`);
     await expect(tooltip(frame)).toContainText(`Step ${i + 1} of 10`);
@@ -153,7 +158,7 @@ test('a run survives a service worker stopped through ServiceWorker.stopAllWorke
   const stopWorkers = async () => {
     statuses.length = 0;
     await cdp.send('ServiceWorker.stopAllWorkers');
-    await expect.poll(() => statuses.at(-1), { message: 'service worker stopped' }).toBe('stopped');
+    await expect.poll(() => statuses, { message: 'service worker stopped' }).toContain('stopped');
   };
 
   await stopWorkers();

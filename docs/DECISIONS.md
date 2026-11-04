@@ -147,10 +147,15 @@ Each entry: date, spec section, what changed, why.
 - **Spec**: User flows, Play step 2; Player, Tooltip and Accessibility.
 - **Change**: "on the start page" means the tab URL matches the first step's URL rule. Otherwise `run.start` answers `needs-start` and the panel shows **Open start page**, which navigates the tab to `startUrl`. The tooltip shows Next on note steps, input steps (the advance table allows Next) and steps whose `advance` is `next`; on the last step it reads Done. Shortcuts are `chrome.commands`: Next `Alt+Period`, Back `Alt+Comma`, Exit unassigned (Esc in the tooltip exits); all can be changed at chrome://extensions/shortcuts.
 
-### D29. A new tab takes the run 300 ms after it is created
+### D29. A new tab takes the run only on the guide's origins, 300 ms after it is created
 - **Spec**: Player, "Runs across pages" (`openerTabId`).
-- **Change**: the service worker waits 300 ms before copying the run to the new tab and pausing the opener.
-- **Why**: the click that opens the tab also reports "step done" from the opener tab. Without the wait, the run could move to the new tab still on the link step.
+- **Change**: the service worker waits 300 ms, then copies the run to the new tab and pauses the opener, but only if the new tab's URL is on one of the guide's `appOrigins`.
+- **Why**: the click that opens the tab also reports "step done" from the opener; without the wait the run could move on the link step. Without the origin check, any tab opened from the app (a docs link, or a tab opened by test tooling) took the run away; the e2e suite caught this.
+
+### D32. A lost "done" from a page that is leaving is caught up on the next page
+- **Spec**: Player, "Advancing" and "Runs across pages".
+- **Change**: when the top frame loads a new page and the current step is a click or submit whose page this is not, but the next step's page it is, the service worker marks the step done.
+- **Why**: a click on a link sends "done" just as the page unloads. If the service worker is stopped at that moment, the message dies with the old page, and the learner landed on the next page with the run still on the link step (shown as off track). Found by the service-worker-restart acceptance test.
 
 ### D30. Service worker restarts in tests
 - **Spec**: Milestones M3 ("A run survives a service worker stopped through `ServiceWorker.stopAllWorkers`").
