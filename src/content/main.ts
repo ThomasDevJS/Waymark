@@ -3,6 +3,7 @@ import { send } from '../core/messaging/client';
 import { contextAlive, watchContext } from './context';
 import { startFrameMapping } from './frames';
 import { startRecordingClient } from './recording';
+import { startPlayerClient } from './player/controller';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
@@ -35,12 +36,17 @@ export function startContent(): void {
   const frames = startFrameMapping();
   disposers.push(frames.dispose);
   const recording = startRecordingClient(frames.framePath);
-  disposers.push(recording.dispose, destroyOverlay);
+  const player = startPlayerClient({ frameToken: instanceId, framePath: frames.framePath });
+  disposers.push(recording.dispose, player.dispose, destroyOverlay);
   disposers.push(
     watchRoutes((change) => {
       if (!contextAlive()) return;
+      player.onRoute(change.url);
       send('route.report', { ...change, title: document.title.slice(0, 500) })
-        .then((r) => recording.apply(r.recording))
+        .then((r) => {
+          recording.apply(r.recording);
+          player.apply(r.run);
+        })
         .catch(() => undefined);
     }, (url) => {
       if (!contextAlive() || window !== window.top) return;

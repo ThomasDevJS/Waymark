@@ -1,0 +1,235 @@
+/**
+ * Content side of a run (SPEC: Player). Every granted frame runs the matcher for the current
+ * step and reports its best score; the service worker names one winning frame, which draws the
+ * spotlight and tooltip. The top frame draws note steps and the not-found, off-track and done
+ * cards. All learner actions go back to the service worker, which owns the run.
+ */
+import { send } from '../../core/messaging/client';
+import type { ContentPush } from '../../core/messaging/protocol';
+import { waitForMatch, type MatchResult } from '../../core/matcher';
+import { isVisible } from '../../core/fingerprint/dom';
+import { watchAdvance } from '../../core/player/advance';
+import type { RunOp, RunView } from '../../core/player/run';
+import { urlMatches } from '../../core/url/url';
+import { isOverlayPath } from '../overlay/host';
+import { testMark } from '../test-hooks';
+import { PlayerUI } from './ui';
+
+/** After any action, wait 300 ms before searching for the next target (SPEC: Advancing). */
+export const AFTER_ACTION_MS = 300;
+/** Off track: the page does not match the step's URL rule and the target is missing for 3 s. */
+export const OFF_TRACK_MS = 3000;
+
+export interface PlayerDeps {
+  frameToken: string;
+  framePath: () => string[];
+}
+
+export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): void; onRoute(url: string): void; dispose(): void } {
+  const isTop = window === window.top;
+  let view: RunView | null = null;
+  let stepToken: string | null = null;
+  let abort: AbortController | null = null;
+  let result: MatchResult | null = null;
+  let searchDone = false;
+  let stopAdvance: (() => void) | null = null;
+  let drawnFor: string | null = null;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+
+  const later = (fn: () => void, ms: number) => {
+    const t = setTimeout(() => {
+      timers.delete(t);
+      fn();
+    }, ms);
+    timers.add(t);
+  };
+
+  const op = (o: RunOp) => {
+    if (!view?.step) {
+      if (o === 'exit') send('run.advance', { stepId: '', op: 'exit' }).catch(() => undefined);
+      return;
+    }
+    send('run.advance', { stepId: view.step.id, op: o }).catch(() => undefined);
+  };
+
+  const ui = new PlayerUI({
+    next: () => op('next'),
+    back: () => op('back'),
+    skip: () => op('skip'),
+    exit: () => op('exit'),
+    retry: () => {
+      if (view) startSearch(view);
+    },
+    report: () => {
+      if (!view?.step) return;
+      send('run.problem', { stepId: view.step.id })
+        .then(() => ui.flash('Thanks. The broken step was saved to the Problems list.'))
+        .catch(() => undefined);
+    },
+    goBack: () => history.back(),
+  });
+
+  const clearStep = () => {
+    abort?.abort();
+    abort = null;
+    stopAdvance?.();
+    stopAdvance = null;
+    timers.forEach(clearTimeout);
+    timers.clear();
+    ui.clear();
+    drawnFor = null;
+    result = null;
+    searchDone = false;
+    testMark('player', 'idle');
+  };
+
+  const onStartPageUrl = (v: RunView) => !!v.step && urlMatches(v.step.url, topUrl(), v.appOrigins);
+
+  function topUrl(): string {
+    try {
+      return window.top?.location.href ?? location.href;
+    } catch {
+      return location.href; // cross-origin top: only the top frame checks URLs
+    }
+  }
+
+  const report = (v: RunView, r: MatchResult) => {
+    const fp = v.step?.target;
+    send('run.match', {
+      stepToken: v.stepToken ?? '',
+      frameToken: deps.frameToken,
+      found: r.status === 'found',
+      score: r.status === 'found' ? r.score : r.bestScore,
+      margin: r.status === 'found' ? r.margin : 0,
+      instance: fp?.instance ?? 'unique',
+      pathMatches: !!fp && JSON.stringify(deps.framePath()) === JSON.stringify(fp.framePath),
+    }).catch(() => undefined);
+  };
+
+  function startSearch(v: RunView) {
+    const step = v.step;
+    if (!step) return;
+    abort?.abort();
+    ui.clear();
+    drawnFor = null;
+    searchDone = false;
+    result = null;
+    if (!step.target) {
+      // note and navigate steps have no element; the top frame shows a centered tooltip
+      if (isTop) {
+        if (step.kind === 'navigate' && onStartPageUrl(v)) return op('done');
+        ui.showStep(v, null);
+        drawnFor = v.stepToken;
+        testMark('player', `note:${v.stepIndex}`);
+      }
+      return;
+    }
+    const ac = new AbortController();
+    abort = ac;
+    testMark('player', `searching:${v.stepIndex}`);
+    if (isTop) {
+      later(() => {
+        if (view?.stepToken === v.stepToken && !view.winner && !onStartPageUrl(view)) {
+          ui.showCard('off-track', view);
+          testMark('player', `off-track:${v.stepIndex}`);
+        }
+      }, OFF_TRACK_MS);
+    }
+    void waitForMatch(document, step.target, { signal: ac.signal }).then((r) => {
+      if (ac.signal.aborted || view?.stepToken !== v.stepToken) return;
+      result = r;
+      searchDone = true;
+      report(v, r);
+      render();
+    });
+  }
+
+  /** Draws or hides this frame's part of the current step, given the latest view. */
+  function render() {
+    const v = view;
+    if (!v?.step || !v.stepToken) return;
+    const mine = v.winner === deps.frameToken && result?.status === 'found';
+    if (mine && drawnFor !== v.stepToken && result?.status === 'found') {
+      const r = result;
+      const target = r.tied.find((e) => isVisible(e)) ?? r.element;
+      const rect = target.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      }
+      ui.showStep(v, target, () => {
+        // target removed or re-rendered: match again on the same step
+        if (view?.stepToken === v.stepToken) startSearch(view);
+      });
+      drawnFor = v.stepToken;
+      stopAdvance?.();
+      stopAdvance = watchAdvance({ step: v.step, targets: r.tied, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
+      testMark('player', `drawn:${v.stepIndex}`);
+      return;
+    }
+    if (!mine && drawnFor === v.stepToken && v.step.target) {
+      ui.clear();
+      stopAdvance?.();
+      stopAdvance = null;
+      drawnFor = null;
+    }
+    // The top frame shows "not found" when its own search gave up and no frame found the target.
+    if (isTop && searchDone && result?.status === 'not-found' && !v.winner && onStartPageUrl(v)) {
+      ui.showCard('not-found', v);
+      testMark('player', `not-found:${v.stepIndex}`);
+    }
+  }
+
+  const apply = (next: RunView) => {
+    view = next;
+    if (!next.active || next.status === 'none' || next.status === 'paused') {
+      clearStep();
+      stepToken = null;
+      testMark('player', next.status === 'paused' ? 'paused' : 'off');
+      return;
+    }
+    if (next.status === 'finished') {
+      clearStep();
+      stepToken = next.stepToken;
+      if (isTop) {
+        ui.showCard('done', next);
+        testMark('player', 'done');
+      }
+      return;
+    }
+    if (next.stepToken !== stepToken) {
+      clearStep();
+      stepToken = next.stepToken;
+      const v = next;
+      later(() => {
+        if (view?.stepToken === v.stepToken) startSearch(view);
+      }, next.cause === 'action' ? AFTER_ACTION_MS : 0);
+      return;
+    }
+    render();
+  };
+
+  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender) => {
+    if (sender.id !== chrome.runtime.id || sender.tab) return;
+    const m = msg as ContentPush;
+    if (m?.type === 'run.changed' && m.payload && typeof m.payload.active === 'boolean') apply(m.payload);
+  };
+  chrome.runtime.onMessage.addListener(onMessage);
+
+  return {
+    apply,
+    /** Navigate steps advance when the URL matches the step's URL rule. */
+    onRoute(url: string) {
+      const v = view;
+      if (!isTop || !v?.step || v.status !== 'running') return;
+      if (v.step.kind === 'navigate' && urlMatches(v.step.url, url, v.appOrigins)) op('done');
+    },
+    dispose() {
+      clearStep();
+      try {
+        chrome.runtime.onMessage.removeListener(onMessage);
+      } catch {
+        // context gone
+      }
+    },
+  };
+}

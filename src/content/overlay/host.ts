@@ -14,6 +14,28 @@ const BASE_CSS = `
 .layer { position: fixed; inset: 0; pointer-events: none; font: 13px/1.4 system-ui, sans-serif; }
 `;
 
+/**
+ * Moves the host into `container` (an open modal <dialog>, whose inertness would otherwise
+ * block the tooltip) or back to the document, and re-shows it in the top layer.
+ */
+export function mountOverlayIn(container: Element | null): void {
+  overlayRoot();
+  if (!host) return;
+  const parent = container ?? document.documentElement;
+  if (host.parentNode === parent) return;
+  parent.appendChild(host);
+  try {
+    if (host.matches(':popover-open')) host.hidePopover();
+    host.showPopover();
+  } catch {
+    // ignore
+  }
+}
+
+export function overlayHost(): HTMLElement | null {
+  return host;
+}
+
 export function overlayRoot(): ShadowRoot {
   if (root && host?.isConnected) return root;
   host = document.createElement(HOST_TAG);

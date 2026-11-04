@@ -10,6 +10,7 @@ import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
+import { carryRunToNewTab, dropRun, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
 
@@ -37,6 +38,7 @@ async function tabInfo(windowId?: number, tabId?: number) {
 
 const handlers: Handlers = {
   ...recordingHandlers,
+  ...runHandlers,
   'guide.list': async () => ({ guides: await listGuides() }),
   'tab.current': ({ windowId, tabId }) => tabInfo(windowId, tabId),
   'site.list': async () => {
@@ -49,7 +51,9 @@ const handlers: Handlers = {
     if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0 && payload.via !== 'leaving') {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
-    return { ok: true as const, recording: await onRouteReport(payload, ctx) };
+    const recording = await onRouteReport(payload, ctx);
+    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) await onTopFrameLoad(ctx.tabId);
+    return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
   },
   // Guides arrive in M5; content scripts only ever get guides for their own origin.
   'guide.forPage': () => ({ guides: [] }),
@@ -96,9 +100,14 @@ export default defineBackground(() => {
   });
   chrome.permissions.onRemoved.addListener(() => void sync());
 
-  chrome.tabs.onCreated.addListener((tab) => void onTabCreated(tab));
+  chrome.tabs.onCreated.addListener((tab) => {
+    void onTabCreated(tab);
+    void carryRunToNewTab(tab);
+  });
+  chrome.commands?.onCommand.addListener((command, tab) => void onRunCommand(command, tab));
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), `test:route:${tabId}`]);
     void onTabRemoved(tabId);
+    void dropRun(tabId);
   });
 });

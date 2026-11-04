@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Billing</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Billing</h1>
+      <section aria-label="Order actions" class="card">
+        <button type="button" id="delete-order">Delete order</button>
+        <label for="comment">Comment</label>
+        <input id="comment" name="comment" />
+        <a href="/page3.html" id="to-page3">Continue</a>
+      </section>
+      <dialog id="confirm" aria-label="Confirm delete">
+        <p>Delete this order?</p>
+        <button type="button" id="confirm-yes">Confirm</button>
+        <button type="button" id="confirm-no">Keep</button>
+      </dialog>
+    </main>
+    <script type="module">
+      const dialog = document.getElementById('confirm');
+      document.getElementById('delete-order').addEventListener('click', () => dialog.showModal());
+      document.getElementById('confirm-yes').addEventListener('click', () => dialog.close());
+      document.getElementById('confirm-no').addEventListener('click', () => dialog.close());
+    </script>
+  </body>
+</html>

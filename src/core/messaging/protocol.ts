@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { StepSchema, type Guide, type Step } from '../model/schema';
 import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
+import type { RunView } from '../player/run';
+import type { Problem } from '../storage/problems';
 
 const url = z.string().max(4096);
 
@@ -23,6 +25,10 @@ export const RequestSchemas = {
   'rec.stop': z.object({}),
   'rec.state': z.object({}),
   'guide.list': z.object({}),
+  'run.start': z.object({ tabId: z.number().int(), guideId: z.string().max(64), openStart: z.boolean().optional() }),
+  'run.stop': z.object({ tabId: z.number().int() }),
+  'run.state': z.object({ tabId: z.number().int() }),
+  'problems.list': z.object({}),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -34,7 +40,17 @@ export const RequestSchemas = {
   'frame.nonce': z.object({ selector: z.string().max(2000) }),
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
-  'run.advance': z.object({ stepId: z.string().max(64) }),
+  'run.advance': z.object({ stepId: z.string().max(64), op: z.enum(['done', 'next', 'back', 'skip', 'exit']) }),
+  'run.match': z.object({
+    stepToken: z.string().max(64),
+    frameToken: z.string().max(64),
+    found: z.boolean(),
+    score: z.number().min(0).max(100),
+    margin: z.number().min(-100).max(100),
+    instance: z.enum(['unique', 'any']),
+    pathMatches: z.boolean(),
+  }),
+  'run.problem': z.object({ stepId: z.string().max(64) }),
   'rec.step': z.discriminatedUnion('op', [
     z.object({ op: z.literal('add'), step: StepSchema }),
     z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
@@ -65,7 +81,13 @@ export interface ResponseMap {
   'rec.stop': { guideId: string; title: string; steps: Step[] } | null;
   'rec.state': RecordingState | null;
   'guide.list': { guides: GuideIndexEntry[] };
-  'route.report': { ok: true; recording: RecordingView };
+  'route.report': { ok: true; recording: RecordingView; run: RunView };
+  'run.start': { status: 'started' } | { status: 'needs-start'; startUrl: string };
+  'run.stop': { ok: boolean };
+  'run.state': RunView;
+  'run.match': { ok: boolean };
+  'run.problem': { ok: boolean };
+  'problems.list': { problems: Problem[] };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -89,6 +111,9 @@ export type SenderKind = 'extension' | 'content';
 export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'rec.step', // additionally requires the tab to be recording
   'run.advance',
+  // Frame winner reports and Report broken step (see docs/DECISIONS.md D26).
+  'run.match',
+  'run.problem',
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -111,10 +136,14 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'rec.note',
   'rec.stop',
   'rec.state',
+  'run.start',
+  'run.stop',
+  'run.state',
+  'problems.list',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
-export type ContentPush = { type: 'rec.changed'; payload: RecordingView };
+export type ContentPush = { type: 'rec.changed'; payload: RecordingView } | { type: 'run.changed'; payload: RunView };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

@@ -125,3 +125,37 @@ Each entry: date, spec section, what changed, why.
 ### D24. "Clickable" stays the spec's list for now
 - **Spec**: Element targeting, record step 1.
 - **Decision**: elements with `cursor: pointer` or `tabindex >= 0` are not treated as interactive yet. This was proposed, but both low-confidence steps in the GitHub recording were clicks on plain text (a commit row, a muted label), which this change would not have fixed. It also risks resolving clicks to large clickable containers. Revisit with evidence from pilot recordings; the owner can ask for it.
+
+## 2026-11-04 — M3
+
+### D25. Run state shape and frame-winner board
+- **Spec**: Data model (`RunState`); Player, "Runs across pages"; Element targeting, playback step 8.
+- **Change**: the stored run is the spec's `RunState` plus `stepToken` (new on every step change, so late reports from frames are ignored) and `cause` (why the step changed; the content script waits 300 ms only after an action). Per-step frame reports live next to the run in `match:<tabId>` and are cleared when the step changes or the top frame loads a new page. The top frame's report doubles as the "not found" signal: the not-found card shows when the top frame's 8-second search gave up and no frame found the target.
+- **Why**: the spec defines who decides (the service worker, by frameId) but not the bookkeeping. Clearing on a new page fixes a bug found by the off-track test: a stale winner from the previous page hid the off-track card.
+
+### D26. Two more content messages: `run.match` and `run.problem`
+- **Spec**: Security (content scripts may send `rec.step`, `run.advance`, route reports and `guide.forPage`).
+- **Change**: content scripts may also send `run.match` (a frame's best score and margin for the current step, as playback step 8 requires) and `run.problem` (Report broken step). `run.advance` carries an `op`: done, next, back, skip or exit, and is applied only if `stepId` is still the current step.
+- **Why**: both are required by the spec's own flows; each is validated with Zod, and the service worker checks the tab's run and the current step.
+
+### D27. Which frames receive the current step
+- **Spec**: Security ("`guide.forPage` returns only guides whose `appOrigins` include `sender.origin`").
+- **Change**: during a run, the service worker sends the current step (never the whole guide) to every frame of the tab, but only while the tab's top page is on one of the guide's `appOrigins`. Frames of other origins inside that page get it too, because a recorded step can target an element in a cross-origin iframe; content scripts render it only if they win the match.
+- **Why**: requiring the frame's own origin would make steps in partner iframes unplayable. The data stays in isolated worlds unless the frame draws the tooltip.
+
+### D28. Start page, Next button and keyboard shortcuts
+- **Spec**: User flows, Play step 2; Player, Tooltip and Accessibility.
+- **Change**: "on the start page" means the tab URL matches the first step's URL rule. Otherwise `run.start` answers `needs-start` and the panel shows **Open start page**, which navigates the tab to `startUrl`. The tooltip shows Next on note steps, input steps (the advance table allows Next) and steps whose `advance` is `next`; on the last step it reads Done. Shortcuts are `chrome.commands`: Next `Alt+Period`, Back `Alt+Comma`, Exit unassigned (Esc in the tooltip exits); all can be changed at chrome://extensions/shortcuts.
+
+### D29. A new tab takes the run 300 ms after it is created
+- **Spec**: Player, "Runs across pages" (`openerTabId`).
+- **Change**: the service worker waits 300 ms before copying the run to the new tab and pausing the opener.
+- **Why**: the click that opens the tab also reports "step done" from the opener tab. Without the wait, the run could move to the new tab still on the link step.
+
+### D30. Service worker restarts in tests
+- **Spec**: Milestones M3 ("A run survives a service worker stopped through `ServiceWorker.stopAllWorkers`").
+- **Finding**: `ServiceWorker.stopAllWorkers` sent through a CDP session attached to an extension page stops the extension's worker (CDP reports running → stopping → stopped). Playwright's own worker list keeps a stale handle, so the test follows `ServiceWorker.workerVersionUpdated` instead and checks the worker was restarted.
+
+### D31. Voice and mute are M4
+- **Spec**: Player, Tooltip (mute toggle); Voiceover.
+- **Change**: the tooltip has the mute toggle, but it only changes its own state until `chrome.tts` arrives in M4.
