@@ -100,10 +100,10 @@ test('chrome.tts.speak gets the stored voiceText once per step, and stop on step
     (p) => p.getByRole('button', { name: 'CSV' }).click(),
   ]);
   // Store voice text on the first two steps (the third reads its title).
-  const guide = await msg<{ steps: { voiceText?: string }[] }>(ext, 'guide.get', { id: guideId });
+  const guide = await msg<{ revisionId: string; steps: { voiceText?: string }[] }>(ext, 'guide.get', { id: guideId });
   guide.steps[0]!.voiceText = 'First, import your orders.';
   guide.steps[1]!.voiceText = 'Then export them.';
-  await msg(ext, 'guide.save', { guide });
+  await msg(ext, 'guide.save', { guide, baseRevisionId: (guide as unknown as { revisionId: string }).revisionId });
 
   // CI machines have no voices: give the service worker one on-device voice and spy on tts.
   const sw = await ext.sw();
@@ -188,4 +188,83 @@ test('editing: titles, notes, voice text, reorder, delete, a new note step and o
   await expect(tooltip(app).locator('[data-action="skip"]')).toBeVisible();
   await tooltip(app).locator('[data-action="next"]').click();
   await expect.poll(() => marker(app, 'player')).toBe('drawn:2');
+});
+
+
+async function spyTts(ext: ExtensionHelper) {
+  const sw = await ext.sw();
+  await sw.evaluate(() => {
+    const log: string[] = [];
+    (self as unknown as { __tts: string[] }).__tts = log;
+    chrome.tts.getVoices = ((cb: (v: chrome.tts.TtsVoice[]) => void) => cb([{ voiceName: 'Test Voice', lang: 'en-US', remote: false }])) as typeof chrome.tts.getVoices;
+    chrome.tts.speak = ((text: string) => void log.push(`speak:${text}`)) as unknown as typeof chrome.tts.speak;
+    chrome.tts.stop = (() => void log.push('stop')) as unknown as typeof chrome.tts.stop;
+  });
+  return () => sw.evaluate(() => (self as unknown as { __tts: string[] }).__tts.slice());
+}
+
+test('review fixes: Open start page reads step 1 once it arrives; closing the tab stops speech', async ({ context, ext, site }) => {
+  const { app, tabId } = await setup(context, ext, site);
+  const { guideId } = await record(ext, app, tabId, 'Start page voice', [(p) => p.getByRole('button', { name: 'Import', exact: true }).click()]);
+  const log = await spyTts(ext);
+  await app.goto(`${site.main}/page3.html`); // not the start page
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.bringToFront();
+  const r = await msg<{ status: string }>(ext, 'run.start', { tabId, guideId });
+  expect(r.status).toBe('needs-start');
+  await msg(ext, 'run.start', { tabId, guideId, openStart: true });
+  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:0');
+  await expect.poll(async () => (await log()).filter((x) => x.startsWith('speak'))).toEqual(['speak:Click Import']);
+  const before = (await log()).length;
+  await app.close();
+  await expect.poll(async () => (await log()).slice(before)).toContain('stop');
+});
+
+test('review fixes: Esc ends a pick everywhere; Test step refuses another site; Save refuses a stale copy', async ({ context, ext, site, extensionId }) => {
+  const { app, tabId } = await setup(context, ext, site);
+  const { guideId } = await record(ext, app, tabId, 'Pick', [(p) => p.getByRole('button', { name: 'Export', exact: true }).click()]);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-repick').click();
+  await expect.poll(() => marker(app, 'picking')).toBe('on');
+  await app.bringToFront();
+  await app.keyboard.press('Escape');
+  await expect.poll(() => marker(app, 'picking')).toBe('off');
+  await expect(panel.getByTestId('step-0-repick')).toHaveText('Re-pick element'); // the panel stopped waiting
+  // A click after Esc reaches the app and changes nothing in the step.
+  await app.getByRole('button', { name: 'CSV' }).click();
+  await expect(panel.getByTestId('step-0-title')).toHaveValue('Click **Export**');
+
+  // Saving from a stale copy is refused.
+  const g = await msg<{ revisionId: string; title: string }>(ext, 'guide.get', { id: guideId });
+  await msg(ext, 'guide.save', { guide: { ...g, title: 'Newer' }, baseRevisionId: g.revisionId });
+  await expect(msg(ext, 'guide.save', { guide: { ...g, title: 'Older' }, baseRevisionId: g.revisionId })).rejects.toThrow(/changed elsewhere/);
+
+  // Test step on a page of another site is refused (steps only go to their own origin).
+  await ext.grant('http://localhost/*');
+  await app.goto(`${site.other}/?static`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await panel.bringToFront();
+  await panel.getByTestId('step-0-test').click();
+  await expect(panel.getByRole('alert')).toContainText("Open a page of this guide's site");
+  expect(await marker(app, 'tested')).toBeNull();
+});
+
+test('review fixes: a Test step during a live run hands the overlay back to the player', async ({ context, ext, site, extensionId }) => {
+  const { app, tabId } = await setup(context, ext, site);
+  const { guideId } = await record(ext, app, tabId, 'Live', [(p) => p.getByRole('button', { name: 'Export', exact: true }).click()]);
+  await msg(ext, 'run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-test').click();
+  await expect.poll(() => marker(app, 'tested')).toBe('found');
+  const tip = app.locator('waymark-overlay .tip');
+  await expect(tip).toHaveAttribute('aria-label', 'Waymark guide: Test step');
+  await expect(tip).toHaveCount(1); // the highlight replaced the player's tooltip for now
+  // After the 4 s highlight the learner's tooltip is back.
+  await expect(tip).toHaveAttribute('aria-label', 'Waymark guide: Live', { timeout: 8000 });
+  await expect(tip).toContainText('Step 1 of 1');
 });

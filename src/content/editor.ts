@@ -49,12 +49,18 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     if (e.key === 'Escape') {
       e.stopImmediatePropagation();
       stopPick();
+      // Every frame and the side panel stop waiting.
+      send('pick.abort', {}).catch(() => undefined);
     }
   };
 
   function choose(path: EventTarget[]) {
     const t = resolveTargetFromPath(path);
-    if (!t) return;
+    if (!t) {
+      stopPick();
+      send('pick.abort', {}).catch(() => undefined);
+      return;
+    }
     const fp = buildFingerprint(t.element, { framePath: framePath() });
     const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? roleWord(fp.role);
     send('pick.result', { target: fp, title: stepTitle('click', { name }) }).catch(() => undefined);

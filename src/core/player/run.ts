@@ -18,6 +18,8 @@ export interface Run extends RunState {
   rev: number;
   /** Set on a paused run: the tab the run moved to (D36). */
   movedTo?: number;
+  /** The step token last read aloud: each step is spoken once, whatever path changed it (D41). */
+  spokenToken?: string;
   cause: StepCause;
 }
 

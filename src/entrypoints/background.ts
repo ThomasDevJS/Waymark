@@ -10,7 +10,7 @@ import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
-import { editorHandlers } from '../background/editor';
+import { editorHandlers, endPick } from '../background/editor';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
@@ -59,7 +59,11 @@ const handlers: Handlers = {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
     const recording = await onRouteReport(payload, ctx);
-    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) await onTopFrameLoad(ctx.tabId, payload.url);
+    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) {
+      await onTopFrameLoad(ctx.tabId, payload.url);
+      // A new page has no picker running: end a pending pick so the panel stops waiting.
+      if ((await chrome.storage.session.get(`pick:${ctx.tabId}`))[`pick:${ctx.tabId}`]) await endPick(ctx.tabId, true);
+    }
     return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
   },
   // Guides arrive in M5; content scripts only ever get guides for their own origin.

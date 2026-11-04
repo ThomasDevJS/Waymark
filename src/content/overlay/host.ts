@@ -86,6 +86,14 @@ export function claimOverlay(id: object, clear: () => void): void {
   }
   owner = { id, clear };
 }
+const released = new Map<object, () => void>();
+/** Called when another owner releases the overlay, so the player can draw its step again. */
+export function onOverlayReleased(id: object, cb: () => void): () => void {
+  released.set(id, cb);
+  return () => released.delete(id);
+}
 export function releaseOverlay(id: object): void {
-  if (owner?.id === id) owner = null;
+  if (owner?.id !== id) return;
+  owner = null;
+  for (const [other, cb] of released) if (other !== id) cb();
 }

@@ -32,9 +32,9 @@ export const RequestSchemas = {
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
   'guide.get': z.object({ id: z.string().max(64) }),
-  'guide.save': z.object({ guide: GuideSchema }),
-  'step.test': z.object({ tabId: z.number().int(), step: StepSchema }),
-  'pick.start': z.object({ tabId: z.number().int() }),
+  'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
+  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50) }),
+  'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
   'pick.cancel': z.object({ tabId: z.number().int() }),
   'voice.list': z.object({}),
   'voice.test': z.object({ lang: z.string().max(35).optional() }),
@@ -75,6 +75,7 @@ export const RequestSchemas = {
   'run.problem': z.object({ stepId: z.string().max(64) }),
   'run.mute': z.object({ muted: z.boolean() }),
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
+  'pick.abort': z.object({}),
   'rec.step': z.discriminatedUnion('op', [
     z.object({ op: z.literal('add'), step: StepSchema }),
     z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
@@ -123,6 +124,7 @@ export interface ResponseMap {
   'pick.start': { ok: boolean };
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
+  'pick.abort': { ok: boolean };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -151,6 +153,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.problem',
   'run.mute', // the tooltip's mute toggle (D38)
   'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
+  'pick.abort', // Esc in the page cancels the pick everywhere (D41)
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.

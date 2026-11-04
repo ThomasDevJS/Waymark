@@ -10,6 +10,34 @@ import { enqueue } from '../core/storage/queue';
 import { guideKey, writeGuide } from '../core/storage/guides';
 import { framesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
+import { stepUrlRule } from '../core/url/url';
+
+/** The tab must show a page of the guide's site: steps are only sent to their own origin (D41). */
+async function tabOnOrigins(tabId: number, origins: string[]): Promise<string> {
+  let url: string | undefined;
+  try {
+    url = (await chrome.tabs.get(tabId)).url;
+  } catch {
+    url = undefined;
+  }
+  let origin = '';
+  try {
+    origin = url ? new URL(url).origin : '';
+  } catch {
+    origin = '';
+  }
+  if (!url || !origins.includes(origin)) throw new Error("Open a page of this guide's site in this tab first.");
+  return url;
+}
+
+/** Ends a pending pick on a tab and lets the panel know (cancelled, timed out, page left). */
+export async function endPick(tabId: number, cancelled: boolean): Promise<void> {
+  const pending = (await chrome.storage.session.get(pickKey(tabId)))[pickKey(tabId)];
+  await chrome.storage.session.remove(pickKey(tabId));
+  if (cancelled && pending) await chrome.storage.session.set({ [pickResultKey(tabId)]: { cancelled: true, at: Date.now() } });
+  const msg: ContentPush = { type: 'pick.stop' };
+  await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
+}
 
 export const PICK_TTL_MS = 120_000;
 const pickKey = (tabId: number) => `pick:${tabId}`;
@@ -54,11 +82,13 @@ export interface TestResult {
 
 export const editorHandlers: Handlers = {
   'guide.get': async ({ id }) => loadGuide(id),
-  'guide.save': async ({ guide }) => {
+  'guide.save': async ({ guide, baseRevisionId }) => {
     return enqueue(async () => {
       const current = await loadGuide(guide.id).catch(() => null);
       if (!current) throw new Error('Guide not found.');
       if (current.source === 'library') throw new Error('Library guides are read-only. Duplicate it to edit.');
+      // Never overwrite a newer copy saved elsewhere (another side panel) without knowing.
+      if (current.revisionId !== baseRevisionId) throw new Error('This guide was changed elsewhere. Close the editor and open it again.');
       const next: Guide = {
         ...guide,
         id: current.id,
@@ -72,7 +102,8 @@ export const editorHandlers: Handlers = {
       return next;
     });
   },
-  'step.test': async ({ tabId, step }): Promise<TestResult> => {
+  'step.test': async ({ tabId, step, origins }): Promise<TestResult> => {
+    await tabOnOrigins(tabId, origins);
     if (!step.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element.' };
     const frameId = await frameFor(tabId, step.target.framePath);
     if (frameId === null) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step is not on the page.' };
@@ -84,17 +115,25 @@ export const editorHandlers: Handlers = {
       return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'Waymark is not running on this page. Allow it on this site first.' };
     }
   },
-  'pick.start': async ({ tabId }) => {
+  'pick.start': async ({ tabId, origins }) => {
+    await tabOnOrigins(tabId, origins);
     await chrome.storage.session.set({ [pickKey(tabId)]: Date.now() });
     await chrome.storage.session.remove(pickResultKey(tabId));
     const msg: ContentPush = { type: 'pick.start' };
-    await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
+    try {
+      await chrome.tabs.sendMessage(tabId, msg);
+    } catch {
+      await chrome.storage.session.remove(pickKey(tabId));
+      throw new Error('Waymark is not running on this page. Reload the page and try again.');
+    }
     return { ok: true };
   },
   'pick.cancel': async ({ tabId }) => {
-    await chrome.storage.session.remove(pickKey(tabId));
-    const msg: ContentPush = { type: 'pick.stop' };
-    await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
+    await endPick(tabId, true);
+    return { ok: true };
+  },
+  'pick.abort': async (_p, ctx: HandlerContext) => {
+    if (ctx.tabId !== undefined) await endPick(ctx.tabId, true);
     return { ok: true };
   },
   // From a content script: only while the panel asked this tab for a pick.
@@ -105,7 +144,10 @@ export const editorHandlers: Handlers = {
     if (!started || Date.now() - started > PICK_TTL_MS) return { ok: false };
     const fp = ElementFingerprintSchema.parse(target);
     await chrome.storage.session.remove(pickKey(tabId));
-    await chrome.storage.session.set({ [pickResultKey(tabId)]: { target: fp, title, at: Date.now() } });
+    // The step moves to the page the element was picked on (the top page's URL rule).
+    const top = ctx.sender.tab?.url;
+    const url = top ? stepUrlRule(top) : undefined;
+    await chrome.storage.session.set({ [pickResultKey(tabId)]: { target: fp, title, url, at: Date.now() } });
     const msg: ContentPush = { type: 'pick.stop' };
     await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
     return { ok: true };

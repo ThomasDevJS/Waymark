@@ -40,14 +40,17 @@ export async function listVoices(): Promise<{ voices: { voiceName: string; lang:
   return { voices, available: ttsAvailable() };
 }
 
-let lastSpeechTab: number | null = null;
+/** The tab speaking through the speechSynthesis fallback (in session storage: no memory state). */
+const FALLBACK_TAB_KEY = 'ttsFallbackTab';
 
 export function stopSpeech(): void {
   if (ttsAvailable()) chrome.tts.stop();
-  if (lastSpeechTab !== null) {
+  void chrome.storage.session.get(FALLBACK_TAB_KEY).then((r) => {
+    const tabId = r[FALLBACK_TAB_KEY] as number | undefined;
+    if (tabId === undefined) return;
     const msg: ContentPush = { type: 'tts.stop' };
-    chrome.tabs.sendMessage(lastSpeechTab, msg, { frameId: 0 }).catch(() => undefined);
-  }
+    chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }).catch(() => undefined);
+  });
 }
 
 /** The active tab of the browser window the user last focused (the side panel lives there too). */
@@ -66,7 +69,7 @@ async function speak(tabId: number, text: string, lang: string, settings: VoiceS
   if (!text) return;
   if (!ttsAvailable()) {
     // Fallback: the top frame speaks with speechSynthesis.
-    lastSpeechTab = tabId;
+    await chrome.storage.session.set({ [FALLBACK_TAB_KEY]: tabId });
     const msg: ContentPush = { type: 'tts.content', payload: { text, lang, rate: settings.rate } };
     chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }).catch(() => undefined);
     return;

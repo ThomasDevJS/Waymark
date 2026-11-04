@@ -263,3 +263,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Spec**: Player and overlay.
 - **Change**: the player, the Test step highlight and the picker share the overlay host; when one draws, the previous one is cleared.
 - **Why**: found by the re-pick acceptance test: a Test step highlight (shown for 4 s) and the run that started right after both drew a spotlight.
+
+### D41. Editor and voice fixes from the independent M4 review
+- **Spec**: User flows, Edit; Voiceover; Security ("content scripts get only data for their own origin"; "the service worker speaks only the stored voiceText").
+- **Changes**, each covered by an e2e test:
+  - **Speech once per step, on every path.** The run stores the step token it last read (`spokenToken`). Every path that changes the step (advance, Start, the first page after **Open start page**, a catch-up on page load (D32), a run moving to a new tab or resuming) asks to read the step, and the token keeps it to once per step, even across service worker restarts. Closing the tab, revoking the site and ending the run stop speech. Mute is global, so every tab with a run shows it. The fallback tab for `speechSynthesis` is kept in session storage, not in service worker memory, and the fallback waits once for the voice list to load.
+  - **Test step and Re-pick only on the guide's site.** Both require the tab to show a page on one of the guide's `appOrigins`, so a step is never sent to another site's page. A re-picked step also takes the URL rule of the page it was picked on, and drops the recorder's warning flags.
+  - **Picks always end.** Esc in any frame, or a click that resolves to nothing, cancels the pick in every frame and in the panel (`pick.abort`, a new content message). So do a new page in the tab, the panel's **Cancel picking** button, closing the editor, switching tabs, and the 2-minute limit. Starting a pick on a page where Waymark is not running is an error, not a silent wait.
+  - **Save never overwrites a newer copy.** `guide.save` carries the revision the draft was loaded from and is refused if the stored guide changed since (for example, from a side panel in another window). Save is disabled while saving, and edits typed during a save are kept. A step with an empty title is caught before saving, with a clear message.
+  - **Overlay hand-back** (refines D40): when a Test step highlight releases the overlay, the player draws its current step again.
+- **Not changed**: the picker builds fingerprints without a site profile, as the recorder does, because site profiles are not wired yet (they arrive with the options for M5).

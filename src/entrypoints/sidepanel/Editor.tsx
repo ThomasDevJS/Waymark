@@ -19,6 +19,15 @@ const error = signal<string | null>(null);
 const tests = signal<Record<string, TestResult | 'running'>>({});
 const picking = signal<string | null>(null);
 const suggested = signal<Record<string, string>>({});
+const saving = signal(false);
+/** revisionId of the copy the draft was loaded from; Save is refused if it changed elsewhere. */
+const base = signal<string | null>(null);
+let pickTimer: ReturnType<typeof setTimeout> | undefined;
+
+function endPicking() {
+  picking.value = null;
+  clearTimeout(pickTimer);
+}
 
 function setSteps(fn: (steps: Step[]) => Step[]) {
   if (!draft.value) return;
@@ -31,7 +40,8 @@ function patchStep(id: string, patch: Partial<Step>) {
     steps.map((s) => {
       if (s.id !== id) return s;
       const next: Step = { ...s, ...patch };
-      for (const k of Object.keys(patch) as (keyof Step)[]) if (patch[k] === undefined || patch[k] === '') delete next[k];
+      const optional: (keyof Step)[] = ['note', 'voiceText', 'optional', 'placement', 'flags'];
+      for (const k of Object.keys(patch) as (keyof Step)[]) if (optional.includes(k) && (patch[k] === undefined || patch[k] === '')) delete next[k];
       return next;
     }),
   );
@@ -73,7 +83,11 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     dirty.value = false;
     status.value = null;
     tests.value = {};
-    void attempt(async () => (draft.value = await send('guide.get', { id: guideId })));
+    void attempt(async () => {
+      const g = await send('guide.get', { id: guideId });
+      draft.value = g;
+      base.value = g.revisionId;
+    });
   }, [guideId]);
 
   // Re-pick results arrive through session storage (the panel is a trusted context).
@@ -82,17 +96,25 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     const key = `pickResult:${tabId}`;
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'session' || !(key in changes)) return;
-      const r = changes[key]!.newValue as { target: ElementFingerprint; title: string } | undefined;
+      const r = changes[key]!.newValue as { target?: ElementFingerprint; title?: string; url?: Step['url']; cancelled?: boolean } | undefined;
       const stepId = picking.value;
-      if (!r || !stepId) return;
-      patchStep(stepId, { target: r.target });
-      suggested.value = { ...suggested.value, [stepId]: r.title };
-      tests.value = { ...tests.value, [stepId]: { found: true, score: 100, margin: 100, matched: ['re-picked'], fragile: false } };
-      picking.value = null;
+      if (!r) return;
       void chrome.storage.session.remove(key);
+      if (!stepId) return;
+      endPicking();
+      if (r.cancelled || !r.target) return;
+      // The explicitly chosen element replaces the target; recorder warnings no longer apply.
+      patchStep(stepId, { target: r.target, flags: undefined, ...(r.url ? { url: r.url } : {}) });
+      if (r.title) suggested.value = { ...suggested.value, [stepId]: r.title };
+      tests.value = { ...tests.value, [stepId]: { found: true, score: 100, margin: 100, matched: ['re-picked'], fragile: false } };
     };
     chrome.storage.onChanged.addListener(onChanged);
-    return () => chrome.storage.onChanged.removeListener(onChanged);
+    return () => {
+      chrome.storage.onChanged.removeListener(onChanged);
+      // Leaving the editor or switching tabs ends a pick, so the page stops swallowing clicks.
+      if (picking.value) void send('pick.cancel', { tabId }).catch(() => undefined);
+      endPicking();
+    };
   }, [tabId]);
 
   const g = draft.value;
@@ -195,7 +217,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                       onClick={() => {
                         tests.value = { ...tests.value, [s.id]: 'running' };
                         void attempt(async () => {
-                          const r = await send('step.test', { tabId: tabId!, step: s });
+                          const r = await send('step.test', { tabId: tabId!, step: s, origins: g.appOrigins });
                           tests.value = { ...tests.value, [s.id]: r };
                         });
                       }}
@@ -207,11 +229,20 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                       data-testid={`step-${i}-repick`}
                       disabled={readOnly || tabId === null}
                       onClick={() => {
+                        if (picking.value === s.id) {
+                          void attempt(() => send('pick.cancel', { tabId: tabId! }));
+                          endPicking();
+                          return;
+                        }
                         picking.value = s.id;
-                        void attempt(() => send('pick.start', { tabId: tabId! }));
+                        clearTimeout(pickTimer);
+                        pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
+                        void attempt(() => send('pick.start', { tabId: tabId!, origins: g.appOrigins })).then((r) => {
+                          if (!r) endPicking();
+                        });
                       }}
                     >
-                      {picking.value === s.id ? 'Click it on the page…' : 'Re-pick element'}
+                      {picking.value === s.id ? 'Cancel picking (click the element on the page)' : 'Re-pick element'}
                     </button>
                   </>
                 )}
@@ -246,15 +277,28 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           type="button"
           class="primary"
           data-testid="save-guide"
-          disabled={readOnly || !dirty.value}
-          onClick={() =>
+          disabled={readOnly || !dirty.value || saving.value}
+          onClick={() => {
+            const sent = draft.value!;
+            const missing = sent.steps.findIndex((x) => !x.title.trim());
+            if (missing >= 0) {
+              error.value = `Step ${missing + 1} needs a title.`;
+              return;
+            }
+            saving.value = true;
             void attempt(async () => {
-              const saved = await send('guide.save', { guide: draft.value! });
-              draft.value = saved;
-              dirty.value = false;
+              const saved = await send('guide.save', { guide: sent, baseRevisionId: base.value ?? sent.revisionId });
+              base.value = saved.revisionId;
+              if (draft.value === sent) {
+                draft.value = saved;
+                dirty.value = false;
+              } else {
+                // Edits typed during the save stay; they will go out with the next Save.
+                draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
+              }
               status.value = `Saved (version ${saved.version}).`;
-            })
-          }
+            }).finally(() => (saving.value = false));
+          }}
         >
           Save
         </button>
@@ -263,7 +307,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           data-testid="close-editor"
           onClick={() => {
             if (picking.value && tabId !== null) void send('pick.cancel', { tabId });
-            picking.value = null;
+            endPicking();
             onClose();
           }}
         >

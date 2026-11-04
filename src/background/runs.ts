@@ -82,8 +82,24 @@ async function loadGuide(id: string): Promise<Guide> {
 }
 
 async function endRun(tabId: number): Promise<void> {
+  if (await getRun(tabId)) stopSpeech();
   await enqueue(() => chrome.storage.session.remove([runKey(tabId), boardKey(tabId)]));
   await broadcast(tabId);
+}
+
+/**
+ * Reads the current step aloud if it has not been read yet. Every path that changes the step
+ * (advance, start, catch-up on a page load, moving to a new tab, resuming) calls this, and the
+ * stored spokenToken keeps it to once per step, even across service worker restarts (D41).
+ */
+async function voiceSync(tabId: number): Promise<void> {
+  const { run, out } = await mutateRun(tabId, (r) => {
+    if (!r || r.status !== 'running' || r.spokenToken === r.stepToken) return false;
+    r.spokenToken = r.stepToken;
+    return true;
+  });
+  if (out) await speakCurrentStep(tabId, run);
+  else if (run && run.status !== 'running') stopSpeech();
 }
 
 /** Applies a run operation for the current step of a tab's run (from content, panel or commands). */
@@ -100,7 +116,8 @@ export async function runOp(tabId: number, op: RunOp, stepId: string): Promise<b
   if (run.status === 'finished') await addCompletion(run.guideSnapshot.id, new Date().toISOString());
   await broadcast(tabId);
   // Speech stops on every step change and the new step is read once.
-  await speakCurrentStep(tabId, run);
+  if (run.status === 'finished') stopSpeech();
+  else await voiceSync(tabId);
   return true;
 }
 
@@ -133,13 +150,16 @@ export const runHandlers: Handlers = {
       await chrome.storage.session.set({ [runKey(tabId)]: run });
     });
     await broadcast(tabId);
-    if (!url || onStartPage(guide, url)) await speakCurrentStep(tabId, run);
+    // With "Open start page", the first step is read when that page arrives (onTopFrameLoad).
+    if (!url || onStartPage(guide, url)) await voiceSync(tabId);
     return { status: 'started' as const };
   },
-  'run.mute': async ({ muted }, ctx: HandlerContext) => {
+  'run.mute': async ({ muted }) => {
     await setVoiceSettings({ muted });
     if (muted) stopSpeech();
-    if (ctx.tabId !== undefined) await broadcast(ctx.tabId);
+    // Mute is global: every tab with a run shows the new state.
+    const all = await chrome.storage.session.get(null);
+    for (const key of Object.keys(all)) if (key.startsWith('run:')) await broadcast(Number(key.slice(4)));
     return { ok: true };
   },
   'run.stop': async ({ tabId }) => {
@@ -225,6 +245,7 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   if (moved) {
     await broadcast(opener);
     await broadcast(newId);
+    await voiceSync(newId);
   }
 }
 
@@ -248,9 +269,11 @@ export async function resumeRunsMovedTo(closedTabId: number): Promise<void> {
       delete r.movedTo;
       r.cause = 'resume';
       r.rev = Math.max(r.rev, closed?.rev ?? 0) + 1;
+      if (closed?.spokenToken) r.spokenToken = closed.spokenToken;
       await chrome.storage.session.set({ [runKey(tabId)]: r });
     });
     await broadcast(tabId);
+    await voiceSync(tabId);
   }
 }
 
@@ -263,9 +286,13 @@ export async function onTopFrameLoad(tabId: number, url: string): Promise<void> 
       await chrome.storage.session.set({ [runKey(tabId)]: run });
     }
   });
+  // The first step after "Open start page", or the step a catch-up moved to, is read now.
+  await voiceSync(tabId);
 }
 
 export async function dropRun(tabId: number): Promise<void> {
+  // A closed tab's step must not keep being read (chrome.tts is global to the extension).
+  if (await getRun(tabId)) stopSpeech();
   await chrome.storage.session.remove([runKey(tabId), boardKey(tabId)]);
 }
 

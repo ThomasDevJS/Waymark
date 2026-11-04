@@ -11,7 +11,7 @@ import { isVisible } from '../../core/fingerprint/dom';
 import { watchAdvance } from '../../core/player/advance';
 import type { RunOp, RunView } from '../../core/player/run';
 import { urlMatches } from '../../core/url/url';
-import { isOverlayPath } from '../overlay/host';
+import { isOverlayPath, onOverlayReleased } from '../overlay/host';
 import { testMark } from '../test-hooks';
 import { PlayerUI } from './ui';
 
@@ -29,10 +29,15 @@ export interface PlayerDeps {
  * Fallback where chrome.tts is missing (SPEC: Voiceover): the top frame speaks with
  * speechSynthesis. The text is the step's stored voice text, sent by the service worker.
  */
-function speakFallback(p: { text: string; lang: string; rate: number }): void {
+function speakFallback(p: { text: string; lang: string; rate: number }, retried = false): void {
   const synth = window.speechSynthesis;
   if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
   synth.cancel();
+  // The voice list often loads asynchronously: wait for it once.
+  if (!synth.getVoices().length && !retried) {
+    synth.addEventListener('voiceschanged', () => speakFallback(p, true), { once: true });
+    return;
+  }
   const u = new SpeechSynthesisUtterance(p.text.slice(0, 5000));
   u.lang = p.lang;
   u.rate = p.rate;
@@ -252,6 +257,19 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   };
   chrome.runtime.onMessage.addListener(onMessage);
 
+  // A Test step highlight took the overlay for a moment: draw the current step again.
+  const offReleased = onOverlayReleased(ui, () => {
+    const v = view;
+    if (!v?.step || v.status !== 'running' || ui.drawn) return;
+    drawnFor = null;
+    if (!v.step.target) {
+      if (isTop) {
+        ui.showStep(v, null);
+        drawnFor = v.stepToken;
+      }
+    } else render();
+  });
+
   return {
     apply,
     /** Navigate steps advance when the URL matches the step's URL rule. */
@@ -268,6 +286,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       if (v.step.kind === 'navigate' && urlMatches(v.step.url, url, v.appOrigins)) op('done');
     },
     dispose() {
+      offReleased();
       clearStep();
       try {
         chrome.runtime.onMessage.removeListener(onMessage);
