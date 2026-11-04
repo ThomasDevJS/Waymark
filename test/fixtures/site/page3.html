@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Agreement</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Agreement</h1>
+      <section aria-label="Partner frame" class="card" id="frames"></section>
+      <form aria-label="Agreement" class="card" onsubmit="return false">
+        <label><input type="checkbox" name="agree" /> I agree to the terms</label>
+        <button type="button" id="finish">Finish</button>
+      </form>
+    </main>
+    <script type="module">
+      const other = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+      const f = document.createElement('iframe');
+      f.src = `${location.protocol}//${other}:${location.port}/frame.html?name=partner`;
+      f.title = 'Partner frame';
+      f.className = 'partner-frame';
+      f.width = '360';
+      f.height = '140';
+      document.getElementById('frames').append(f);
+    </script>
+  </body>
+</html>

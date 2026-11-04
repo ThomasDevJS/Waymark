@@ -106,7 +106,11 @@ export class ExtensionHelper {
 
 /** Reads a test-build marker the content script writes on <html>. */
 export async function marker(page: Page | import('@playwright/test').Frame, name: string): Promise<string | null> {
-  return page.evaluate((n) => document.documentElement.getAttribute(`data-waymark-test-${n}`), name);
+  try {
+    return await page.evaluate((n) => document.documentElement.getAttribute(`data-waymark-test-${n}`), name);
+  } catch {
+    return null; // the page is navigating; pollers try again
+  }
 }
 
 export const test = base.extend<Fixtures, WorkerFixtures>({

@@ -4,27 +4,82 @@
  * pages we do not trust. Each sender type has its own allowlist.
  */
 import { z } from 'zod';
-import type { Guide } from '../model/schema';
+import { ElementFingerprintSchema, GuideSchema, StepSchema, type Guide, type Step } from '../model/schema';
+import type { RecordingState, RecordingView } from '../recorder/session';
+import type { GuideIndexEntry } from '../storage/guides';
+import type { RunView } from '../player/run';
+import type { Problem } from '../storage/problems';
+import type { VoiceSettings } from '../voice/voice';
+import type { TestResult } from '../../background/editor';
 
 const url = z.string().max(4096);
 
 export const RequestSchemas = {
   // ---- extension pages (side panel, options) ----
-  'tab.current': z.object({ windowId: z.number().int().optional() }),
+  'tab.current': z.object({ windowId: z.number().int().optional(), tabId: z.number().int().optional() }),
   'site.list': z.object({}),
   'site.sync': z.object({}),
+  'rec.start': z.object({ tabId: z.number().int(), title: z.string().max(500) }),
+  'rec.pause': z.object({}),
+  'rec.resume': z.object({}),
+  'rec.undo': z.object({}),
+  'rec.note': z.object({ title: z.string().max(500), note: z.string().max(5000).optional() }),
+  'rec.stop': z.object({}),
+  'rec.state': z.object({}),
+  'guide.list': z.object({}),
+  'run.start': z.object({ tabId: z.number().int(), guideId: z.string().max(64), openStart: z.boolean().optional() }),
+  'run.stop': z.object({ tabId: z.number().int() }),
+  'run.state': z.object({ tabId: z.number().int() }),
+  'problems.list': z.object({}),
+  'guide.get': z.object({ id: z.string().max(64) }),
+  'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
+  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50) }),
+  'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
+  'pick.cancel': z.object({ tabId: z.number().int() }),
+  'voice.list': z.object({}),
+  'voice.test': z.object({ lang: z.string().max(35).optional() }),
+  'voice.settings.get': z.object({}),
+  'voice.settings.set': z.object({
+    patch: z
+      .object({
+        autoPlay: z.boolean(),
+        rate: z.number().min(0.5).max(2),
+        allowOnlineVoices: z.boolean(),
+        muted: z.boolean(),
+        voices: z.record(z.string().max(35), z.string().max(200)),
+      })
+      .partial(),
+  }),
   // ---- content scripts ----
   'route.report': z.object({
     url,
-    via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll']),
+    via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll', 'leaving']),
     navigationType: z.string().max(32).optional(),
+    title: z.string().max(500).optional(),
+    timeOrigin: z.number().optional(),
   }),
   'guide.forPage': z.object({ url }),
   'frame.nonce': z.object({ selector: z.string().max(2000) }),
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
-  'run.advance': z.object({ stepId: z.string().max(64) }),
-  'rec.step': z.object({ step: z.unknown() }),
+  'run.advance': z.object({ stepId: z.string().max(64), op: z.enum(['done', 'next', 'back', 'skip', 'exit']) }),
+  'run.match': z.object({
+    stepToken: z.string().max(64),
+    frameToken: z.string().max(64),
+    found: z.boolean(),
+    score: z.number().min(0).max(100),
+    margin: z.number().min(-100).max(100),
+    instance: z.enum(['unique', 'any']),
+    pathMatches: z.boolean(),
+  }),
+  'run.problem': z.object({ stepId: z.string().max(64) }),
+  'run.mute': z.object({ muted: z.boolean() }),
+  'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
+  'pick.abort': z.object({}),
+  'rec.step': z.discriminatedUnion('op', [
+    z.object({ op: z.literal('add'), step: StepSchema }),
+    z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
+  ]),
 } as const;
 
 export type MessageType = keyof typeof RequestSchemas;
@@ -43,7 +98,33 @@ export interface ResponseMap {
   'tab.current': TabInfo;
   'site.list': { origins: string[]; registered: string[] };
   'site.sync': { registered: string[] };
-  'route.report': { ok: true };
+  'rec.start': RecordingState;
+  'rec.pause': RecordingState | null;
+  'rec.resume': RecordingState | null;
+  'rec.undo': RecordingState | null;
+  'rec.note': RecordingState | null;
+  'rec.stop': { guideId: string; title: string; steps: Step[] } | null;
+  'rec.state': RecordingState | null;
+  'guide.list': { guides: GuideIndexEntry[] };
+  'route.report': { ok: true; recording: RecordingView; run: RunView };
+  'run.start': { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string };
+  'run.stop': { ok: boolean };
+  'run.state': RunView;
+  'run.match': { ok: boolean };
+  'run.problem': { ok: boolean };
+  'problems.list': { problems: Problem[] };
+  'voice.list': { voices: { voiceName: string; lang: string; remote: boolean }[]; available: boolean };
+  'voice.test': { ok: boolean };
+  'voice.settings.get': VoiceSettings;
+  'voice.settings.set': VoiceSettings;
+  'run.mute': { ok: boolean };
+  'guide.get': Guide;
+  'guide.save': Guide;
+  'step.test': TestResult;
+  'pick.start': { ok: boolean };
+  'pick.cancel': { ok: boolean };
+  'pick.result': { ok: boolean };
+  'pick.abort': { ok: boolean };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -67,6 +148,12 @@ export type SenderKind = 'extension' | 'content';
 export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'rec.step', // additionally requires the tab to be recording
   'run.advance',
+  // Frame winner reports and Report broken step (see docs/DECISIONS.md D26).
+  'run.match',
+  'run.problem',
+  'run.mute', // the tooltip's mute toggle (D38)
+  'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
+  'pick.abort', // Esc in the page cancels the pick everywhere (D41)
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -76,7 +163,45 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
 ]);
 
 /** Extension pages may send everything except content-only reports. */
-export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(['tab.current', 'site.list', 'site.sync', 'guide.forPage']);
+export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
+  'tab.current',
+  'site.list',
+  'site.sync',
+  'guide.forPage',
+  'guide.list',
+  'rec.start',
+  'rec.pause',
+  'rec.resume',
+  'rec.undo',
+  'rec.note',
+  'rec.stop',
+  'rec.state',
+  'run.start',
+  'run.stop',
+  'run.state',
+  'problems.list',
+  'guide.get',
+  'guide.save',
+  'step.test',
+  'pick.start',
+  'pick.cancel',
+  'voice.list',
+  'voice.test',
+  'voice.settings.get',
+  'voice.settings.set',
+]);
+
+/** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
+export type ContentPush =
+  | { type: 'rec.changed'; payload: RecordingView }
+  | { type: 'run.changed'; payload: RunView }
+  // speechSynthesis fallback where chrome.tts is missing (SPEC: Voiceover)
+  | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }
+  | { type: 'tts.stop' }
+  // editor: Test step (answered with a TestResult) and Re-pick element
+  | { type: 'test.step'; payload: { step: Step } }
+  | { type: 'pick.start' }
+  | { type: 'pick.stop' };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

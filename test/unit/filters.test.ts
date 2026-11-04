@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { isDataLike, isGeneratedToken, isStateClass, safeLabel } from '../../src/core/fingerprint/filters';
 
 describe('isGeneratedToken', () => {
-  it.each(['css-1x9f2k', 'css-1x9f2k-Button', 'sc-bdVaJa', 'jss12', ':r0:', ':R1a2:', '«r3»', '_r_5_', 'ember123', 'Button_primary__3xK9z', 'item-123456', '3f2a9c1e7b', '550e8400-e29b-41d4-a716-446655440000', '01ARZ3NDEKTSV4RRFFQ69G5FAV', 'x7f3k2a'])(
+  it.each(['css-1x9f2k', 'css-1x9f2k-Button', 'sc-bdVaJa', 'jss12', ':r0:', ':R1a2:', '«r3»', '_r_5_', 'ember123', 'Button_primary__3xK9z', 'item-123456', '3f2a9c1e7b', '550e8400-e29b-41d4-a716-446655440000', '01ARZ3NDEKTSV4RRFFQ69G5FAV', 'x7f3k2a', 'prc-Button-ButtonBase-9n-Xk', 'prc-components-UnderlineItem-7fP-n', 'Box-sc-g0xbh4-0'])(
     'flags %s',
     (t) => expect(isGeneratedToken(t)).toBe(true),
   );
-  it.each(['btn', 'btn-primary', 'nav-link', 'save-button', 'col-md-6', 'mt-4', 'first-name', 'email', 'search', 'v2', 'card', 'form-field', 'export-csv', 'primary-cta'])(
+  it.each(['btn', 'btn-primary', 'nav-link', 'save-button', 'col-md-6', 'mt-4', 'first-name', 'email', 'search', 'v2', 'card', 'form-field', 'export-csv', 'primary-cta', 'grid-cols-12', 'col-md-6', 'h-4', 'Button--secondary', 'Box-row', 'SelectMenu-closeButton', 'TimelineItem--condensed', 'mt-0', 'd-flex', 'Overlay--size-small'])(
     'keeps %s',
     (t) => expect(isGeneratedToken(t)).toBe(false),
   );

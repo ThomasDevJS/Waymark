@@ -8,12 +8,17 @@ import { claimNonce, framePathFor, framesKey, issueNonce, type FrameMap } from '
 import { sessionKV } from '../core/storage/session-kv';
 import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
+import { listGuides } from '../core/storage/guides';
+import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
+import { editorHandlers, endPick } from '../background/editor';
+import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
+import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
 
-async function tabInfo(windowId?: number) {
+async function tabInfo(windowId?: number, tabId?: number) {
   const query: chrome.tabs.QueryInfo = windowId === undefined ? { active: true, lastFocusedWindow: true } : { active: true, windowId };
-  const [tab] = await chrome.tabs.query(query);
+  const tab = tabId !== undefined ? await chrome.tabs.get(tabId).catch(() => undefined) : (await chrome.tabs.query(query))[0];
   const url = tab?.url ?? null; // readable after the toolbar click (activeTab) or on granted sites
   let origin: string | null = null;
   let grantable = false;
@@ -34,18 +39,32 @@ async function tabInfo(windowId?: number) {
 }
 
 const handlers: Handlers = {
-  'tab.current': ({ windowId }) => tabInfo(windowId),
+  ...recordingHandlers,
+  ...runHandlers,
+  ...editorHandlers,
+  'guide.list': async () => ({ guides: await listGuides() }),
+  'voice.list': () => listVoices(),
+  'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
+  'voice.settings.get': () => getVoiceSettings(),
+  'voice.settings.set': ({ patch }) => setVoiceSettings(patch),
+  'tab.current': ({ windowId, tabId }) => tabInfo(windowId, tabId),
   'site.list': async () => {
     const { origins = [] } = await chrome.permissions.getAll();
     const regs = await chrome.scripting.getRegisteredContentScripts();
     return { origins: grantedSitePatterns(origins), registered: regs.flatMap((r) => r.matches ?? []) };
   },
   'site.sync': async () => ({ registered: await sync() }),
-  'route.report': async ({ url }, ctx) => {
-    if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0) {
-      await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: url });
+  'route.report': async (payload, ctx) => {
+    if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0 && payload.via !== 'leaving') {
+      await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
-    return { ok: true as const };
+    const recording = await onRouteReport(payload, ctx);
+    if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) {
+      await onTopFrameLoad(ctx.tabId, payload.url);
+      // A new page has no picker running: end a pending pick so the panel stops waiting.
+      if ((await chrome.storage.session.get(`pick:${ctx.tabId}`))[`pick:${ctx.tabId}`]) await endPick(ctx.tabId, true);
+    }
+    return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
   },
   // Guides arrive in M5; content scripts only ever get guides for their own origin.
   'guide.forPage': () => ({ guides: [] }),
@@ -90,9 +109,20 @@ export default defineBackground(() => {
     await sync();
     await injectIntoOpenTabs(grantedSitePatterns(added.origins ?? []));
   });
-  chrome.permissions.onRemoved.addListener(() => void sync());
+  chrome.permissions.onRemoved.addListener(() => {
+    void sync();
+    void onSitesRevoked();
+    void endRunsOnRevokedSites();
+  });
 
+  chrome.tabs.onCreated.addListener((tab) => {
+    void onTabCreated(tab);
+    void carryRunToNewTab(tab);
+  });
+  chrome.commands?.onCommand.addListener((command, tab) => void onRunCommand(command, tab));
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), `test:route:${tabId}`]);
+    void onTabRemoved(tabId);
+    void resumeRunsMovedTo(tabId).then(() => dropRun(tabId));
   });
 });

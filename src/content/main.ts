@@ -2,6 +2,10 @@
 import { send } from '../core/messaging/client';
 import { contextAlive, watchContext } from './context';
 import { startFrameMapping } from './frames';
+import { startRecordingClient } from './recording';
+import { startPlayerClient } from './player/controller';
+import { startEditorClient } from './editor';
+import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
 
@@ -30,13 +34,31 @@ export function startContent(): void {
   };
   g[GLOBAL_KEY] = instance;
 
+  const frames = startFrameMapping();
+  disposers.push(frames.dispose);
+  const recording = startRecordingClient(frames.framePath);
+  const player = startPlayerClient({ frameToken: instanceId, framePath: frames.framePath });
+  const editor = startEditorClient(frames.framePath);
+  disposers.push(recording.dispose, player.dispose, editor.dispose, destroyOverlay);
   disposers.push(
     watchRoutes((change) => {
       if (!contextAlive()) return;
-      send('route.report', change).catch(() => undefined);
+      player.onRoute(change.url);
+      send('route.report', {
+        ...change,
+        title: document.title.slice(0, 500),
+        ...(change.via === 'load' ? { timeOrigin: Math.round(performance.timeOrigin) } : {}),
+      })
+        .then((r) => {
+          recording.apply(r.recording);
+          player.apply(r.run);
+        })
+        .catch(() => undefined);
+    }, (url) => {
+      if (!contextAlive() || window !== window.top) return;
+      send('route.report', { url, via: 'leaving' }).catch(() => undefined);
     }),
   );
-  disposers.push(startFrameMapping());
   disposers.push(watchContext(() => instance.dispose()));
   testMark('loaded', 'yes');
   testMark('instance', instanceId);

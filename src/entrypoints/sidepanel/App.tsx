@@ -3,12 +3,20 @@ import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
+import { Recorder } from './Recorder';
 
 const tab = signal<TabInfo | null>(null);
 const error = signal<string | null>(null);
 
 async function refresh() {
   try {
+    // Test builds only: e2e tests open the panel as a tab and point it at the fixture tab.
+    const testTab = __WAYMARK_TEST__ ? new URLSearchParams(location.search).get('tab') : null;
+    if (testTab) {
+      tab.value = await send('tab.current', { tabId: Number(testTab) });
+      error.value = null;
+      return;
+    }
     const win = await chrome.windows.getCurrent();
     tab.value = await send('tab.current', { windowId: win.id });
     error.value = null;
@@ -50,7 +58,12 @@ export function App() {
   const t = tab.value;
   return (
     <main>
-      <h1>Waymark</h1>
+      <div class="row">
+        <h1 class="grow">Waymark</h1>
+        <button type="button" data-testid="open-settings" onClick={() => void chrome.runtime.openOptionsPage()}>
+          Settings
+        </button>
+      </div>
       {error.value && <p role="alert">{error.value}</p>}
       <section class="site" aria-label="Site access">
         {!t || !t.origin ? (
@@ -80,6 +93,7 @@ export function App() {
           </>
         )}
       </section>
+      {t?.granted && <Recorder tabId={t.tabId} />}
     </main>
   );
 }

@@ -23,5 +23,12 @@ export default defineConfig({
     permissions: ['storage', 'unlimitedStorage', 'sidePanel', 'scripting', 'activeTab', 'tts', 'alarms'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: { default_title: 'Waymark' },
+    // Users can change these at chrome://extensions/shortcuts. No Alt+Shift combinations,
+    // which switch the input language on Windows (SPEC: Accessibility).
+    commands: {
+      'next-step': { suggested_key: { default: 'Alt+Period' }, description: 'Guide: next step' },
+      'previous-step': { suggested_key: { default: 'Alt+Comma' }, description: 'Guide: previous step' },
+      'exit-guide': { description: 'Guide: exit' },
+    },
   },
 });

@@ -7,8 +7,8 @@ export const STYLE = `
   body { margin: 0; font: 14px sans-serif; }
   .app { padding: 8px; } header, nav, .toolbar, .cards, .pager, .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .card { border: 1px solid #ccc; padding: 8px; margin: 8px 0; }
-  .switch { display: inline-block; width: 32px; height: 16px; background: #ccc; margin: 4px; }
-  .combo { display: inline-block; padding: 4px; border: 1px solid #999; }
+  [role=switch] { display: inline-block; width: 32px; height: 16px; background: #ccc; margin: 4px; }
+  [role=combobox] { display: inline-block; padding: 4px; border: 1px solid #999; }
   .portal .listbox { border: 1px solid #999; width: 160px; }
   .option { padding: 2px 4px; }
 `;
