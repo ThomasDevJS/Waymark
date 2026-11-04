@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Invoices · Demo Invoices</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>Invoices</h1>
+  <div class="card">
+    <h2>Search and filter <span class="tag">search box, filter dropdown</span></h2>
+    <div class="row">
+      <input type="text" id="search" placeholder="Search invoices" aria-label="Search invoices" style="max-width:240px" />
+      <select id="status" aria-label="Status filter" style="max-width:160px">
+        <option value="">All statuses</option>
+        <option>Paid</option>
+        <option>Overdue</option>
+        <option>Draft</option>
+      </select>
+    </div>
+  </div>
+  <div class="card">
+    <h2>List <span class="tag">repeated rows: every row has a "View" button</span></h2>
+    <table>
+      <thead><tr><th>Number</th><th>Customer</th><th>Status</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+<script type="module">
+  import { toast } from './header.js';
+  const data = [
+    ['INV-1001', 'Sample Co', 'Paid'],
+    ['INV-1002', 'Example Ltd', 'Overdue'],
+    ['INV-1003', 'Test Industries', 'Draft'],
+    ['INV-1004', 'Placeholder Inc', 'Paid'],
+  ];
+  const body = document.getElementById('rows');
+  function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const s = document.getElementById('status').value;
+    body.replaceChildren();
+    for (const [num, cust, st] of data) {
+      if (q && !(num + cust).toLowerCase().includes(q)) continue;
+      if (s && st !== s) continue;
+      const tr = document.createElement('tr');
+      for (const v of [num, cust, st]) { const td = document.createElement('td'); td.textContent = v; tr.append(td); }
+      const td = document.createElement('td');
+      const b = document.createElement('button');
+      b.textContent = 'View';
+      b.addEventListener('click', () => toast(`Opened ${num}`));
+      td.append(b);
+      tr.append(td);
+      body.append(tr);
+    }
+  }
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('status').addEventListener('change', render);
+  render();
+</script>
+</body>
+</html>

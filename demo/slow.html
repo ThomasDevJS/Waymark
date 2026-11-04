@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report · Demo Invoices</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>Report</h1>
+  <div class="card" id="report"><p class="slow-note">Loading the report… (takes 2 seconds on purpose)</p></div>
+</main>
+<script type="module">
+  import { toast } from './header.js';
+  setTimeout(() => {
+    const card = document.getElementById('report');
+    const p = document.createElement('p');
+    p.textContent = 'Report ready. The button below appears late, to test waiting for elements.';
+    const b = document.createElement('button');
+    b.className = 'primary';
+    b.textContent = 'Download report';
+    b.addEventListener('click', () => toast('Report downloaded'));
+    card.replaceChildren(p, b);
+  }, 2000);
+</script>
+</body>
+</html>

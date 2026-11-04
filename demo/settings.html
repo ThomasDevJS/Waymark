@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings · Demo Invoices</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <div class="card">
+    <h2>Company</h2>
+    <label class="field"><span>Company name</span><input type="text" name="company" autocomplete="off" /></label>
+    <p><button type="button" class="switch" role="switch" aria-checked="true"><span class="track"></span> Email reminders</button></p>
+    <p><label><input type="checkbox" checked /> Show tax on invoices</label></p>
+    <button type="button" class="primary" id="save">Save settings</button>
+  </div>
+</main>
+<script type="module">
+  import { toast } from './header.js';
+  document.getElementById('save').addEventListener('click', () => toast('Settings saved'));
+</script>
+</body>
+</html>
