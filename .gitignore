@@ -9,3 +9,4 @@ playwright-report
 .vitest-attachments
 __screenshots__
 *.log
+artifacts

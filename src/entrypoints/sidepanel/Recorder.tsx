@@ -2,14 +2,13 @@ import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { RecordingState } from '../../core/recorder/session';
-import type { GuideIndexEntry } from '../../core/storage/guides';
 import type { RunView } from '../../core/player/run';
 import { Markdown } from './Markdown';
 import { Editor } from './Editor';
+import { Library } from './Library';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
-const guides = signal<GuideIndexEntry[]>([]);
 const title = signal('');
 const noteTitle = signal('');
 const noteOpen = signal(false);
@@ -30,7 +29,6 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 
 async function refresh(tabId?: number | null) {
   recording.value = (await attempt(() => send('rec.state', {}))) ?? null;
-  guides.value = (await attempt(() => send('guide.list', {})))?.guides ?? [];
   if (tabId !== undefined && tabId !== null) run.value = (await attempt(() => send('run.state', { tabId }))) ?? null;
 }
 
@@ -44,14 +42,28 @@ async function startGuide(tabId: number, guideId: string, openStart = false) {
   }
 }
 
-export function Recorder({ tabId }: { tabId: number | null }) {
+/**
+ * Without chrome.sidePanel the panel is a popup that closes when the page is clicked, so the
+ * editor opens in a full-page tab instead (SPEC: Distribution, browser differences).
+ */
+function openEditor(id: string, tabId: number | null) {
+  if (typeof chrome.sidePanel === 'undefined' && !new URLSearchParams(location.search).has('edit')) {
+    void chrome.tabs.create({ url: chrome.runtime.getURL(`sidepanel.html?edit=${encodeURIComponent(id)}${tabId !== null ? `&tab=${tabId}` : ''}`) });
+    return;
+  }
+  editing.value = id;
+}
+
+export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null; tabUrl: string | null; initialEdit?: string | null }) {
+  useEffect(() => {
+    if (initialEdit) editing.value = initialEdit;
+  }, [initialEdit]);
   useEffect(() => {
     void refresh(tabId);
     // The panel is a trusted context and may watch session storage directly.
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'session' && 'recording' in changes) recording.value = (changes.recording!.newValue as RecordingState | undefined) ?? null;
       if (area === 'session' && tabId !== null && `run:${tabId}` in changes) void refresh(tabId);
-      if (area === 'local' && 'guides:index' in changes) void refresh(tabId);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -136,26 +148,7 @@ export function Recorder({ tabId }: { tabId: number | null }) {
             )}
           </div>
         )}
-        {guides.value.length > 0 && (
-          <>
-            <h2>Guides</h2>
-            <ul class="guides">
-              {guides.value.map((g) => (
-                <li key={g.id} class="row">
-                  <span class="grow">
-                    {g.title} <span class="muted">· {g.steps} steps</span>
-                  </span>
-                  <button type="button" data-testid={`edit-${g.id}`} onClick={() => (editing.value = g.id)}>
-                    Edit
-                  </button>
-                  <button type="button" data-testid={`start-${g.id}`} disabled={tabId === null} onClick={() => tabId !== null && void startGuide(tabId, g.id)}>
-                    Start
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id) => tabId !== null && void startGuide(tabId, id)} />
       </section>
     );
   }
@@ -193,7 +186,7 @@ export function Recorder({ tabId }: { tabId: number | null }) {
               recording.value = null;
               if (res) {
                 saved.value = { title: res.title, count: res.steps.length };
-                editing.value = res.guideId; // Stop opens the editor (SPEC: Record step 6)
+                openEditor(res.guideId, tabId); // Stop opens the editor (SPEC: Record step 6)
               }
               await refresh(tabId);
             })

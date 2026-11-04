@@ -11,6 +11,7 @@ import { guideKey, writeGuide } from '../core/storage/guides';
 import { framesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
+import { updateAllBadges } from './discovery';
 
 /** The tab must show a page of the guide's site: steps are only sent to their own origin (D41). */
 async function tabOnOrigins(tabId: number, origins: string[]): Promise<string> {
@@ -100,6 +101,9 @@ export const editorHandlers: Handlers = {
       };
       await writeGuide(next);
       return next;
+    }).then(async (g) => {
+      await updateAllBadges();
+      return g;
     });
   },
   'step.test': async ({ tabId, step, origins }): Promise<TestResult> => {

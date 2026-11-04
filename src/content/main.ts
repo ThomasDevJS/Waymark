@@ -5,6 +5,7 @@ import { startFrameMapping } from './frames';
 import { startRecordingClient } from './recording';
 import { startPlayerClient } from './player/controller';
 import { startEditorClient } from './editor';
+import { startLauncher, takeDeepLink } from './launcher';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
@@ -34,12 +35,16 @@ export function startContent(): void {
   };
   g[GLOBAL_KEY] = instance;
 
+  // Deep link: read at document_start and removed at once, so hash routers never see it.
+  const deepLink = window === window.top ? takeDeepLink() : null;
   const frames = startFrameMapping();
   disposers.push(frames.dispose);
   const recording = startRecordingClient(frames.framePath);
   const player = startPlayerClient({ frameToken: instanceId, framePath: frames.framePath });
   const editor = startEditorClient(frames.framePath);
-  disposers.push(recording.dispose, player.dispose, editor.dispose, destroyOverlay);
+  const launcher = startLauncher();
+  disposers.push(recording.dispose, player.dispose, editor.dispose, launcher.dispose, destroyOverlay);
+  let firstReport = true;
   disposers.push(
     watchRoutes((change) => {
       if (!contextAlive()) return;
@@ -52,6 +57,11 @@ export function startContent(): void {
         .then((r) => {
           recording.apply(r.recording);
           player.apply(r.run);
+          if (window === window.top) {
+            launcher.refresh(); // guides for this page change with in-app routes too
+            if (firstReport && deepLink) launcher.offerDeepLink(deepLink);
+            firstReport = false;
+          }
         })
         .catch(() => undefined);
     }, (url) => {

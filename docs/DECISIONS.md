@@ -273,3 +273,37 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - **Save never overwrites a newer copy.** `guide.save` carries the revision the draft was loaded from and is refused if the stored guide changed since (for example, from a side panel in another window). Save is disabled while saving, and edits typed during a save are kept. A step with an empty title is caught before saving, with a clear message.
   - **Overlay hand-back** (refines D40): when a Test step highlight releases the overlay, the player draws its current step again.
 - **Not changed**: the picker builds fingerprints without a site profile, as the recorder does, because site profiles are not wired yet (they arrive with the options for M5).
+
+## 2026-11-04 — M5 (and the M6 parts needed for testing)
+
+### D42. Discovery and sharing details
+- **Spec**: Discovery and hints; Sharing and storage; Security.
+- **Changes and clarifications**:
+  - **Badge** (toolbar): the count of guides whose `appOrigins` include the tab's origin and whose `matchUrls` match its path. It is updated from `tabs.onUpdated` (the URL is readable on granted sites), from every top-frame route report (so in-app route changes count), and after guides change. REC takes precedence; when recording stops the count returns. Counts above 99 show "99+". The guide index now also stores `matchUrls` and `source`, and is rebuilt from the stored guides at install.
+  - **Side panel**: "For this page" first, then all guides; MiniSearch over title, description, tags and step titles, with prefix and light fuzzy matching. Guides stay listed (search, import, Allow) on tabs where the site is not granted yet.
+  - **Launcher and deep links** add two content messages: `launcher.start` and `deeplink.check`. Both answer only for guides whose `appOrigins` include the sender's origin, and only to the top frame; `guide.forPage` now returns ids and titles only, plus whether the launcher is on for that origin. The launcher setting is per origin (`siteSettings`). A deep link id must look like an id (letters, digits, `-`, `_`), and only the `waymark=…` segment is removed from the query or hash, leaving the rest exactly as it was (found by the e2e test: `URLSearchParams` re-encoded `?static` as `?static=`).
+  - **Export review** lists every string the pack contains: guide title, description, tags, start URL, and per step its title, page rule, note, voice text, element labels (accessible name, own text, placeholder, `name`, `value`, `id`, landmark labels) and link path. Notes, voice text, tags, the description and element labels can be removed from the exported copy only; titles and pages are changed in the editor.
+  - **Import**: the panel reads the file (5 MB cap), the service worker parses and validates it again (it never trusts the panel's copy), shows conflicts (same id, different `revisionId`) with keep / replace / keep both, and writes all guides in one queued write. Imported guides are local. An imported copy of a guide that exists as a library guide is kept as a separate local copy with `forkedFrom`.
+  - **Library**: `https://` URLs only (plain `http://` only for localhost, for testing). The options page first tries to read the file (works when the host sends CORS headers) and requests the library's site as a permission otherwise. Refresh at subscribe, at startup and on a `chrome.alarms` alarm every 360 minutes. A refresh replaces the library guides (new revisions win, guides dropped from the pack are removed) but never overwrites a local guide with the same id. Unsubscribing removes the library guides. A failed refresh keeps the current guides and shows the error in the options page.
+  - **First-run access**: after an import or a library refresh, the sites in the guides' `appOrigins` that are not granted are kept in `pendingAllow`; the panel shows one banner with one **Allow** button, which makes a single `chrome.permissions.request` for all of them (it needs the click).
+
+### D43. Popup fallback, version, downloadable builds
+- **Spec**: Distribution and cost, "Browser differences"; Milestones M6.
+- **Change**: when `chrome.sidePanel` is missing, the service worker sets the action popup to the panel at runtime (`setupPanelFallback`); the popup's **Edit** and Stop-then-edit open the editor in a full-page tab (`sidepanel.html?edit=<id>&tab=<id>`). Recording relies on the on-page pill, which already shows the last step. The `?tab=` parameter is no longer test-only, because the full-page editor needs it; only extension pages can open that URL. Version 0.2.0. CI packages the production build (`pnpm zip`) and uploads it as the `waymark-extension` artifact of every run.
+
+### D44. Fixes from the independent M5 review
+- **Spec**: Sharing (packs are untrusted; export review); Permissions (one site at a time, no `<all_urls>`); Discovery.
+- **Changes**, each with a regression test:
+  - **Origins are validated.** A guide's `appOrigins` must be real http(s) origins exactly as `new URL(o).origin` writes them, with no wildcard, and at least one. A pack claiming `https://*` is rejected, so it can never reach the one-click Allow request or the content script registration. Pending-allow checks also never throw on a bad entry.
+  - **The export review shows everything identifying, and removal is complete.** The review now also lists sites, page rules (`matchUrls`), the test id and `data-guide-id`, the CSS path (which embeds ids, names and ancestor labels), the XPath, and shadow and frame paths. Test id, guide id and CSS path can be removed (the CSS path falls back to the tag). With everything removable removed, no element id, test id, landmark label, note or own text is left in the file.
+  - **Library refresh races**: a refresh writes only if the subscription URL is still the one it fetched, so unsubscribing or changing the URL during a slow fetch wins.
+  - **Deep links**: malformed percent-encoding is ignored and can no longer stop the content script.
+  - **Badge**: removing site access clears the badge (tabs whose URL can no longer be read get no count), and REC is re-checked just before a count is written.
+  - **Library subscribe**: the URL is validated before any permission request, and the CORS probe is limited to 1.5 s so the click still counts as a user gesture for the request.
+  - **Allow banner**: "Not now" is remembered per site, so library refreshes do not bring the banner back. Re-importing a pack that contains a library guide no longer adds another local copy each time.
+- **Also for testing** (docs/TESTING.md): **Copy link** per guide (a deep link to its start page), and a **Problems** list in Settings with Copy and Clear for "Report broken step".
+
+### D45. A frame re-sends its match result when the service worker has no winner
+- **Spec**: Element targeting, playback step 8.
+- **Finding** (CI only, a timing race): with **Open start page**, the new page could find the element and report it before the service worker handled that page's own load report, which clears the frame board (D25). The report was lost and the page stayed "searching". **Change**: whenever a frame receives a view for its current step with no winner and its own search has finished, it sends its result again. The board broadcasts only on a change, so a repeat report cannot loop.
+- **CI**: `upload-artifact` skips hidden folders such as `.output`, so the zip is copied to `artifacts/` before upload.

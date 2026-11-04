@@ -3,6 +3,7 @@ import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { enqueue } from '../core/storage/queue';
 import { writeGuide } from '../core/storage/guides';
+import { updateAllBadges, updateBadge } from './discovery';
 import type { Step } from '../core/model/schema';
 import {
   addOrigin,
@@ -44,12 +45,8 @@ async function broadcast(state: RecordingState | null, tabIds: number[]): Promis
   const msg: ContentPush = { type: 'rec.changed', payload: view };
   await Promise.all(
     tabIds.map(async (tabId) => {
-      try {
-        await chrome.action.setBadgeText({ tabId, text: state ? 'REC' : '' });
-        if (state) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#c62828' });
-      } catch {
-        // tab gone
-      }
+      // REC while recording; afterwards the guide count for the page comes back.
+      await updateBadge(tabId);
       chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
     }),
   );
@@ -167,6 +164,7 @@ export const recordingHandlers: Handlers = {
     });
     if (!result) return null;
     await broadcast(null, result.state.tabIds);
+    await updateAllBadges();
     return { guideId: result.guide.id, title: result.guide.title, steps: result.guide.steps };
   },
   'rec.step': async (op, ctx: HandlerContext) => {

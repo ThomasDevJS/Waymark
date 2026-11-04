@@ -177,6 +177,10 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   function render() {
     const v = view;
     if (!v?.step || !v.stepToken) return;
+    // The service worker has no winner but this frame finished its search: its report may have
+    // been dropped (the board is cleared when a new page loads, possibly after the report
+    // arrived). Send it again; the board only broadcasts on a change, so this cannot loop (D45).
+    if (!v.winner && searchDone && result && v.step.target) report(v, result);
     const mine = v.winner === deps.frameToken && result?.status === 'found';
     if (mine && drawnFor !== v.stepToken && result?.status === 'found') {
       const r = result;
