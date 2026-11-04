@@ -55,7 +55,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 
 ### D. Play the guide
 - [ ] First, open **Settings** in the panel. Under **Voice**, **In use** names the voice Waymark picked by itself (the best one on this device). Press **Test voice**. You should hear a sample sentence. If you hear nothing, there may be no voice installed for English; the guide still works, silently.
-- [ ] If the voice sounds robotic, open **Get better voices** and follow the steps for your system, then restart the browser. **In use** should now show the new voice (its name contains Natural, Premium or Enhanced). In Edge, turning on **Allow online voices** switches to an “Online (Natural)” voice; that one sends the step text to Microsoft.
+- [ ] If the voice sounds robotic, open **Get better voices** and follow the steps for your system, then restart the browser. **In use** should now show the new voice; on macOS its name contains Premium or Enhanced. On Windows, the natural voices added for Narrator can't be used by browsers. In Edge, turning on **Allow online voices** switches to an “Online (Natural)” voice instead; that one sends the step text to Microsoft. Please tell us which voice **In use** shows on your machine.
 - [ ] Go back to the guide's first page and press **Start** in the panel. The page dims around the first element, with a tooltip reading "Step 1 of N". The step is read aloud.
 - [ ] Do each action. The guide moves on by itself. Note steps have a **Next** button.
 - [ ] Try **Back** in the tooltip, and the shortcuts `Alt+.` (next) and `Alt+,` (back).

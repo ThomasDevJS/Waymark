@@ -278,18 +278,18 @@ test('Settings shows the best-ranked voice in use; Edge natural online voices le
       cb([
         { voiceName: 'Microsoft David - English (United States)', lang: 'en-US', remote: false },
         { voiceName: 'Microsoft Aria Online (Natural) - English (United States)', lang: 'en-US', remote: true },
-        { voiceName: 'Microsoft Jenny (Natural) - English (United States)', lang: 'en-US', remote: false },
+        { voiceName: 'Ava (Premium)', lang: 'en-US', remote: false },
       ])) as typeof chrome.tts.getVoices;
     chrome.tts.speak = ((_t: string, o: chrome.tts.TtsOptions) => void log.push(`speak:${o.voiceName}`)) as unknown as typeof chrome.tts.speak;
     chrome.tts.stop = (() => undefined) as unknown as typeof chrome.tts.stop;
   });
   const options = await context.newPage();
   await options.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft Jenny (Natural)');
+  await expect(options.getByTestId('voice-in-use')).toContainText('Ava (Premium)');
   await expect(options.getByTestId('voice-in-use')).toContainText('(on this device)');
   await expect(options.getByTestId('better-voices')).toContainText('Linux'); // the CI runner's OS
   await options.getByTestId('test-voice').click();
-  await expect.poll(() => sw.evaluate(() => (self as unknown as { __tts: string[] }).__tts.slice())).toEqual(['speak:Microsoft Jenny (Natural) - English (United States)']);
+  await expect.poll(() => sw.evaluate(() => (self as unknown as { __tts: string[] }).__tts.slice())).toEqual(['speak:Ava (Premium)']);
 
   await options.getByTestId('online').check();
   await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft Aria Online (Natural)');
@@ -298,4 +298,9 @@ test('Settings shows the best-ranked voice in use; Edge natural online voices le
   await options.getByTestId('voice').selectOption('Microsoft David - English (United States)');
   await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft David');
   await expect(options.getByTestId('voice-in-use')).toContainText('a basic voice');
+  // Turning online voices off again: the saved online choice is not usable, so the picker shows Automatic.
+  await options.getByTestId('voice').selectOption('Microsoft Aria Online (Natural) - English (United States)');
+  await options.getByTestId('online').uncheck();
+  await expect(options.getByTestId('voice-in-use')).toContainText('Ava (Premium)');
+  await expect(options.getByTestId('voice')).toHaveValue('');
 });

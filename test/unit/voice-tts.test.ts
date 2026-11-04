@@ -62,7 +62,7 @@ const windowsEdge: Voice[] = [
   { voiceName: 'Microsoft David - English (United States)', lang: 'en-US', remote: false },
   { voiceName: 'Microsoft Zira - English (United States)', lang: 'en-US', remote: false },
   { voiceName: 'Microsoft Aria Online (Natural) - English (United States)', lang: 'en-US', remote: true },
-  { voiceName: 'Microsoft Jenny (Natural) - English (United States)', lang: 'en-US', remote: false },
+  { voiceName: 'Microsoft Jenny Online (Natural) - English (United States)', lang: 'en-US', remote: true },
 ];
 const mac: Voice[] = [
   { voiceName: 'Samantha', lang: 'en-US', remote: false },
@@ -72,11 +72,34 @@ const mac: Voice[] = [
 
 describe('chrome.tts voice choice', () => {
   it('speaks a step with the best on-device voice, not the first one listed', async () => {
-    voices = windowsEdge;
+    voices = mac;
     const { speakCurrentStep } = await import('../../src/background/voice');
     await speakCurrentStep(7, startRun(guide('en')));
     expect(getVoices).toHaveBeenCalled();
-    expect(spokenWith()).toEqual([{ text: 'Press Save.', voiceName: 'Microsoft Jenny (Natural) - English (United States)' }]);
+    expect(spokenWith()).toEqual([{ text: 'Press Save.', voiceName: 'Ava (Premium)' }]);
+  });
+
+  it('on Windows with online voices off, uses the first on-device voice (the OS order)', async () => {
+    voices = windowsEdge;
+    const { speakCurrentStep } = await import('../../src/background/voice');
+    await speakCurrentStep(7, startRun(guide('en')));
+    expect(spokenWith()[0]?.voiceName).toBe('Microsoft David - English (United States)');
+  });
+
+  it('ignores a saved online voice while online voices are off', async () => {
+    voices = windowsEdge;
+    local.voiceSettings = { voices: { en: 'Microsoft Aria Online (Natural) - English (United States)' } };
+    const { speakSample } = await import('../../src/background/voice');
+    expect(await speakSample('en')).toBe(true);
+    expect(spokenWith()[0]?.voiceName).toBe('Microsoft David - English (United States)');
+  });
+
+  it('does not treat a voice without a lang as English (the options page drops it too)', async () => {
+    voices = [{ voiceName: 'Engine (Natural)', remote: false }, { voiceName: 'Samantha', lang: 'en-US', remote: false }];
+    const { speakSample, listVoices } = await import('../../src/background/voice');
+    expect(await speakSample('en')).toBe(true);
+    expect(spokenWith()[0]?.voiceName).toBe('Samantha');
+    expect((await listVoices()).voices.find((v) => v.voiceName === 'Engine (Natural)')?.lang).toBe('');
   });
 
   it('uses an Edge "Online (Natural)" voice first once online voices are allowed', async () => {

@@ -13,6 +13,7 @@ import type { RunOp, RunView } from '../../core/player/run';
 import { urlMatches } from '../../core/url/url';
 import { isOverlayPath, onOverlayReleased } from '../overlay/host';
 import { testMark } from '../test-hooks';
+import { bestSpeechVoice } from '../../core/voice/voice';
 import { PlayerUI } from './ui';
 
 /** After any action, wait 300 ms before searching for the next target (SPEC: Advancing). */
@@ -41,8 +42,9 @@ function speakFallback(p: { text: string; lang: string; rate: number }, retried 
   const u = new SpeechSynthesisUtterance(p.text.slice(0, 5000));
   u.lang = p.lang;
   u.rate = p.rate;
-  // On-device voices only (remote ones send text to a server).
-  const local = synth.getVoices().find((v) => v.localService && v.lang.toLowerCase().startsWith(p.lang.toLowerCase().split('-')[0]!));
+  // The best on-device voice (remote ones send text to a server). Settings never reach content
+  // scripts, so the user's own voice choice does not apply here.
+  const local = bestSpeechVoice(synth.getVoices(), p.lang, navigator.language);
   if (!local) return;
   u.voice = local;
   synth.speak(u);

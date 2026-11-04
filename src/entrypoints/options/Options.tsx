@@ -72,10 +72,10 @@ const platform = signal<string | null>(null);
 
 /** Where to get better voices, per OS (chrome.runtime.getPlatformInfo().os). */
 const BETTER_VOICES: Record<string, string> = {
-  win: 'Windows 11: Settings → Time & language → Speech → Manage voices → Add voices, and add a natural voice for your language. Restart the browser afterwards. In Edge, the “Online (Natural)” voices also sound natural, but they are online voices (see below).',
+  win: 'Windows 11: Settings → Time & language → Speech → Manage voices → Add voices adds more voices for your language; restart the browser afterwards. The natural voices you add for Narrator are only for Narrator, so browsers can’t use them. In Edge, the natural-sounding voices are the “Online (Natural)” ones: turn on Allow online voices below to use them.',
   mac: 'macOS: System Settings → Accessibility → Spoken Content → System voice → Manage Voices…, then download a Premium or Enhanced voice for your language. Restart the browser afterwards.',
   cros: 'ChromeOS: Settings → Accessibility → Text-to-Speech → Text-to-Speech voice settings, and install the voices offered for your language.',
-  linux: 'Linux: the browser uses the voices of speech-dispatcher. A better speech-dispatcher voice module (for example RHVoice or Piper) sounds better than the default eSpeak.',
+  linux: 'Linux: the browser uses the voices of speech-dispatcher. A better speech-dispatcher voice module (for example RHVoice or Piper) sounds better than the default eSpeak, even if Waymark still calls it a basic voice.',
 };
 
 async function load() {
@@ -126,7 +126,7 @@ export function Options() {
           <span class="muted">Voice for “{lang.value}” guides</span>
           <select
             data-testid="voice"
-            value={s.voices[lang.value] ?? ''}
+            value={forLang.some((v) => v.voiceName === s.voices[lang.value]) ? s.voices[lang.value] : ''}
             onChange={(e) => {
               const v = (e.target as HTMLSelectElement).value;
               const next = { ...s.voices };

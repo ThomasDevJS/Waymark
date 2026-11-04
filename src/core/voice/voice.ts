@@ -46,9 +46,12 @@ export function usableVoices<V extends VoiceLike>(voices: V[], allowOnline: bool
 
 /** Names of the better voices: Edge's "… Online (Natural)", Windows natural, macOS Premium / Enhanced. */
 const HIGH_QUALITY = /\b(natural|neural|enhanced|premium)\b/i;
+/** The same words inside a CamelCase name, such as "en-US-AriaNeural". */
+const HIGH_QUALITY_CAMEL = /[a-z](Natural|Neural|Enhanced|Premium)(?![a-z])/;
 
 export function isHighQuality(v: VoiceLike): boolean {
-  return HIGH_QUALITY.test(v.voiceName ?? '');
+  const name = v.voiceName ?? '';
+  return HIGH_QUALITY.test(name) || HIGH_QUALITY_CAMEL.test(name);
 }
 
 /**
@@ -65,12 +68,16 @@ function tier(v: VoiceLike): number {
 /** 0 when the voice's region matches the wanted one (e.g. en-US for an en-US guide), else 1. */
 function regionRank(v: VoiceLike, region: string | undefined): number {
   if (!region) return 0;
-  const parts = (v.lang ?? '').split(/[-_]/);
-  return parts[1]?.toLowerCase() === region ? 0 : 1;
+  return regionOf(v.lang) === region ? 0 : 1;
 }
 
+/** The region subtag (2 letters or 3 digits), skipping a script subtag: zh-Hant-TW → "tw". */
 function regionOf(lang: string | undefined): string | undefined {
-  return lang?.split(/[-_]/)[1]?.toLowerCase();
+  return lang
+    ?.split(/[-_]/)
+    .slice(1)
+    .find((p) => /^([a-z]{2}|\d{3})$/i.test(p))
+    ?.toLowerCase();
 }
 
 /**
@@ -83,7 +90,8 @@ export function rankVoices<V extends VoiceLike>(voices: V[], lang: string, allow
   const uiRegion = primaryLang(uiLang) === want ? regionOf(uiLang) : undefined;
   const region = regionOf(lang) ?? uiRegion;
   return usableVoices(voices, allowOnline)
-    .filter((v) => primaryLang(v.lang) === want)
+    // A voice without a lang is not assumed to speak this language (the options page agrees).
+    .filter((v) => !!v.lang && primaryLang(v.lang) === want)
     .map((v, i) => ({ v, i }))
     .sort((a, b) => tier(a.v) - tier(b.v) || regionRank(a.v, region) - regionRank(b.v, region) || a.i - b.i)
     .map((x) => x.v);
@@ -102,4 +110,15 @@ export function pickVoice<V extends VoiceLike>(
   const ranked = rankVoices(voices, lang, settings.allowOnlineVoices, uiLang);
   const chosen = settings.voices[primaryLang(lang)];
   return ranked.find((v) => v.voiceName === chosen) ?? ranked[0];
+}
+
+/** The speechSynthesis fallback: the best on-device voice, ranked the same way. */
+export function bestSpeechVoice<S extends { name: string; lang: string; localService: boolean }>(voices: S[], lang: string, uiLang?: string): S | undefined {
+  const best = rankVoices(
+    voices.map((s) => ({ voiceName: s.name, lang: s.lang, remote: !s.localService, s })),
+    lang,
+    false,
+    uiLang,
+  )[0];
+  return best?.s;
 }
