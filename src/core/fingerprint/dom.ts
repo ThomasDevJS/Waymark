@@ -434,11 +434,34 @@ export function openShadowRoots(root: Document | ShadowRoot, limit = 200): Shado
   return out;
 }
 
-/** Elements in tree order for a root (document order within that tree). */
+/** [outermost shadow host, …, innermost host, el]: where an element sits in the composed tree. */
+function composedChain(el: Element): Element[] {
+  const chain = [el];
+  let root = el.getRootNode();
+  while (root instanceof ShadowRoot) {
+    chain.unshift(root.host);
+    root = root.host.getRootNode();
+  }
+  return chain;
+}
+
+/**
+ * Document order in the composed tree, so that elements in different shadow roots (twin
+ * widgets) sort by where their hosts are; compareDocumentPosition alone gives an arbitrary
+ * order for nodes in different trees. A host comes before its shadow content.
+ */
 export function compareDocumentOrder(a: Element, b: Element): number {
   if (a === b) return 0;
-  const pos = a.compareDocumentPosition(b);
-  if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-  if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-  return 0;
+  const ca = composedChain(a);
+  const cb = composedChain(b);
+  for (let i = 0; i < ca.length && i < cb.length; i++) {
+    const x = ca[i]!;
+    const y = cb[i]!;
+    if (x === y) continue;
+    const pos = x.compareDocumentPosition(y);
+    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  }
+  return ca.length - cb.length;
 }

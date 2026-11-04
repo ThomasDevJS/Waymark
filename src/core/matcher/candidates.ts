@@ -2,7 +2,7 @@
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { cssEscape, getRole, nearestInteractive, openShadowRoots, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
-import { GUIDE_ID_ATTR, resolveShadowPath, resolveXPath } from '../fingerprint/selectors';
+import { GUIDE_ID_ATTR, resolveShadowPathAll, resolveXPath } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
 import { isSamePageHref, linkPath } from '../url/url';
 import { passesTagFilter } from './signals';
@@ -36,12 +36,13 @@ function qsa(root: Document | ShadowRoot, selector: string): Element[] {
   }
 }
 
-/** Roots to search: the shadow root at the end of shadowPath, else the document (plus every open shadow root if the path broke). */
+/**
+ * Roots to search: every shadow root the shadowPath reaches (all twins of a host, so they are
+ * scored together), else the document (plus every open shadow root if the path broke).
+ */
 export function searchRoots(doc: Document, fp: ElementFingerprint): (Document | ShadowRoot)[] {
   if (!fp.shadowPath.length) return [doc];
-  const root = resolveShadowPath(doc, fp.shadowPath);
-  if (root) return [root];
-  return [doc, ...openShadowRoots(doc)];
+  return resolveShadowPathAll(doc, fp.shadowPath) ?? [doc, ...openShadowRoots(doc)];
 }
 
 export function gatherCandidates(

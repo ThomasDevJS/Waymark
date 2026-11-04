@@ -49,22 +49,28 @@ export type MatchResult =
       matched: SignalKey[];
     };
 
+/**
+ * SPEC playback step 1: a unique match on data-guide-id or a test id wins. Unique means one
+ * match across every searched root together (all twin widgets, or every shadow root when the
+ * shadow path broke), never one per root (docs/DECISIONS.md R6).
+ */
 function fastPath(doc: Document, fp: ElementFingerprint, isVis: (el: Element) => boolean): Element | null {
-  for (const root of searchRoots(doc, fp)) {
-    const sels: string[] = [];
-    if (fp.guideId) sels.push(`[${GUIDE_ID_ATTR}="${cssEscape(fp.guideId)}"]`);
-    if (fp.testId) sels.push(`[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`);
-    for (const sel of sels) {
-      let found: Element[];
+  const roots = searchRoots(doc, fp);
+  const sels: string[] = [];
+  if (fp.guideId) sels.push(`[${GUIDE_ID_ATTR}="${cssEscape(fp.guideId)}"]`);
+  if (fp.testId) sels.push(`[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`);
+  for (const sel of sels) {
+    const found: Element[] = [];
+    for (const root of roots) {
       try {
-        found = Array.from(root.querySelectorAll(sel));
+        found.push(...Array.from(root.querySelectorAll(sel)));
       } catch {
-        continue;
+        break;
       }
-      if (found.length === 1) {
-        const el = found[0]!;
-        if (passesTagFilter(el, fp) && isVis(el) && isEnabled(el)) return el;
-      }
+    }
+    if (found.length === 1) {
+      const el = found[0]!;
+      if (passesTagFilter(el, fp) && isVis(el) && isEnabled(el)) return el;
     }
   }
   return null;
