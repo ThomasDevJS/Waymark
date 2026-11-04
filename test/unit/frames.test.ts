@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claimNonce, framePathFor, issueNonce, MAX_PENDING_NONCES, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
+import { claimNonce, framePathFor, issueNonce, MAX_MAPPED_FRAMES, MAX_PENDING_NONCES, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
 import { pickWinnerFrame } from '../../src/core/matcher/frames';
 
 function memKV(m = new Map<string, unknown>()): KV {
@@ -51,6 +51,14 @@ describe('frame nonce registry', () => {
     await issueNonce(kv, 9, 0, 'iframe.a', Date.now() - NONCE_TTL_MS - 1);
     await issueNonce(kv, 9, 0, 'iframe.b');
     expect(Object.keys(m.get('nonces:9') as object)).toHaveLength(1);
+  });
+  it('keeps the frame map bounded when a page churns iframes (D47)', async () => {
+    const m = new Map<string, unknown>();
+    const kv = memKV(m);
+    for (let f = 1; f <= 1000; f++) expect(await claimNonce(kv, await issueNonce(kv, 7, 0, 'iframe.' + 'y'.repeat(1000)), 7, f)).toBe(true);
+    const map = m.get('frames:7') as Record<string, unknown>;
+    expect(Object.keys(map)).toHaveLength(MAX_MAPPED_FRAMES);
+    expect(framePathFor(map as never, 1000)).not.toBeNull(); // the newest frames stay mapped
   });
   it('detects cycles', () => {
     expect(framePathFor({ '1': { parentFrameId: 2, selector: 'a' }, '2': { parentFrameId: 1, selector: 'b' } }, 1)).toBeNull();

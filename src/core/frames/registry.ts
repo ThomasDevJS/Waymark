@@ -10,6 +10,12 @@ export const NONCE_TTL_MS = 30_000;
  * hello asks for a nonce: without a cap they would fill chrome.storage.session (D47).
  */
 export const MAX_PENDING_NONCES = 32;
+/**
+ * Mapped frames kept per tab. A page can create and remove iframes in a loop; frames that are
+ * gone are never reported, so the oldest (lowest frameId: Chromium numbers frames in order of
+ * creation) are dropped first (D47).
+ */
+export const MAX_MAPPED_FRAMES = 64;
 
 export interface NonceEntry {
   tabId: number;
@@ -68,6 +74,8 @@ export async function claimNonce(kv: KV, nonce: string, tabId: number, frameId: 
   if (entry.tabId !== tabId || entry.expiresAt < now || entry.parentFrameId === frameId || frameId === 0) return false;
   const map = (await kv.get<FrameMap>(framesKey(tabId))) ?? {};
   map[String(frameId)] = { parentFrameId: entry.parentFrameId, selector: entry.selector };
+  const ids = Object.keys(map).map(Number).sort((a, b) => a - b);
+  for (const id of ids.slice(0, Math.max(0, ids.length - MAX_MAPPED_FRAMES))) delete map[String(id)];
   await kv.set(framesKey(tabId), map);
   return true;
 }
