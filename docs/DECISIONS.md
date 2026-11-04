@@ -70,3 +70,12 @@ Each entry: date, spec section, what changed, why.
 - Class tokens that describe UI state (`active`, `is-open`, `selected`, …) are dropped like generated ones.
 - Tool versions are pinned to stable majors: TypeScript 5.9, Vitest 4, Preact 10, ESLint 9, WXT 0.21.4, and Playwright 1.63.0 to match the Chromium build pre-installed in the dev environment.
 - Test builds (`pnpm build:test`, output `.output-test/chrome-mv3-test`) set `__WAYMARK_TEST__`, which enables `data-waymark-test-*` markers on `<html>` (and, later, open overlay shadow roots). Production builds compile them out.
+
+## Review fixes (PR #1)
+
+Behavior changes made for the verified review findings on PR #1. IDs are R-numbers so they never collide with the D-entries.
+
+### R1. camelCase ids, test ids and names are kept (review L1)
+- **Spec**: Element targeting, record step 2 (drop ids that look generated).
+- **Change**: a token segment is only judged random by its case transitions when it does not read as camelCase words. The segment is split into words (`addToCart` → add, To, Cart; `getHTMLElement` → get, HTML, Element); it is kept when it has a word of 3+ letters and no two-letter chunk without a vowel. Every explicit pattern (`css-1x9f2k`, `sc-`, `jss12`, `:r0:`, `ember123`, UUIDs, long digit runs, hex) still applies first.
+- **Why**: `addToCart`, `firstNameInput` and `deleteRowButton` have four case transitions, as many as a hash, so they were dropped as id, test id and `name`. Hash fragments split into short vowelless chunks (`bdVaJa` → bd, `xKq3Fz` → Kq), so they stay filtered.
