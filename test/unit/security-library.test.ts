@@ -1,0 +1,92 @@
+/** D47: the library server is untrusted. Its answer is bounded in size, time and destination. */
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { refreshLibrary } from '../../src/background/discovery';
+
+function fakeChrome(url: string) {
+  const local = new Map<string, unknown>([['library', { url, lastFetchAt: null, lastError: null, count: 0 }]]);
+  return {
+    storage: {
+      local: {
+        get: async (k: string | null) => (k === null ? Object.fromEntries(local) : { [k]: local.get(k) }),
+        set: async (o: Record<string, unknown>) => void Object.entries(o).forEach(([k, v]) => local.set(k, v)),
+        remove: async (k: string | string[]) => void [k].flat().forEach((x) => local.delete(x)),
+      },
+      session: { get: async () => ({}) },
+    },
+    tabs: { query: async () => [], get: async () => undefined },
+    action: { setBadgeText: async () => undefined, setBadgeBackgroundColor: async () => undefined },
+    permissions: { contains: async () => true },
+  };
+}
+
+function streamOf(chunks: number, chunkBytes: number, pulled: { n: number }): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    pull(c) {
+      if (pulled.n >= chunks) return c.close();
+      pulled.n++;
+      c.enqueue(new Uint8Array(chunkBytes).fill(32));
+    },
+  });
+}
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('library refresh (D47)', () => {
+  it('stops reading an oversized answer at the 5 MB cap', async () => {
+    vi.stubGlobal('chrome', fakeChrome('https://lib.example/pack.json'));
+    const pulled = { n: 0 };
+    // 40 MB with no content-length: the old code read all of it before checking the size.
+    vi.stubGlobal('fetch', async () => new Response(streamOf(40, 1024 * 1024, pulled), { status: 200 }));
+    const state = await refreshLibrary();
+    expect(state.lastError).toMatch(/larger than 5 MB/);
+    expect(pulled.n).toBeLessThanOrEqual(7);
+  });
+  it('refuses a declared oversized answer without reading it', async () => {
+    vi.stubGlobal('chrome', fakeChrome('https://lib.example/pack.json'));
+    const pulled = { n: 0 };
+    vi.stubGlobal('fetch', async () => new Response(streamOf(40, 1024 * 1024, pulled), { status: 200, headers: { 'content-length': String(40 * 1024 * 1024) } }));
+    const state = await refreshLibrary();
+    expect(state.lastError).toMatch(/larger than 5 MB/);
+    expect(pulled.n).toBeLessThanOrEqual(1);
+  });
+  it('refuses a redirect to plain http', async () => {
+    vi.stubGlobal('chrome', fakeChrome('https://lib.example/pack.json'));
+    const pack = JSON.stringify({ format: 'waymark-pack', formatVersion: 1, exportedAt: '2026-01-01T00:00:00Z', guides: [] });
+    vi.stubGlobal('fetch', async () => {
+      const r = new Response(pack, { status: 200 });
+      Object.defineProperty(r, 'url', { value: 'http://evil.example/pack.json' });
+      return r;
+    });
+    const state = await refreshLibrary();
+    expect(state.lastError).toMatch(/redirected/);
+  });
+  it('gives up on a library that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('chrome', fakeChrome('https://lib.example/pack.json'));
+      vi.stubGlobal('fetch', (_u: string, init?: RequestInit) =>
+        new Promise((_res, rej) => init?.signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))),
+      );
+      const p = refreshLibrary();
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect((await p).lastError).toMatch(/did not answer in time/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('site settings (D47)', () => {
+  it('stores the launcher setting only for real site origins', async () => {
+    const fake = fakeChrome('');
+    vi.stubGlobal('chrome', fake);
+    const { discoveryHandlers } = await import('../../src/background/discovery');
+    const set = discoveryHandlers['site.settings.set']!;
+    for (const bad of ['__proto__', 'constructor', 'https://*', 'javascript:x', '']) {
+      await expect(Promise.resolve().then(() => set({ origin: bad, launcher: true }, {} as never)), bad).rejects.toThrow();
+    }
+    await set({ origin: 'https://app.test', launcher: true }, {} as never);
+    const stored = (await fake.storage.local.get('siteSettings')).siteSettings as Record<string, unknown>;
+    expect(Object.keys(stored)).toEqual(['https://app.test']);
+  });
+});

@@ -63,6 +63,10 @@ interface SiteSettings {
   launcher?: boolean;
 }
 
+function ownSetting(all: Record<string, SiteSettings>, origin: string): SiteSettings | undefined {
+  return Object.prototype.hasOwnProperty.call(all, origin) ? all[origin] : undefined;
+}
+
 async function siteSettings(): Promise<Record<string, SiteSettings>> {
   return ((await chrome.storage.local.get(SITE_KEY))[SITE_KEY] as Record<string, SiteSettings> | undefined) ?? {};
 }
@@ -106,16 +110,14 @@ async function pendingAllow(): Promise<string[]> {
 }
 
 export { libraryUrlAllowed } from '../core/sharing/library';
-import { libraryUrlAllowed } from '../core/sharing/library';
+import { fetchLibraryText, libraryUrlAllowed } from '../core/sharing/library';
 
 /** Fetches the library pack and replaces the library guides (SPEC: Sharing, "v1: library URL"). */
 export async function refreshLibrary(): Promise<LibraryState> {
   const state = await libraryState();
   if (!state.url) return state;
   try {
-    const res = await fetch(state.url, { cache: 'no-store', credentials: 'omit' });
-    if (!res.ok) throw new Error(`The library answered ${res.status}.`);
-    const text = await res.text();
+    const text = await fetchLibraryText(state.url);
     const parsed = parsePack(text);
     if (!parsed.ok) throw new Error(parsed.error);
     const pack = parsed.pack;
@@ -205,8 +207,10 @@ export const discoveryHandlers: Handlers = {
     });
     return { ok: true };
   },
-  'site.settings.get': async ({ origin }) => ({ launcher: !!(await siteSettings())[origin]?.launcher }),
+  'site.settings.get': async ({ origin }) => ({ launcher: isSiteOrigin(origin) && !!ownSetting(await siteSettings(), origin)?.launcher }),
   'site.settings.set': async ({ origin, launcher }) => {
+    // Settings are keyed by origin: only real site origins, never "__proto__" or other junk (D47).
+    if (!isSiteOrigin(origin)) throw new Error('Not a site.');
     await enqueue(async () => {
       const all = await siteSettings();
       all[origin] = { ...all[origin], launcher };
@@ -234,7 +238,7 @@ export const discoveryHandlers: Handlers = {
     const origin = ctx.sender.origin;
     if (!url || !origin || ctx.frameId !== 0) return { guides: [], launcher: false };
     const guides = (await listGuides()).filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url)).map((g) => ({ id: g.id, title: g.title }));
-    const launcher = !!(await siteSettings())[origin]?.launcher;
+    const launcher = !!ownSetting(await siteSettings(), origin)?.launcher;
     return { guides, launcher };
   },
   'launcher.start': async ({ guideId, openStart }, ctx: HandlerContext) => {
