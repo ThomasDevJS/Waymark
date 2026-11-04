@@ -4,7 +4,7 @@
  */
 import { createRouter, type Handlers } from '../core/messaging/router';
 import { injectIntoOpenTabs, syncRegistrations, grantedSitePatterns } from '../core/permissions/registration';
-import { claimNonce, framePathFor, framesKey, issueNonce, type FrameMap } from '../core/frames/registry';
+import { claimNonce, framePathFor, framesKey, issueNonce, noncesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
@@ -74,7 +74,9 @@ const handlers: Handlers = {
   },
   'frame.nonce': async ({ selector }, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId === undefined) throw new Error('no frame');
-    return { nonce: await issueNonce(sessionKV, ctx.tabId, ctx.frameId, selector) };
+    const tabId = ctx.tabId;
+    const frameId = ctx.frameId;
+    return { nonce: await enqueue(() => issueNonce(sessionKV, tabId, frameId, selector)) };
   },
   'frame.claim': async ({ nonce }, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId === undefined) return { ok: false };
@@ -141,7 +143,7 @@ export default defineBackground(() => {
   });
   chrome.commands?.onCommand.addListener((command, tab) => void onRunCommand(command, tab));
   chrome.tabs.onRemoved.addListener((tabId) => {
-    void chrome.storage.session.remove([framesKey(tabId), `test:route:${tabId}`]);
+    void chrome.storage.session.remove([framesKey(tabId), noncesKey(tabId), `test:route:${tabId}`]);
     void onTabRemoved(tabId);
     void resumeRunsMovedTo(tabId).then(() => dropRun(tabId));
   });

@@ -26,7 +26,11 @@ function findIframeFor(source: MessageEventSource | null): HTMLIFrameElement | n
   return null;
 }
 
+/** A child retries hello at 0, 0.5, 1.5 and 4 s; faster repeats from one iframe are ignored (D47). */
+export const HELLO_MIN_GAP_MS = 250;
+
 export function startFrameMapping(): { dispose: () => void; framePath: () => string[] } {
+  const lastHello = new WeakMap<object, number>();
   let framePath: string[] | null = window === window.top ? [] : null;
   let claimed = false;
   // A frame answers its children only once its own path is known, so a nested frame never
@@ -42,6 +46,9 @@ export function startFrameMapping(): { dispose: () => void; framePath: () => str
       // A child frame wants its path: only answer for our own iframes.
       const iframe = findIframeFor(e.source);
       if (!iframe || !e.source) return;
+      const now = Date.now();
+      if (now - (lastHello.get(e.source) ?? -Infinity) < HELLO_MIN_GAP_MS) return;
+      lastHello.set(e.source, now);
       await ready;
       try {
         const { nonce } = await send('frame.nonce', { selector: hostSelector(iframe) });
