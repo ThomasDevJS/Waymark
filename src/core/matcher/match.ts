@@ -1,0 +1,160 @@
+/**
+ * The matcher (SPEC: Element targeting, "At playback" steps 1-7).
+ * Rule: highlighting the wrong element is worse than "not found"; never fall back to a guess.
+ */
+import type { ElementFingerprint } from '../model/schema';
+import type { ProfileOptions } from '../model/profile';
+import { compareDocumentOrder, cssEscape, isEnabled, isVisible as layoutVisible } from '../fingerprint/dom';
+import { GUIDE_ID_ATTR } from '../fingerprint/selectors';
+import { gatherCandidates, searchRoots } from './candidates';
+import {
+  ACCEPT_SCORE,
+  POSITIONAL,
+  UNIQUE_MARGIN,
+  passesTagFilter,
+  presentSignals,
+  scoreCandidate,
+  type Scored,
+  type SignalKey,
+} from './signals';
+
+export interface MatchOptions {
+  profile?: ProfileOptions;
+  /** Visibility test; defaults to a layout-based check. */
+  isVisible?: (el: Element) => boolean;
+  /** Base URL for link paths; defaults to the document URL. */
+  base?: string;
+}
+
+export type NotFoundReason = 'no-candidates' | 'no-strong-signal' | 'below-threshold' | 'ambiguous';
+
+export type MatchResult =
+  | {
+      status: 'found';
+      element: Element;
+      /** For instance 'any': every tied candidate (a click on any of them counts). Otherwise [element]. */
+      tied: Element[];
+      score: number;
+      /** Lead over the best non-tied candidate (100 when there is none). */
+      margin: number;
+      matched: SignalKey[];
+      via: 'fast-path' | 'score';
+    }
+  | {
+      status: 'not-found';
+      reason: NotFoundReason;
+      bestScore: number;
+      runnerUpScore: number;
+      matched: SignalKey[];
+    };
+
+function fastPath(doc: Document, fp: ElementFingerprint, isVis: (el: Element) => boolean): Element | null {
+  for (const root of searchRoots(doc, fp)) {
+    const sels: string[] = [];
+    if (fp.guideId) sels.push(`[${GUIDE_ID_ATTR}="${cssEscape(fp.guideId)}"]`);
+    if (fp.testId) sels.push(`[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`);
+    for (const sel of sels) {
+      let found: Element[];
+      try {
+        found = Array.from(root.querySelectorAll(sel));
+      } catch {
+        continue;
+      }
+      if (found.length === 1) {
+        const el = found[0]!;
+        if (passesTagFilter(el, fp) && isVis(el) && isEnabled(el)) return el;
+      }
+    }
+  }
+  return null;
+}
+
+/** Score every visible, enabled candidate; sorted best first, ties in document order. */
+export function scoreAll(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): Scored[] {
+  const isVis = opts.isVisible ?? layoutVisible;
+  const base = opts.base ?? doc.URL;
+  const present = presentSignals(fp);
+  const ctx = { profile: opts.profile, base };
+  return gatherCandidates(doc, fp, { profile: opts.profile, base, isVisible: isVis })
+    .filter((el) => isVis(el) && isEnabled(el))
+    .map((el) => scoreCandidate(el, fp, ctx, present))
+    .sort((a, b) => b.score - a.score || compareDocumentOrder(a.element, b.element));
+}
+
+/** True when `b` matched every non-positional signal `a` matched: only position could tell them apart. */
+function coreCovers(b: Scored, a: Scored): boolean {
+  return a.matched.filter((k) => !POSITIONAL.has(k)).every((k) => b.matched.includes(k));
+}
+
+function coreKey(s: Scored): string {
+  return s.matched.filter((k) => !POSITIONAL.has(k)).join(',');
+}
+
+/** One matching pass, no waiting. */
+export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): MatchResult {
+  const isVis = opts.isVisible ?? layoutVisible;
+  const fast = fastPath(doc, fp, isVis);
+  if (fast) return { status: 'found', element: fast, tied: [fast], score: 100, margin: 100, matched: ['testId'], via: 'fast-path' };
+
+  const scored = scoreAll(doc, fp, opts);
+  const best = scored[0];
+  if (!best) return { status: 'not-found', reason: 'no-candidates', bestScore: 0, runnerUpScore: 0, matched: [] };
+
+  const notFound = (reason: NotFoundReason, runnerUp = scored[1]?.score ?? 0): MatchResult => ({
+    status: 'not-found',
+    reason,
+    bestScore: best.score,
+    runnerUpScore: runnerUp,
+    matched: best.matched,
+  });
+
+  if (fp.instance === 'any') {
+    // Tied = same matched non-positional signals; position may differ (another row of the table).
+    const qualifies = (s: Scored) => s.strongMatched && s.score >= ACCEPT_SCORE;
+    const bestCore = coreKey(best);
+    const group = scored.filter((s) => qualifies(s) && coreKey(s) === bestCore);
+    if (!best.strongMatched) return notFound('no-strong-signal');
+    if (best.score < ACCEPT_SCORE) return notFound('below-threshold');
+    const ordered = group.map((s) => s.element).sort(compareDocumentOrder);
+    const others = scored.filter((s) => !group.includes(s));
+    const margin = best.score - (others[0]?.score ?? 0);
+    return {
+      status: 'found',
+      element: ordered[0]!,
+      tied: ordered,
+      score: best.score,
+      margin: others.length ? margin : 100,
+      matched: best.matched,
+      via: 'score',
+    };
+  }
+
+  const runnerUp = scored[1];
+  if (!best.strongMatched) return notFound('no-strong-signal');
+  if (best.score < ACCEPT_SCORE) return notFound('below-threshold');
+  if (runnerUp) {
+    if (best.score - runnerUp.score < UNIQUE_MARGIN) return notFound('ambiguous');
+    // Stricter than the spec's margin rule (see docs/DECISIONS.md): a lead built only from
+    // position (XPath, nearby spot) is not enough to pick one of two otherwise identical elements.
+    if (coreCovers(runnerUp, best)) return notFound('ambiguous');
+  }
+  return {
+    status: 'found',
+    element: best.element,
+    tied: [best.element],
+    score: best.score,
+    margin: runnerUp ? best.score - runnerUp.score : 100,
+    matched: best.matched,
+    via: 'score',
+  };
+}
+
+/**
+ * Record-time uniqueness (SPEC record step 3): how many visible elements match every
+ * non-positional signal of the fingerprint. More than one means a repeated element.
+ */
+export function countIndistinguishable(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): number {
+  const present = presentSignals(fp).filter((k) => !POSITIONAL.has(k));
+  const scored = scoreAll(doc, fp, opts);
+  return scored.filter((s) => present.every((k) => s.matched.includes(k))).length;
+}
