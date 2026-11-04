@@ -2,7 +2,7 @@
   "name": "waymark",
   "description": "Record click-by-click walkthroughs of web apps and replay them on the live page.",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
@@ -41,7 +41,7 @@
     "@vitest/browser-playwright": "4.1.12",
     "eslint": "9.39.5",
     "globals": "^17.14.0",
-    "happy-dom": "20.14.6",
+    "happy-dom": "21.0.4",
     "playwright": "1.63.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.72.1",

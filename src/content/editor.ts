@@ -50,7 +50,8 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   };
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
+    // Only the user's own Escape cancels: a page cannot dispatch one to stop a pick (D48).
+    if (e.key === 'Escape' && e.isTrusted) {
       e.stopImmediatePropagation();
       stopPick();
       // Every frame and the side panel stop waiting.

@@ -331,3 +331,27 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - Low-confidence and closed-shadow steps that do have a strong signal (short plain text; a host with an id, a test id, or a role plus a label) are still recorded and flagged. An `aria-label` alone is not enough: role + name needs a role, as in the matcher. The matcher is unchanged. Version 0.2.2.
 - **Merge rules** (independent review): a skipped step still counts as the last action, so typing into an unfindable field reports one skip, not one per key, and a skip never merges with a later submit. With Enter in a field whose form's default button has nothing to find it by (an icon-only button), the submit step targets the field instead of being lost.
 - **Limits**: the pill and the pick banner live in the top frame. A click skipped inside an iframe is not announced on the page (the step is still left out), and a refused Re-pick inside an iframe shows no reason (picking goes on; Esc cancels).
+
+## 2026-11-04 — Security and privacy audit
+
+### D48. Fixes from the security audit (threat model in docs/SECURITY.md)
+- **Spec**: Permissions, privacy and security; Sharing and storage ("Import rules", library URL); Discovery ("First-run access"); Data model.
+- **Method**: a written threat model, an audit of the code, and an independent review by a subagent that saw only the code and the threat model. Each fix has a regression test that fails on the previous code.
+- **Medium**:
+  - **Frame nonces could fill session storage.** Every `hello` from an iframe stored a `nonce:<uuid>` key that was never swept, so a page posting `hello` in a loop could fill `chrome.storage.session` (10 MB) and break runs and recordings in every tab. Pending nonces now live in one table per tab (`nonces:<tabId>`). The table is written inside the write queue, expired nonces are dropped, at most 32 stay pending, and it is removed with the tab. A nonce is looked up only in the claiming tab's table, so a foreign tab can no longer burn it. Content scripts ignore hellos from the same iframe less than 250 ms apart. The frame map keeps at most 64 frames per tab, and the oldest go first.
+  - **The library fetch was unbounded.** The whole answer was read before the 5 MB check, with no timeout. Now a declared `Content-Length` over 5 MB is refused, the body is read in chunks and abandoned past 5 MB, the fetch gives up after 30 s, and a redirect must land on an allowed URL (https, or http on localhost).
+  - **One Allow click for sites nobody saw.** A pack or library could queue any number of sites, and the banner showed only a count. Now every site is listed by name with a checkbox (ticked by default; unticked ones count as "Not now"), at most 50 sites are queued, and the import dialog lists the pack's sites. This is still the spec's single request, now with every site shown.
+- **Low**:
+  - Guide, revision, forked-from and step ids must be letters, digits, `-` and `_` (max 64; not `__proto__`). This is the deep link rule, and Waymark's own ULIDs already follow it. A pack guide's `startUrl` must be http(s) on one of its `appOrigins`; before, "Copy link" could point at any URL. `exportedAt` and `startedAt` are length-capped.
+  - On a site that is not one of the guide's, content scripts get a run view without the guide id, title, sites or step token, and the step is not spoken (nor sent to the `speechSynthesis` fallback) there.
+  - Titles from content scripts (`rec.step`, `pick.result`) with a live markdown link become escaped plain text. Recorder titles escape every label, so such a link can only come from a forged message.
+  - Navigate steps stop at the 500-step limit and recording sites at 50, so a page cannot make a recording unsaveable.
+  - The per-site launcher setting accepts only real site origins.
+  - Only a trusted Escape cancels Re-pick.
+  - Test dependency happy-dom 21.0.4 (two advisories that affect only unit tests).
+- **Deferred** (reported to the coordinating session):
+  - Element ids, test ids, `name` and `data-guide-id` skip the data-like filter, so `data-testid="row-jane@acme.com"` is stored. This is a matcher change and must keep the robustness suite at zero wrong matches.
+  - Frame and shadow paths can't be removed in the export review, because the guide needs them to find frames. `rect` and the viewport size are not listed.
+  - The minimatch advisory, which comes in through typescript-eslint and only affects lint. Fixing it needs a major-version override.
+  - Entry caps on records that only extension pages can send.
+- Version 0.2.3.
