@@ -26,6 +26,24 @@ export function isSiteOrigin(o: string): boolean {
 }
 const SiteOriginSchema = z.string().max(500).refine(isSiteOrigin, 'not a site origin');
 
+/**
+ * Guide, revision and step ids: ULIDs when Waymark makes them. Packs are untrusted, so ids are
+ * limited to letters, digits, `-` and `_` (the deep link rule): no `__proto__`, separators or
+ * spaces that could reach object keys, storage keys or URLs (D47).
+ */
+export const ID_PATTERN = /^[0-9A-Za-z_-]{1,64}$/;
+const IdSchema = z.string().regex(ID_PATTERN, 'not an id').refine((s) => s !== '__proto__', 'not an id');
+
+/** An http(s) start URL on one of the guide's own sites (D47). */
+export function startUrlOk(startUrl: string, appOrigins: string[]): boolean {
+  try {
+    const u = new URL(startUrl);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && appOrigins.includes(u.origin);
+  } catch {
+    return false;
+  }
+}
+
 export const UrlRuleSchema = z.object({
   kind: z.enum(['prefix', 'pattern']),
   value: shortStr(2000),
@@ -80,7 +98,7 @@ export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas
 export type StepFlag = z.infer<typeof StepFlagSchema>;
 
 export const StepSchema = z.object({
-  id: shortStr(64),
+  id: IdSchema,
   kind: StepKindSchema,
   title: shortStr(500),
   note: shortStr(5000).optional(),
@@ -96,10 +114,10 @@ export const StepSchema = z.object({
 export type Step = z.infer<typeof StepSchema>;
 
 export const GuideSchema = z.object({
-  id: shortStr(64),
+  id: IdSchema,
   schemaVersion: z.literal(SCHEMA_VERSION),
-  revisionId: shortStr(64),
-  forkedFrom: z.object({ guideId: shortStr(64), revisionId: shortStr(64) }).optional(),
+  revisionId: IdSchema,
+  forkedFrom: z.object({ guideId: IdSchema, revisionId: IdSchema }).optional(),
   title: shortStr(500),
   description: shortStr(5000).optional(),
   lang: shortStr(35),
@@ -111,21 +129,21 @@ export const GuideSchema = z.object({
   version: z.number().int().nonnegative(),
   source: z.enum(['local', 'library']),
   updatedAt: shortStr(64),
-});
+}).refine((g) => startUrlOk(g.startUrl, g.appOrigins), { message: 'the start URL is not on one of the guide sites', path: ['startUrl'] });
 export type Guide = z.infer<typeof GuideSchema>;
 
 export const RunStateSchema = z.object({
   guideSnapshot: GuideSchema,
   stepIndex: z.number().int().nonnegative(),
   status: z.enum(['running', 'paused', 'finished']),
-  startedAt: z.string(),
+  startedAt: shortStr(64),
 });
 export type RunState = z.infer<typeof RunStateSchema>;
 
 export const GuidePackSchema = z.object({
   format: z.literal('waymark-pack'),
   formatVersion: z.literal(FORMAT_VERSION),
-  exportedAt: z.string(),
+  exportedAt: shortStr(64),
   guides: z.array(GuideSchema),
 });
 export type GuidePack = z.infer<typeof GuidePackSchema>;

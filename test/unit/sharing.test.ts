@@ -155,7 +155,7 @@ describe('M5 review: origins and the export review', () => {
       expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [bad] })]))).ok, bad).toBe(false);
     }
     expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [] })]))).ok).toBe(false);
-    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: ['http://127.0.0.1:4173'] })]))).ok).toBe(true);
+    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: ['http://127.0.0.1:4173'], startUrl: 'http://127.0.0.1:4173/orders' })]))).ok).toBe(true);
   });
 
   it('shows every identifying string, and removing them all leaves none in the pack', () => {
@@ -176,5 +176,25 @@ describe('M5 review: origins and the export review', () => {
     // what remains is only what the review showed as not removable (pages and sites)
     expect(json).toContain('/clients/acme');
     expect(parsePack(JSON.stringify(makePack([out!])))).toMatchObject({ ok: true });
+  });
+});
+
+describe('D47: pack ids and start URLs', () => {
+  const ok = (g: Guide) => parsePack(JSON.stringify(makePack([g]))).ok;
+  it('accepts only id-like guide, revision and step ids', () => {
+    for (const bad of ['__proto__', 'a b', 'a|note', '../x', 'x:y', '', 'é']) {
+      expect(ok(guide('a', { id: bad })), `guide ${bad}`).toBe(false);
+      expect(ok(guide('a', { revisionId: bad })), `revision ${bad}`).toBe(false);
+      expect(ok(guide('a', { forkedFrom: { guideId: bad, revisionId: 'r' } })), `forkedFrom ${bad}`).toBe(false);
+      const g = guide('a');
+      expect(ok({ ...g, steps: [{ ...g.steps[0]!, id: bad }] }), `step ${bad}`).toBe(false);
+    }
+    expect(ok(guide('01JABCDEF_x-1'))).toBe(true);
+  });
+  it('accepts only an http(s) start URL on one of the guide sites', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'https://evil.example/orders', 'chrome://settings', 'not a url', 'file:///etc/passwd']) {
+      expect(ok(guide('a', { startUrl: bad })), bad).toBe(false);
+    }
+    expect(ok(guide('a', { startUrl: 'https://app.test/' }))).toBe(true);
   });
 });
