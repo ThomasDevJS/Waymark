@@ -102,7 +102,7 @@ describe('advance rules', () => {
 });
 
 describe('overlay drawing', () => {
-  const handlers = { next() {}, back() {}, skip() {}, exit() {}, retry() {}, report() {}, goBack() {} };
+  const handlers = { next() {}, back() {}, skip() {}, exit() {}, retry() {}, report() {}, goBack() {}, mute() {} };
   const view = (step: Step, extra: Partial<RunView> = {}): RunView => ({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Demo', stepIndex: 1, total: 4, step, stepToken: 't', ...extra });
 
   it('draws four panels and a ring around the target, and a tooltip next to it in the top layer', async () => {
@@ -251,7 +251,7 @@ describe('review regressions (M3)', () => {
     document.body.append(dialog);
     dialog.showModal();
     let skipped = 0;
-    const ui = new PlayerUI({ ...{ next() {}, back() {}, exit() {}, retry() {}, report() {}, goBack() {} }, skip: () => skipped++ });
+    const ui = new PlayerUI({ ...{ next() {}, back() {}, exit() {}, retry() {}, report() {}, goBack() {}, mute() {} }, skip: () => skipped++ });
     const step: Step = { id: 's', kind: 'click', title: 'Click **X**', url: { kind: 'pattern', value: '/' }, advance: 'action' };
     ui.showCard('not-found', { ...NO_RUN, active: true, status: 'running', step, stepIndex: 0, total: 2 });
     expect(overlayHost()!.parentElement).toBe(dialog);

@@ -107,6 +107,8 @@ export interface RunView {
   /** Run identity (start time) and revision, so a content script can drop out-of-order views. */
   runId: string | null;
   rev: number;
+  /** Voice muted (a global setting, shown by the tooltip's toggle). */
+  muted: boolean;
   /** Frame token chosen to draw the current step, or null while searching. */
   winner: string | null;
   /** 'not-found' once the top frame gave up and no frame found the target. */
@@ -126,6 +128,7 @@ export const NO_RUN: RunView = {
   cause: null,
   runId: null,
   rev: 0,
+  muted: false,
   winner: null,
   phase: 'searching',
 };
@@ -147,6 +150,7 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
     cause: run.cause,
     runId: run.startedAt,
     rev: run.rev ?? 0,
+    muted: false,
     winner: board?.winner ?? null,
     phase: board?.winner ? 'found' : board?.topGaveUp ? 'not-found' : 'searching',
   };

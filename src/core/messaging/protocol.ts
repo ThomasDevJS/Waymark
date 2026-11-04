@@ -9,6 +9,7 @@ import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
+import type { VoiceSettings } from '../voice/voice';
 
 const url = z.string().max(4096);
 
@@ -29,6 +30,20 @@ export const RequestSchemas = {
   'run.stop': z.object({ tabId: z.number().int() }),
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
+  'voice.list': z.object({}),
+  'voice.test': z.object({ lang: z.string().max(35).optional() }),
+  'voice.settings.get': z.object({}),
+  'voice.settings.set': z.object({
+    patch: z
+      .object({
+        autoPlay: z.boolean(),
+        rate: z.number().min(0.5).max(2),
+        allowOnlineVoices: z.boolean(),
+        muted: z.boolean(),
+        voices: z.record(z.string().max(35), z.string().max(200)),
+      })
+      .partial(),
+  }),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -52,6 +67,7 @@ export const RequestSchemas = {
     pathMatches: z.boolean(),
   }),
   'run.problem': z.object({ stepId: z.string().max(64) }),
+  'run.mute': z.object({ muted: z.boolean() }),
   'rec.step': z.discriminatedUnion('op', [
     z.object({ op: z.literal('add'), step: StepSchema }),
     z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
@@ -89,6 +105,11 @@ export interface ResponseMap {
   'run.match': { ok: boolean };
   'run.problem': { ok: boolean };
   'problems.list': { problems: Problem[] };
+  'voice.list': { voices: { voiceName: string; lang: string; remote: boolean }[]; available: boolean };
+  'voice.test': { ok: boolean };
+  'voice.settings.get': VoiceSettings;
+  'voice.settings.set': VoiceSettings;
+  'run.mute': { ok: boolean };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -115,6 +136,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   // Frame winner reports and Report broken step (see docs/DECISIONS.md D26).
   'run.match',
   'run.problem',
+  'run.mute', // the tooltip's mute toggle (D38)
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -141,10 +163,19 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'run.stop',
   'run.state',
   'problems.list',
+  'voice.list',
+  'voice.test',
+  'voice.settings.get',
+  'voice.settings.set',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
-export type ContentPush = { type: 'rec.changed'; payload: RecordingView } | { type: 'run.changed'; payload: RunView };
+export type ContentPush =
+  | { type: 'rec.changed'; payload: RecordingView }
+  | { type: 'run.changed'; payload: RunView }
+  // speechSynthesis fallback where chrome.tts is missing (SPEC: Voiceover)
+  | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }
+  | { type: 'tts.stop' };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

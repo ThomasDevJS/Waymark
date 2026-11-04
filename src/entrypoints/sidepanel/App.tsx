@@ -58,7 +58,12 @@ export function App() {
   const t = tab.value;
   return (
     <main>
-      <h1>Waymark</h1>
+      <div class="row">
+        <h1 class="grow">Waymark</h1>
+        <button type="button" data-testid="open-settings" onClick={() => void chrome.runtime.openOptionsPage()}>
+          Settings
+        </button>
+      </div>
       {error.value && <p role="alert">{error.value}</p>}
       <section class="site" aria-label="Site access">
         {!t || !t.origin ? (

@@ -12,6 +12,7 @@ import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
 import { normalizePath, originToMatchPattern } from '../core/url/url';
+import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from './voice';
 
 const runKey = (tabId: number) => `run:${tabId}`;
 const boardKey = (tabId: number) => `match:${tabId}`;
@@ -47,7 +48,7 @@ export async function viewFor(tabId: number | undefined, topUrl?: string): Promi
   } catch {
     pageOrigin = null;
   }
-  const view = runView(run, await getBoard(tabId));
+  const view = { ...runView(run, await getBoard(tabId)), muted: (await getVoiceSettings()).muted };
   if (!pageOrigin || !run.guideSnapshot.appOrigins.includes(pageOrigin)) return { ...view, step: null, winner: null };
   return view;
 }
@@ -89,6 +90,7 @@ async function endRun(tabId: number): Promise<void> {
 export async function runOp(tabId: number, op: RunOp, stepId: string): Promise<boolean> {
   if (op === 'exit') {
     if (!(await getRun(tabId))) return false;
+    stopSpeech();
     await endRun(tabId);
     return true;
   }
@@ -97,6 +99,8 @@ export async function runOp(tabId: number, op: RunOp, stepId: string): Promise<b
   await enqueue(() => chrome.storage.session.remove(boardKey(tabId)));
   if (run.status === 'finished') await addCompletion(run.guideSnapshot.id, new Date().toISOString());
   await broadcast(tabId);
+  // Speech stops on every step change and the new step is read once.
+  await speakCurrentStep(tabId, run);
   return true;
 }
 
@@ -129,10 +133,18 @@ export const runHandlers: Handlers = {
       await chrome.storage.session.set({ [runKey(tabId)]: run });
     });
     await broadcast(tabId);
+    if (!url || onStartPage(guide, url)) await speakCurrentStep(tabId, run);
     return { status: 'started' as const };
+  },
+  'run.mute': async ({ muted }, ctx: HandlerContext) => {
+    await setVoiceSettings({ muted });
+    if (muted) stopSpeech();
+    if (ctx.tabId !== undefined) await broadcast(ctx.tabId);
+    return { ok: true };
   },
   'run.stop': async ({ tabId }) => {
     const had = !!(await getRun(tabId));
+    if (had) stopSpeech();
     await endRun(tabId);
     return { ok: had };
   },

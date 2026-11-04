@@ -25,6 +25,24 @@ export interface PlayerDeps {
   framePath: () => string[];
 }
 
+/**
+ * Fallback where chrome.tts is missing (SPEC: Voiceover): the top frame speaks with
+ * speechSynthesis. The text is the step's stored voice text, sent by the service worker.
+ */
+function speakFallback(p: { text: string; lang: string; rate: number }): void {
+  const synth = window.speechSynthesis;
+  if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(p.text.slice(0, 5000));
+  u.lang = p.lang;
+  u.rate = p.rate;
+  // On-device voices only (remote ones send text to a server).
+  const local = synth.getVoices().find((v) => v.localService && v.lang.toLowerCase().startsWith(p.lang.toLowerCase().split('-')[0]!));
+  if (!local) return;
+  u.voice = local;
+  synth.speak(u);
+}
+
 export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): void; onRoute(url: string): void; dispose(): void } {
   const isTop = window === window.top;
   let view: RunView | null = null;
@@ -67,6 +85,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
         .catch(() => undefined);
     },
     goBack: () => history.back(),
+    mute: (muted) => {
+      send('run.mute', { muted }).catch(() => undefined);
+    },
   });
 
   const clearStep = () => {
@@ -226,6 +247,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     if (sender.id !== chrome.runtime.id || sender.tab) return;
     const m = msg as ContentPush;
     if (m?.type === 'run.changed' && m.payload && typeof m.payload.active === 'boolean') apply(m.payload);
+    else if (m?.type === 'tts.content' && isTop) speakFallback(m.payload);
+    else if (m?.type === 'tts.stop' && isTop) window.speechSynthesis?.cancel();
   };
   chrome.runtime.onMessage.addListener(onMessage);
 

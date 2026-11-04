@@ -43,6 +43,7 @@ export interface UiHandlers {
   retry(): void;
   report(): void;
   goBack(): void;
+  mute(muted: boolean): void;
 }
 
 export type Card = 'not-found' | 'off-track' | 'done';
@@ -86,7 +87,6 @@ export class PlayerUI {
   private ring: HTMLElement | null = null;
   private tip: HTMLElement | null = null;
   private stopAuto: (() => void) | null = null;
-  private muted = false;
 
   constructor(private readonly h: UiHandlers) {}
 
@@ -235,14 +235,11 @@ export class PlayerUI {
     });
     const count = el('div', 'count');
     count.append(el('span', undefined, `Step ${Math.min(view.stepIndex + 1, view.total)} of ${view.total}`));
-    const mute = this.button(this.muted ? '🔇' : '🔊', 'mute', () => {
-      this.muted = !this.muted;
-      mute.textContent = this.muted ? '🔇' : '🔊';
-      mute.setAttribute('aria-pressed', String(this.muted));
-    });
+    // Mute toggle: reflects the global voice setting; the service worker stops speech.
+    const mute = this.button(view.muted ? '🔇' : '🔊', 'mute', () => this.h.mute(!view.muted));
     mute.className = 'icon';
     mute.setAttribute('aria-label', 'Mute voice');
-    mute.setAttribute('aria-pressed', String(this.muted));
+    mute.setAttribute('aria-pressed', String(view.muted));
     count.append(mute);
     tip.append(count);
     return tip;

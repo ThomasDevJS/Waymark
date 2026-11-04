@@ -10,6 +10,7 @@ import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
+import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
@@ -40,6 +41,10 @@ const handlers: Handlers = {
   ...recordingHandlers,
   ...runHandlers,
   'guide.list': async () => ({ guides: await listGuides() }),
+  'voice.list': () => listVoices(),
+  'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
+  'voice.settings.get': () => getVoiceSettings(),
+  'voice.settings.set': ({ patch }) => setVoiceSettings(patch),
   'tab.current': ({ windowId, tabId }) => tabInfo(windowId, tabId),
   'site.list': async () => {
     const { origins = [] } = await chrome.permissions.getAll();
