@@ -13,6 +13,11 @@ export function startFixtureServer(port = Number(process.env.FIXTURE_PORT ?? 417
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     let path = decodeURIComponent(url.pathname);
+    // /slow/... serves the app shell after 2.5 s (slow full page loads).
+    if (path.startsWith('/slow/')) {
+      await new Promise((r) => setTimeout(r, Number(url.searchParams.get('delay') ?? 2500)));
+      path = '/index.html';
+    }
     // In-app routes (history routing) all serve the app shell.
     if (path === '/' || path.startsWith('/app/')) path = '/index.html';
     const file = normalize(join(root, path));

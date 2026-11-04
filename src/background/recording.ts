@@ -144,16 +144,29 @@ export const recordingHandlers: Handlers = {
 
 /** Route reports from a recording tab's top frame can become navigate steps. */
 export async function onRouteReport(
-  payload: { url: string; navigationType?: string | undefined; title?: string | undefined },
+  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined },
   ctx: HandlerContext,
 ): Promise<ReturnType<typeof viewOf>> {
   const tabId = ctx.tabId;
   let changed = false;
   const state = await mutate((st) => {
     if (!st || !isRecordingTab(st, tabId) || ctx.frameId !== 0) return st;
-    const prevUrl = st.lastUrl[String(tabId)];
-    const step = navigationStep(st, { url: payload.url, prevUrl, navigationType: payload.navigationType, title: payload.title });
-    st.lastUrl[String(tabId)] = payload.url;
+    const key = String(tabId);
+    if (payload.via === 'leaving') {
+      st.leavingAt = { ...(st.leavingAt ?? {}), [key]: Date.now() };
+      return st;
+    }
+    const prevUrl = st.lastUrl[key];
+    const leavingAt = payload.via === 'load' ? st.leavingAt?.[key] : undefined;
+    const step = navigationStep(st, {
+      url: payload.url,
+      prevUrl,
+      navigationType: payload.navigationType,
+      title: payload.title,
+      ...(leavingAt !== undefined ? { leavingAt } : {}),
+    });
+    if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
+    st.lastUrl[key] = payload.url;
     if (step) {
       st.steps.push(step);
       changed = true;

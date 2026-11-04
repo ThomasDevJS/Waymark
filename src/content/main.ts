@@ -42,6 +42,9 @@ export function startContent(): void {
       send('route.report', { ...change, title: document.title.slice(0, 500) })
         .then((r) => recording.apply(r.recording))
         .catch(() => undefined);
+    }, (url) => {
+      if (!contextAlive() || window !== window.top) return;
+      send('route.report', { url, via: 'leaving' }).catch(() => undefined);
     }),
   );
   disposers.push(watchContext(() => instance.dispose()));

@@ -57,7 +57,23 @@ export function isGeneratedToken(token: string, extraPatterns: RegExp[] = []): b
   if (!t) return true;
   if (GENERATED.some((re) => re.test(t))) return true;
   if (extraPatterns.some((re) => re.test(t))) return true;
-  return t.split(/[-_:.]+/).some(looksRandomSegment);
+  const segs = t.split(/[-_:.]+/).filter(Boolean);
+  if (segs.some(looksRandomSegment)) return true;
+  return hasHashSuffix(segs);
+}
+
+/**
+ * Short build hashes split across the last one or two segments, as in CSS modules with
+ * hyphenated hashes: `prc-Button-ButtonBase-9n-Xk`, `prc-components-UnderlineItem-7fP-n`.
+ * A tail of 2 to 8 characters that mixes a digit with an upper-case letter is a hash;
+ * `col-md-6` or `grid-cols-12` (no upper case) are not.
+ */
+function hasHashSuffix(segs: string[]): boolean {
+  if (segs.length < 3) return false;
+  const isHash = (tail: string) => tail.length >= 2 && tail.length <= 8 && /\d/.test(tail) && /[A-Z]/.test(tail) && /^[A-Za-z0-9]+$/.test(tail);
+  const last = segs[segs.length - 1]!;
+  const two = segs[segs.length - 2]! + last;
+  return (segs[segs.length - 2]!.length <= 5 && last.length <= 5 && isHash(two)) || (last.length >= 3 && isHash(last));
 }
 
 /** Classes that describe a transient UI state; never part of an identity. */

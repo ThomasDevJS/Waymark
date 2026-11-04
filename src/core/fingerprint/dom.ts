@@ -249,6 +249,27 @@ function labelText(label: Element): string {
   return cleanText(clone.textContent);
 }
 
+const NAME_FROM_CONTENT_ROLES = new Set(['button', 'link', 'menuitem', 'tab', 'option', 'switch', 'checkbox', 'radio', 'treeitem']);
+
+function isNameFromContent(el: Element): boolean {
+  const tag = tagOf(el);
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') return false;
+  const role = getRole(el);
+  return role !== undefined && NAME_FROM_CONTENT_ROLES.has(role);
+}
+
+/** Name of the first icon inside an element: img alt, aria-label, or an svg <title>. */
+function iconName(el: Element): string | undefined {
+  for (const d of Array.from(el.querySelectorAll('img[alt], [aria-label], svg title')).slice(0, 10)) {
+    const hidden = d.closest('[aria-hidden="true"]');
+    if (hidden && el.contains(hidden)) continue; // hidden icons do not name their button
+    const t = d.tagName.toLowerCase() === 'img' ? d.getAttribute('alt') : d.tagName.toLowerCase() === 'title' ? d.textContent : d.getAttribute('aria-label');
+    const name = cleanText(t);
+    if (name) return name;
+  }
+  return undefined;
+}
+
 /** Raw accessible name per the spec's sources: aria-labelledby, aria-label or <label> text. Unfiltered. */
 export function rawAccessibleName(el: Element): string | undefined {
   const labelledBy = el.getAttribute('aria-labelledby');
@@ -274,6 +295,12 @@ export function rawAccessibleName(el: Element): string | undefined {
     }
     const t = labels.map(labelText).filter(Boolean).join(' ');
     if (t) return t;
+  }
+  // Buttons and links with no text of their own: the name of the icon inside (img alt, an
+  // aria-label or <title> on an svg or icon element), as browsers compute it. See D23.
+  if (isNameFromContent(el) && !rawOwnText(el)) {
+    const icon = iconName(el);
+    if (icon) return icon;
   }
   // Fallbacks browsers use for fields with no label (accname: title, then placeholder).
   // See docs/DECISIONS.md: without them a placeholder-only search box has no strong signal.

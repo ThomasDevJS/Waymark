@@ -46,7 +46,7 @@ const handlers: Handlers = {
   },
   'site.sync': async () => ({ registered: await sync() }),
   'route.report': async (payload, ctx) => {
-    if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0) {
+    if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0 && payload.via !== 'leaving') {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
     return { ok: true as const, recording: await onRouteReport(payload, ctx) };

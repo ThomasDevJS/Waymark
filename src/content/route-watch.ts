@@ -4,7 +4,7 @@
  */
 import { testLog } from './test-hooks';
 
-export type RouteVia = 'load' | 'navigation-api' | 'popstate' | 'hashchange' | 'poll';
+export type RouteVia = 'load' | 'navigation-api' | 'popstate' | 'hashchange' | 'poll' | 'leaving';
 
 export interface RouteChange {
   url: string;
@@ -18,7 +18,12 @@ interface NavigationLike extends EventTarget {
   currentEntry?: { url?: string | null } | null;
 }
 
-export function watchRoutes(onChange: (c: RouteChange) => void): () => void {
+/**
+ * `onLeaving` fires when a cross-document navigation starts (Navigation API `navigate`, or
+ * `pagehide` as a fallback), so the service worker can tie a slow page load to the click that
+ * started it.
+ */
+export function watchRoutes(onChange: (c: RouteChange) => void, onLeaving?: (url: string) => void): () => void {
   let last = location.href;
   const report = (via: RouteVia, navigationType?: string) => {
     testLog('nav', { via, navigationType: navigationType ?? null, url: location.href });
@@ -32,6 +37,19 @@ export function watchRoutes(onChange: (c: RouteChange) => void): () => void {
   const onEntryChange = (e: Event) => report('navigation-api', (e as Event & { navigationType?: string }).navigationType ?? 'currententrychange');
   nav?.addEventListener('currententrychange', onEntryChange);
   nav?.addEventListener('navigatesuccess', onNavSuccess);
+  let left = false;
+  const leaving = (url: string) => {
+    if (left) return;
+    left = true;
+    onLeaving?.(url);
+  };
+  const onNavigate = (e: Event) => {
+    const ev = e as Event & { destination?: { url?: string; sameDocument?: boolean } };
+    if (ev.destination && ev.destination.sameDocument === false) leaving(ev.destination.url ?? location.href);
+  };
+  nav?.addEventListener('navigate', onNavigate);
+  const onBeforeUnload = () => leaving(location.href);
+  window.addEventListener('beforeunload', onBeforeUnload);
   const onPop = () => report('popstate');
   const onHash = () => report('hashchange');
   window.addEventListener('popstate', onPop);
@@ -44,6 +62,8 @@ export function watchRoutes(onChange: (c: RouteChange) => void): () => void {
   return () => {
     nav?.removeEventListener('currententrychange', onEntryChange);
     nav?.removeEventListener('navigatesuccess', onNavSuccess);
+    nav?.removeEventListener('navigate', onNavigate);
+    window.removeEventListener('beforeunload', onBeforeUnload);
     window.removeEventListener('popstate', onPop);
     window.removeEventListener('hashchange', onHash);
     clearInterval(poll);

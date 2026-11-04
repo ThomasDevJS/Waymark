@@ -104,3 +104,24 @@ Each entry: date, spec section, what changed, why.
 - `autocomplete="current-password"` and `"new-password"` are also treated as sensitive fields.
 - `tab.current` accepts an optional `tabId`. The test build's side panel accepts `?tab=<id>`, so e2e tests can drive the real panel UI opened as a tab.
 - The on-page pill and the REC badge are driven by the same recording view. The pill lives in the overlay host (a manual popover with a closed shadow root, open in test builds) and is not clickable.
+
+## 2026-11-04 — Fixes from the first real-app recording (GitHub)
+
+### D21. A slow full page load belongs to the click that started it
+- **Spec**: Recorder, "Navigation" (a navigation within 1.5 s of a recorded click belongs to that click).
+- **Change**: the 1.5 s window is measured to when the old page *starts leaving*, not to when the new page reports in. The content script reports a `route.report` with `via: 'leaving'` on the Navigation API `navigate` event for a cross-document navigation (or `beforeunload` as a fallback). The service worker stores the time per tab and uses it for the next page load's report (valid for 60 s).
+- **Why**: on GitHub, clicking "Compare & pull request" took over 1.5 s to load, and the load was recorded as an extra "Go to …" step. Covered by a unit test and an e2e test with a fixture page that answers after 2.5 s.
+
+### D22. Short hyphenated build hashes at the end of class names are dropped
+- **Spec**: Element targeting, record step 2 (ids and classes that look generated).
+- **Change**: a class whose last segment, or last two short segments joined, is 2 to 8 alphanumeric characters mixing a digit and an upper-case letter is treated as generated, e.g. `prc-Button-ButtonBase-9n-Xk`, `prc-components-UnderlineItem-7fP-n`. Classes like `col-md-6`, `grid-cols-12` and `Button--secondary` are kept.
+- **Why**: these classes from GitHub's CSS modules leaked into recorded CSS paths and change on every deploy.
+
+### D23. Icon-only buttons and links are named by their icon
+- **Spec**: Data model (`accessibleName` sources); Template step text (`{name}` fallback).
+- **Change**: a button, link, tab, option or similar widget with no own text and no aria-label or label takes its accessible name from the first icon inside it that is not `aria-hidden`: `img[alt]`, an `aria-label`, or an `<svg><title>`. This matches how browsers compute the name from content.
+- **Why**: GitHub's branch menu close button (an `svg` with a label inside a `button`) was recorded as "Click **the button**", with no strong signal for playback.
+
+### D24. "Clickable" stays the spec's list for now
+- **Spec**: Element targeting, record step 1.
+- **Decision**: elements with `cursor: pointer` or `tabindex >= 0` are not treated as interactive yet. This was proposed, but both low-confidence steps in the GitHub recording were clicks on plain text (a commit row, a muted label), which this change would not have fixed. It also risks resolving clicks to large clickable containers. Revisit with evidence from pilot recordings; the owner can ask for it.

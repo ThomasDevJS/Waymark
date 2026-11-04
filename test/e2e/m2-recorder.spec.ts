@@ -216,3 +216,22 @@ test('a link that opens a new tab carries the recording there; iframe steps get 
   expect(rec.steps[4]!.url.value).toBe('/app/reports');
   expect(rec.tabIds).toHaveLength(2);
 });
+
+test('a slow full page load started by a click belongs to that click (no extra navigate step)', async ({ context, ext, site }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/?static`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await startRecording(ext, tabId, 'Slow');
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  const t0 = Date.now();
+  await app.click('#slow-link'); // the server waits 2.5 s before answering
+  await app.waitForURL(/\/slow\/invoices/);
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  expect(Date.now() - t0).toBeGreaterThan(2000);
+  await app.getByRole('button', { name: 'Import' }).click();
+  await expect
+    .poll(async () => (await recordedSteps(ext)).steps.map((s) => `${s.kind}: ${s.title}`))
+    .toEqual(['click: Click **Invoices (slow)**', 'click: Click **Import**']);
+});

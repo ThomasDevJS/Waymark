@@ -40,3 +40,19 @@ describe('recording session', () => {
     expect(g).toMatchObject({ title: 'Untitled guide', appOrigins: ['https://app.test'], matchUrls: [{ kind: 'pattern', value: '/orders/:id' }], version: 1, source: 'local' });
   });
 });
+
+describe('slow full page loads', () => {
+  it('a page load belongs to the action when the old page started leaving within 1.5 s of it', () => {
+    const s = startRecording('Demo', 1, 'https://app.test/a', 0);
+    applyOp(s, { op: 'add', step: click('a') }, 10_000);
+    const base = { url: 'https://app.test/b', prevUrl: 'https://app.test/a', navigationType: 'push' };
+    // left 200 ms after the click, new page arrived 4 s later: no navigate step
+    expect(navigationStep(s, { ...base, now: 14_000, leavingAt: 10_200 })).toBeNull();
+    // left 3 s after the click: the app navigated on its own
+    expect(navigationStep(s, { ...base, now: 14_000, leavingAt: 13_000 })).not.toBeNull();
+    // no leaving mark (e.g. typed URL): navigate step
+    expect(navigationStep(s, { ...base, now: 14_000 })).not.toBeNull();
+    // a stale mark is ignored
+    expect(navigationStep(s, { ...base, now: 10_200 + 61_000, leavingAt: 10_200 })).not.toBeNull();
+  });
+});

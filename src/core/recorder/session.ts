@@ -24,6 +24,8 @@ export interface RecordingState {
   lastActionAt: number;
   /** Last URL reported by each recording tab's top frame. */
   lastUrl: Record<string, string>;
+  /** When each tab's top frame last started leaving the page (cross-document navigation). */
+  leavingAt?: Record<string, number>;
 }
 
 /** What content scripts and the pill see. Never the steps themselves. */
@@ -84,7 +86,12 @@ export interface RouteReport {
   navigationType?: string;
   title?: string;
   now?: number;
+  /** When the previous page started leaving, for full page loads (ms). */
+  leavingAt?: number;
 }
+
+/** How long a "leaving" mark stays valid for the next page load in that tab. */
+export const LEAVING_VALID_MS = 60_000;
 
 /**
  * Navigation rule (SPEC: Recorder, "Navigation"): a navigation within 1.5 s of a recorded
@@ -103,7 +110,11 @@ export function navigationStep(state: RecordingState, r: RouteReport, opts: UrlO
   }
   if (a.origin === b.origin && a.pathname === b.pathname && a.hash === b.hash) return null; // query-only
   if (r.navigationType === 'replace') return null;
-  if ((r.now ?? Date.now()) - state.lastActionAt <= NAV_BELONGS_TO_CLICK_MS) return null;
+  const now = r.now ?? Date.now();
+  if (now - state.lastActionAt <= NAV_BELONGS_TO_CLICK_MS) return null;
+  // A full page load belongs to the action if the old page started leaving within 1.5 s of
+  // it, however long the new page took to arrive (docs/DECISIONS.md D21).
+  if (r.leavingAt !== undefined && now - r.leavingAt <= LEAVING_VALID_MS && r.leavingAt - state.lastActionAt <= NAV_BELONGS_TO_CLICK_MS && r.leavingAt >= state.lastActionAt) return null;
   const pageTitle = safeLabel(r.title) ?? routedPath(b, opts);
   return {
     id: newId(),

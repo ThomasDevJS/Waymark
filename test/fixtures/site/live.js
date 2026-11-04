@@ -67,6 +67,7 @@ export function enhance(doc, opts = {}) {
       h('button', { type: 'button', id: 'hash-route', text: 'Hash route' }),
       h('button', { type: 'button', id: 'query-route', text: 'Query only' }),
       h('a', { href: '/app/reports', target: '_blank', id: 'new-tab-link', text: 'Open reports' }),
+      h('a', { href: '/slow/invoices?static', id: 'slow-link', text: 'Invoices (slow)' }),
     ]),
   );
   doc.getElementById('push-route')?.addEventListener('click', () => (history.pushState({}, '', '/app/orders/77'), routeLabel()));

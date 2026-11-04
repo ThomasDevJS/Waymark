@@ -26,7 +26,7 @@ export const RequestSchemas = {
   // ---- content scripts ----
   'route.report': z.object({
     url,
-    via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll']),
+    via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll', 'leaving']),
     navigationType: z.string().max(32).optional(),
     title: z.string().max(500).optional(),
   }),

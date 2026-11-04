@@ -125,3 +125,19 @@ describe('wait loop', () => {
     expect(r.status).toBe('not-found');
   });
 });
+
+describe('icon-only buttons and links', () => {
+  it('take their name from the icon inside (aria-label, svg title, img alt), not from hidden icons', () => {
+    html(`<button id="a"><svg aria-label="Close menu" role="img"></svg></button>
+          <button id="b"><svg><title>Delete row</title></svg></button>
+          <a id="c" href="/home"><img alt="Home" src="data:,"></a>
+          <button id="d"><svg aria-hidden="true"><title>Ignored</title></svg></button>
+          <button id="e" aria-label="Outer"><svg aria-label="Inner"></svg></button>`);
+    const fp = (id: string) => buildFingerprint(document.getElementById(id)!);
+    expect(fp('a').accessibleName).toBe('Close menu');
+    expect(fp('b').accessibleName).toBe('Delete row');
+    expect(fp('c').accessibleName).toBe('Home');
+    expect(fp('d').accessibleName).toBeUndefined();
+    expect(fp('e').accessibleName).toBe('Outer');
+  });
+});
