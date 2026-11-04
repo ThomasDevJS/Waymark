@@ -9,6 +9,7 @@ import { GUIDE_ID_ATTR } from '../fingerprint/selectors';
 import { gatherCandidates, searchRoots } from './candidates';
 import {
   ACCEPT_SCORE,
+  IDENTIFYING,
   POSITIONAL,
   UNIQUE_MARGIN,
   passesTagFilter,
@@ -108,7 +109,10 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     matched: best.matched,
   });
 
-  if (fp.instance === 'any') {
+  // The tied group must share a signal that identifies an element. A group held together only by
+  // a shared name or link path (a radio group, `commit` buttons) is not interchangeable: such a
+  // fingerprint (crafted, imported or older) is held to the unique rules (DECISIONS R5).
+  if (fp.instance === 'any' && best.matched.some((k) => IDENTIFYING.has(k))) {
     // Tied = same matched non-positional signals; position may differ (another row of the table).
     const qualifies = (s: Scored) => s.strongMatched && s.score >= ACCEPT_SCORE;
     const bestCore = coreKey(best);

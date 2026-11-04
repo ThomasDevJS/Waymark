@@ -1,7 +1,7 @@
 /** Fingerprint builder (SPEC: Element targeting, "At record time"). */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { accessibleName, getRole, isVisible as layoutVisible, ownText, tagOf } from './dom';
+import { accessibleName, getRole, inputTypeOf, isVisible as layoutVisible, ownText, tagOf } from './dom';
 import { isGeneratedToken, safeLabel } from './filters';
 import {
   buildAncestors,
@@ -12,8 +12,8 @@ import {
   stableId,
   stableTestId,
 } from './selectors';
-import { linkPath } from '../url/url';
-import { docRect } from '../matcher/signals';
+import { isSamePageHref, linkPath } from '../url/url';
+import { docRect, IDENTIFYING, presentSignals } from '../matcher/signals';
 import { countIndistinguishable } from '../matcher/match';
 
 export interface BuildOptions {
@@ -51,18 +51,29 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   if (name) fp.accessibleName = name;
   const nameAttr = el.getAttribute('name');
   if (nameAttr && !isGeneratedToken(nameAttr, profile.ignorePatterns) && nameAttr.length <= 200) fp.name = nameAttr;
-  if (tag === 'input') fp.inputType = (el.getAttribute('type') ?? 'text').toLowerCase();
+  if (tag === 'input') {
+    fp.inputType = inputTypeOf(el);
+    // A radio's or checkbox's `name` is shared by its whole group; its value attribute (set by
+    // the page author, never typed) says which option it is (docs/DECISIONS.md R4).
+    if (fp.inputType === 'radio' || fp.inputType === 'checkbox') {
+      const value = el.getAttribute('value');
+      if (value && value.length <= 200 && safeLabel(value) && !isGeneratedToken(value, profile.ignorePatterns)) fp.value = value;
+    }
+  }
   const placeholder = safeLabel(el.getAttribute('placeholder'));
   if (placeholder) fp.placeholder = placeholder;
   const text = ownText(el);
   if (text) fp.text = text;
   const href = el.getAttribute('href');
-  if (href !== null) {
+  // A link back to the current page (`#`, `#top`, `?page=2`) has the page's own path: no identity.
+  if (href !== null && !isSamePageHref(href)) {
     const p = linkPath(href, doc.URL);
     if (p && !(p.length > 200)) fp.hrefPath = p;
   }
   const count = countIndistinguishable(doc, fp, { profile, isVisible: opts.isVisible ?? layoutVisible });
   fp.matchCount = Math.max(1, count);
-  fp.instance = count > 1 ? 'any' : 'unique';
+  // Repeated only when the group shares what identifies an element (text, role + name, test id,
+  // id), not just a group-level signal such as a shared `name` or link path (docs/DECISIONS.md R5).
+  fp.instance = count > 1 && presentSignals(fp).some((k) => IDENTIFYING.has(k)) ? 'any' : 'unique';
   return fp;
 }

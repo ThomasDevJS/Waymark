@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkPath, matchPath, normalizePath, originToMatchPattern, routedPath, stepUrlRule, urlMatches } from '../../src/core/url/url';
+import { isSamePageHref, linkPath, matchPath, normalizePath, originToMatchPattern, routedPath, stepUrlRule, urlMatches } from '../../src/core/url/url';
 
 describe('URL rules', () => {
   it('turns key-like segments into parameters', () => {
@@ -39,5 +39,9 @@ describe('URL rules', () => {
     expect(linkPath('https://docs.example.com/guide', 'https://a.test/')).toBe('https://docs.example.com/guide');
     expect(linkPath('javascript:void(0)', 'https://a.test/')).toBeUndefined();
     expect(originToMatchPattern('http://127.0.0.1:4173')).toBe('http://127.0.0.1/*');
+  });
+  it('recognizes links back to the current page (review H1)', () => {
+    for (const h of ['', ' ', '#', '#top', '#/orders', '?page=2']) expect(isSamePageHref(h), h).toBe(true);
+    for (const h of ['/orders', 'orders/1', 'https://a.test/#x', '//cdn.test/x']) expect(isSamePageHref(h), h).toBe(false);
   });
 });

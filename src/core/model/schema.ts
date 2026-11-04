@@ -44,6 +44,8 @@ export const ElementFingerprintSchema = z.object({
   role: shortStr(64).optional(),
   accessibleName: shortStr(200).optional(),
   name: shortStr(200).optional(),
+  /** Radio / checkbox `value` attribute (author-defined, never typed): which option of a named group. */
+  value: shortStr(200).optional(),
   inputType: shortStr(64).optional(),
   placeholder: shortStr(200).optional(),
   text: shortStr(200).optional(),

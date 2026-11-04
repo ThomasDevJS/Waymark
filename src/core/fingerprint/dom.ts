@@ -249,7 +249,39 @@ function labelText(label: Element): string {
   return cleanText(clone.textContent);
 }
 
-/** Raw accessible name per the spec's sources: aria-labelledby, aria-label or <label> text. Unfiltered. */
+/** Input types whose `value` is their visible label (never typed by the user). */
+const BUTTON_INPUT_TYPES = new Set(['button', 'submit', 'reset']);
+
+/** Roles whose accessible name comes from their content (WAI-ARIA "name from content"). */
+const NAME_FROM_CONTENT = new Set([
+  'button',
+  'link',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'tab',
+  'checkbox',
+  'radio',
+  'switch',
+  'treeitem',
+]);
+
+export function inputTypeOf(el: Element): string {
+  return (el.getAttribute('type') ?? 'text').trim().toLowerCase() || 'text';
+}
+
+/**
+ * Raw accessible name, computed the way browsers do for the cases that tell look-alikes apart:
+ * aria-labelledby, aria-label, <label> text; the `value` of input buttons; `alt` of image
+ * inputs and images; image `alt` (and descendant aria-labels) inside links, buttons and other
+ * name-from-content roles; `title` as the last fallback for every element; `placeholder` for
+ * fields. Unfiltered.
+ *
+ * Name from content that is just the element's own text is left out: that is the own-text
+ * signal already, and counting it twice would double its weight. So a `<button>Save</button>`
+ * has no accessible name here, and its `title` never overrides the visible text.
+ */
 export function rawAccessibleName(el: Element): string | undefined {
   const labelledBy = el.getAttribute('aria-labelledby');
   if (labelledBy) {
@@ -259,6 +291,41 @@ export function rawAccessibleName(el: Element): string | undefined {
   const aria = cleanText(el.getAttribute('aria-label'));
   if (aria) return aria;
   const tag = tagOf(el);
+  const labels = labelTextOf(el, tag);
+  if (labels) return labels;
+  if (tag === 'input') {
+    const type = inputTypeOf(el);
+    const alt = type === 'image' ? cleanText(el.getAttribute('alt')) : '';
+    if (alt) return alt;
+    if (type === 'image' || BUTTON_INPUT_TYPES.has(type)) {
+      const value = cleanText(el.getAttribute('value'));
+      if (value) return value;
+    }
+  }
+  if (tag === 'img' || tag === 'area') {
+    const alt = cleanText(el.getAttribute('alt'));
+    if (alt) return alt;
+  }
+  const role = getRole(el);
+  if (role && NAME_FROM_CONTENT.has(role) && !NO_TEXT_TAGS.has(tag)) {
+    const content = contentText(el, true);
+    // Content gives the name (title never overrides it); only image alt / aria-labels inside
+    // add anything to the own-text signal.
+    if (content) return content === contentText(el, false) ? undefined : content;
+  }
+  // Last fallbacks (accname): title for every element, then placeholder for fields.
+  // See docs/DECISIONS.md D2: without them a placeholder-only search box has no strong signal.
+  const title = cleanText(el.getAttribute('title'));
+  if (title) return title;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    const placeholder = cleanText(el.getAttribute('placeholder'));
+    if (placeholder) return placeholder;
+  }
+  return undefined;
+}
+
+/** Text of the <label>s of a form control, or '' (not a labelable control, or no label). */
+function labelTextOf(el: Element, tag: string): string {
   if (tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button') {
     const labels: Element[] = [];
     const native = (el as HTMLInputElement).labels;
@@ -272,18 +339,9 @@ export function rawAccessibleName(el: Element): string | undefined {
       const wrapping = el.closest('label');
       if (wrapping && !labels.includes(wrapping)) labels.push(wrapping);
     }
-    const t = labels.map(labelText).filter(Boolean).join(' ');
-    if (t) return t;
+    return labels.map(labelText).filter(Boolean).join(' ');
   }
-  // Fallbacks browsers use for fields with no label (accname: title, then placeholder).
-  // See docs/DECISIONS.md: without them a placeholder-only search box has no strong signal.
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-    const title = cleanText(el.getAttribute('title'));
-    if (title) return title;
-    const placeholder = cleanText(el.getAttribute('placeholder'));
-    if (placeholder) return placeholder;
-  }
-  return undefined;
+  return '';
 }
 
 /** Accessible name, or undefined when missing or data-like. */
@@ -293,10 +351,12 @@ export function accessibleName(el: Element): string | undefined {
 
 const NO_TEXT_TAGS = new Set(['input', 'select', 'textarea', 'img', 'svg', 'canvas', 'iframe']);
 
-/** Raw own visible text (never field values). */
-export function rawOwnText(el: Element): string | undefined {
-  if (NO_TEXT_TAGS.has(tagOf(el))) return undefined;
-  if (isContentEditable(el)) return undefined; // typed content
+/**
+ * Visible text of an element's content (never field values). With `named`, descendants
+ * contribute what a browser's name-from-content does: an aria-label instead of their text,
+ * `alt` for images, and an svg's <title>.
+ */
+function contentText(el: Element, named: boolean): string {
   let out = '';
   const walk = (node: Node) => {
     for (let c = node.firstChild; c; c = c.nextSibling) {
@@ -304,17 +364,29 @@ export function rawOwnText(el: Element): string | undefined {
       else if (c.nodeType === 1) {
         const ce = c as Element;
         const t = tagOf(ce);
-        if (t === 'script' || t === 'style' || t === 'template' || NO_TEXT_TAGS.has(t)) continue;
+        if (t === 'script' || t === 'style' || t === 'template') continue;
         if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden')) continue;
         out += ' ';
-        walk(ce);
+        if (named) {
+          const label = cleanText(ce.getAttribute('aria-label'));
+          if (label) out += label;
+          else if (t === 'img' || t === 'area' || (t === 'input' && inputTypeOf(ce) === 'image')) out += ce.getAttribute('alt') ?? '';
+          else if (t === 'svg') out += Array.from(ce.children).find((k) => tagOf(k) === 'title')?.textContent ?? '';
+          else if (!NO_TEXT_TAGS.has(t)) walk(ce);
+        } else if (!NO_TEXT_TAGS.has(t)) walk(ce);
         out += ' ';
       }
     }
   };
   walk(el);
-  const t = cleanText(out);
-  return t || undefined;
+  return cleanText(out);
+}
+
+/** Raw own visible text (never field values). */
+export function rawOwnText(el: Element): string | undefined {
+  if (NO_TEXT_TAGS.has(tagOf(el))) return undefined;
+  if (isContentEditable(el)) return undefined; // typed content
+  return contentText(el, false) || undefined;
 }
 
 /** Own visible text, omitted if over 80 chars or data-like. */
