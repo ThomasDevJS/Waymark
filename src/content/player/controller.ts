@@ -154,7 +154,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     const mine = v.winner === deps.frameToken && result?.status === 'found';
     if (mine && drawnFor !== v.stepToken && result?.status === 'found') {
       const r = result;
-      const target = r.tied.find((e) => isVisible(e)) ?? r.element;
+      // Draw on the box the learner can see (a visually hidden control is shown through its
+      // label, R7); for repeated elements the matcher picks the first visible tied candidate.
+      const target = r.spotlight ?? r.tied.find((e) => isVisible(e)) ?? r.element;
       const rect = target.getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
         target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -165,7 +167,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       });
       drawnFor = v.stepToken;
       stopAdvance?.();
-      stopAdvance = watchAdvance({ step: v.step, targets: r.tied, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
+      // A click on the spotlighted box (e.g. the label of a hidden checkbox) also counts.
+      const targets = r.tied.includes(target) ? r.tied : [...r.tied, target];
+      stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
       testMark('player', `drawn:${v.stepIndex}`);
       return;
     }

@@ -13,7 +13,8 @@
  *   reorder     shuffle sibling order (nav, toolbar, fields, cards, rows, tabs)
  *   wrap        insert extra wrapper elements around some elements
  *   changeText  change visible button / link / option text
- *   twin        insert an identical copy before the given keys (ambiguity tests)
+ *   twin        insert an identical copy before the given keys (ambiguity tests); for the
+ *               shadow widget host (`widget#host`), a second widget with the same content
  *   unlabel     drop aria-labels from the given landmark ids
  *   remove      remove the elements with the given keys
  *   portalOpen  render the custom dropdown's options (portal) open
@@ -180,6 +181,18 @@ export function createApp(options = {}, doc = document) {
     h('span', { id: 'nick-label', text: 'Nickname' }),
     h('input', { id: ':r3:', 'aria-labelledby': 'nick-label', cls: 'input', 'data-fx': 'ally-input' }),
     h('details', {}, [h('summary', { cls: 'summary', 'data-fx': 'summary-more', text: T('More options') }), h('p', { text: 'Advanced settings live here.' })]),
+    // Custom toggles: the native input is visually hidden, the label is what users see and click.
+    ...order([
+      h('label', { cls: 'toggle' }, [
+        h('input', { type: 'checkbox', name: 'autosave', style: 'opacity:0;width:0;height:0;position:absolute', 'data-fx': 'tg-autosave' }),
+        h('span', { cls: 'slider', 'aria-hidden': 'true' }),
+        h('span', { text: 'Autosave' }),
+      ]),
+      h('span', { cls: 'togglewrap' }, [
+        h('input', { type: 'checkbox', id: 'beta-features', style: 'display:none', 'data-fx': 'tg-beta' }),
+        h('label', { for: 'beta-features', cls: 'toggle', text: 'Beta features' }),
+      ]),
+    ]),
   ]);
 
   // ---------- custom dropdown (combobox + portal listbox) and tabs ----------
@@ -232,15 +245,38 @@ export function createApp(options = {}, doc = document) {
     ]);
   const cards = h('div', { cls: 'cards' }, order([card('starter', 'Starter', 'card-starter-choose'), card('team', 'Team', 'card-team-choose')]));
 
-  // ---------- open shadow DOM widget ----------
-  const widgetHost = h('fx-widget', { cls: 'widget' });
-  const shadow = widgetHost.attachShadow({ mode: 'open' });
-  shadow.append(
-    h('div', { cls: 'wpanel' }, [
-      h('input', { placeholder: 'Widget name', cls: 'winput', 'data-fx': 'sh-input' }),
-      h('button', { type: 'button', cls: 'wbtn', 'data-fx': 'sh-launch', text: T('Launch') }),
+  // ---------- drafts: look-alikes told apart only by title, image alt, input value ----------
+  const iconLink = (/** @type {string} */ title, /** @type {string} */ key) =>
+    h('a', { href: '#', title: T(title), cls: 'iconlink icon-link', 'data-fx': key }, [h('span', { 'aria-hidden': 'true', text: '•' })]);
+  const imageLink = (/** @type {string} */ alt, /** @type {string} */ key) =>
+    h('a', { href: '#', cls: 'imglink', 'data-fx': key }, [h('img', { alt: T(alt), width: '16', height: '16' })]);
+  const radio = (/** @type {string} */ value, /** @type {string} */ text, /** @type {string} */ key) =>
+    h('span', { cls: 'opt' }, [h('input', { type: 'radio', name: 'visibility', value, 'data-fx': key }), h('span', { text })]);
+  const drafts = h('section', { 'aria-label': label('drafts', 'Drafts'), cls: 'card drafts' }, [
+    h('h2', { text: 'Drafts' }),
+    h('div', { cls: 'draftactions' }, order([iconLink('Edit draft', 'dr-edit'), iconLink('Delete draft', 'dr-delete'), imageLink('Archive draft', 'dr-archive'), imageLink('Duplicate draft', 'dr-duplicate')].map(maybeWrap))),
+    h('form', { cls: 'draftform', onsubmit: 'return false' }, [
+      h('div', { cls: 'visibility' }, order([radio('public', 'Public', 'dr-public'), radio('private', 'Private', 'dr-private')])),
+      h('div', { cls: 'actions form-actions' }, order([
+        h('input', { type: 'submit', name: 'commit', value: T('Save draft'), cls: 'btn', 'data-fx': 'dr-save' }),
+        h('input', { type: 'submit', name: 'commit', value: T('Publish'), cls: 'btn btn-primary', 'data-fx': 'dr-publish' }),
+      ])),
     ]),
-  );
+  ]);
+
+  // ---------- open shadow DOM widget ----------
+  const makeWidget = (/** @type {string} */ suffix) => {
+    const host = h('fx-widget', { cls: 'widget', [FX_ATTR]: `widget#host${suffix}` });
+    const root = host.attachShadow({ mode: 'open' });
+    root.append(
+      h('div', { cls: 'wpanel' }, [
+        h('input', { placeholder: 'Widget name', cls: 'winput', [FX_ATTR]: `sh-input${suffix}` }),
+        h('button', { type: 'button', cls: 'wbtn', [FX_ATTR]: `sh-launch${suffix}`, text: T('Launch') }),
+      ]),
+    );
+    return { host, root };
+  };
+  const { host: widgetHost, root: shadow } = makeWidget('');
 
   // ---------- pagination, links, footer ----------
   const pagination = h('nav', { 'aria-label': 'Pagination', cls: 'pager' }, [
@@ -253,7 +289,7 @@ export function createApp(options = {}, doc = document) {
     h('a', { href: '/terms', cls: 'footlink', 'data-fx': 'ft-terms', text: T('Terms') }),
   ]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs]), table, cards].map(maybeWrap));
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs]), table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 
@@ -262,7 +298,8 @@ export function createApp(options = {}, doc = document) {
   for (const key of o.twin) {
     const el = all().find((e) => e.getAttribute(FX_ATTR) === key);
     if (el) {
-      const copy = /** @type {Element} */ (el.cloneNode(true));
+      // cloneNode does not copy a shadow root: build a second widget instead.
+      const copy = el.shadowRoot ? makeWidget('#twin').host : /** @type {Element} */ (el.cloneNode(true));
       copy.setAttribute(FX_ATTR, `${key}#twin`);
       el.before(copy);
     }

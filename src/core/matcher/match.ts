@@ -4,11 +4,12 @@
  */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { compareDocumentOrder, cssEscape, isEnabled, isVisible as layoutVisible } from '../fingerprint/dom';
+import { compareDocumentOrder, cssEscape, displayBox, isEnabled, isVisible as layoutVisible } from '../fingerprint/dom';
 import { GUIDE_ID_ATTR } from '../fingerprint/selectors';
 import { gatherCandidates, searchRoots } from './candidates';
 import {
   ACCEPT_SCORE,
+  IDENTIFYING,
   POSITIONAL,
   UNIQUE_MARGIN,
   passesTagFilter,
@@ -34,6 +35,12 @@ export type MatchResult =
       element: Element;
       /** For instance 'any': every tied candidate (a click on any of them counts). Otherwise [element]. */
       tied: Element[];
+      /**
+       * The element whose box the overlay outlines: `element` itself, or the visible <label> of a
+       * visually hidden control (a custom checkbox or switch). A click on that label reaches
+       * `element`, so advancing still listens on `tied` (docs/DECISIONS.md R7).
+       */
+      spotlight: Element;
       score: number;
       /** Lead over the best non-tied candidate (100 when there is none). */
       margin: number;
@@ -48,35 +55,44 @@ export type MatchResult =
       matched: SignalKey[];
     };
 
+/**
+ * SPEC playback step 1: a unique match on data-guide-id or a test id wins. Unique means one
+ * match across every searched root together (all twin widgets, or every shadow root when the
+ * shadow path broke), never one per root (docs/DECISIONS.md R6).
+ */
 function fastPath(doc: Document, fp: ElementFingerprint, isVis: (el: Element) => boolean): Element | null {
-  for (const root of searchRoots(doc, fp)) {
-    const sels: string[] = [];
-    if (fp.guideId) sels.push(`[${GUIDE_ID_ATTR}="${cssEscape(fp.guideId)}"]`);
-    if (fp.testId) sels.push(`[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`);
-    for (const sel of sels) {
-      let found: Element[];
+  const roots = searchRoots(doc, fp);
+  const sels: string[] = [];
+  if (fp.guideId) sels.push(`[${GUIDE_ID_ATTR}="${cssEscape(fp.guideId)}"]`);
+  if (fp.testId) sels.push(`[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`);
+  for (const sel of sels) {
+    const found: Element[] = [];
+    for (const root of roots) {
       try {
-        found = Array.from(root.querySelectorAll(sel));
+        found.push(...Array.from(root.querySelectorAll(sel)));
       } catch {
-        continue;
+        break;
       }
-      if (found.length === 1) {
-        const el = found[0]!;
-        if (passesTagFilter(el, fp) && isVis(el) && isEnabled(el)) return el;
-      }
+    }
+    if (found.length === 1) {
+      const el = found[0]!;
+      if (passesTagFilter(el, fp) && displayBox(el, isVis) && isEnabled(el)) return el;
     }
   }
   return null;
 }
 
-/** Score every visible, enabled candidate; sorted best first, ties in document order. */
+/**
+ * Score every visible, enabled candidate; sorted best first, ties in document order. A visually
+ * hidden control counts as visible when its label is (custom checkboxes and switches).
+ */
 export function scoreAll(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): Scored[] {
   const isVis = opts.isVisible ?? layoutVisible;
   const base = opts.base ?? doc.URL;
   const present = presentSignals(fp);
-  const ctx = { profile: opts.profile, base };
+  const ctx = { profile: opts.profile, base, isVisible: isVis };
   return gatherCandidates(doc, fp, { profile: opts.profile, base, isVisible: isVis })
-    .filter((el) => isVis(el) && isEnabled(el))
+    .filter((el) => displayBox(el, isVis) !== null && isEnabled(el))
     .map((el) => scoreCandidate(el, fp, ctx, present))
     .sort((a, b) => b.score - a.score || compareDocumentOrder(a.element, b.element));
 }
@@ -93,8 +109,11 @@ function coreKey(s: Scored): string {
 /** One matching pass, no waiting. */
 export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): MatchResult {
   const isVis = opts.isVisible ?? layoutVisible;
+  const spotlight = (el: Element) => displayBox(el, isVis) ?? el;
   const fast = fastPath(doc, fp, isVis);
-  if (fast) return { status: 'found', element: fast, tied: [fast], score: 100, margin: 100, matched: ['testId'], via: 'fast-path' };
+  if (fast) {
+    return { status: 'found', element: fast, tied: [fast], spotlight: spotlight(fast), score: 100, margin: 100, matched: ['testId'], via: 'fast-path' };
+  }
 
   const scored = scoreAll(doc, fp, opts);
   const best = scored[0];
@@ -108,7 +127,10 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     matched: best.matched,
   });
 
-  if (fp.instance === 'any') {
+  // The tied group must share a signal that identifies an element. A group held together only by
+  // a shared name or link path (a radio group, `commit` buttons) is not interchangeable: such a
+  // fingerprint (crafted, imported or older) is held to the unique rules (DECISIONS R5).
+  if (fp.instance === 'any' && best.matched.some((k) => IDENTIFYING.has(k))) {
     // Tied = same matched non-positional signals; position may differ (another row of the table).
     const qualifies = (s: Scored) => s.strongMatched && s.score >= ACCEPT_SCORE;
     const bestCore = coreKey(best);
@@ -122,6 +144,7 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
       status: 'found',
       element: ordered[0]!,
       tied: ordered,
+      spotlight: spotlight(ordered[0]!),
       score: best.score,
       margin: others.length ? margin : 100,
       matched: best.matched,
@@ -142,6 +165,7 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     status: 'found',
     element: best.element,
     tied: [best.element],
+    spotlight: spotlight(best.element),
     score: best.score,
     margin: runnerUp ? best.score - runnerUp.score : 100,
     matched: best.matched,

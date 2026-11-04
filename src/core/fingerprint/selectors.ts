@@ -198,13 +198,32 @@ export function hostSelector(host: Element, profile: ProfileOptions = {}): strin
   return XPATH_PREFIX + buildXPath(host);
 }
 
-export function resolveSelector(root: Document | ShadowRoot, selector: string): Element | null {
-  if (selector.startsWith(XPATH_PREFIX)) return resolveXPath(root, selector.slice(XPATH_PREFIX.length));
-  try {
-    return root.querySelector(selector);
-  } catch {
-    return null;
+/** Every element a host selector matches in a root: all CSS matches, or the one XPath target. */
+export function resolveSelectorAll(root: Document | ShadowRoot, selector: string): Element[] {
+  if (selector.startsWith(XPATH_PREFIX)) {
+    const el = resolveXPath(root, selector.slice(XPATH_PREFIX.length));
+    return el ? [el] : [];
   }
+  try {
+    return Array.from(root.querySelectorAll(selector));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Selector for a host on a shadow path: its CSS path, even when other hosts match it too. Every
+ * match is searched at playback, so a twin widget is as ambiguous as a twin in the light DOM
+ * (docs/DECISIONS.md R6). XPath only when the CSS path does not select the host at all.
+ */
+export function shadowHostSelector(host: Element, profile: ProfileOptions = {}): string {
+  const css = buildCssPath(host, profile);
+  try {
+    if (Array.from(rootOf(host).querySelectorAll(css)).includes(host)) return css;
+  } catch {
+    // fall through
+  }
+  return XPATH_PREFIX + buildXPath(host);
 }
 
 /** Open shadow host selectors from the outermost to the innermost host. */
@@ -212,20 +231,39 @@ export function buildShadowPath(el: Element, profile: ProfileOptions = {}): stri
   const out: string[] = [];
   let root = el.getRootNode();
   while (root instanceof ShadowRoot) {
-    out.unshift(hostSelector(root.host, profile));
+    out.unshift(shadowHostSelector(root.host, profile));
     root = root.host.getRootNode();
   }
   return out;
 }
 
-/** Resolve a shadow path to the innermost open shadow root, or null when any host is missing. */
-export function resolveShadowPath(doc: Document, path: string[]): Document | ShadowRoot | null {
-  let root: Document | ShadowRoot = doc;
+/**
+ * The open shadow roots a shadow path reaches, level by level (outermost first). Each step
+ * resolves to every host it matches in every root of the level above. Stops after the first
+ * level with no root.
+ */
+export function shadowPathLevels(doc: Document, path: string[]): ShadowRoot[][] {
+  const levels: ShadowRoot[][] = [];
+  let roots: (Document | ShadowRoot)[] = [doc];
   for (const sel of path) {
-    const host = resolveSelector(root, sel);
-    const sr = host?.shadowRoot;
-    if (!sr) return null;
-    root = sr;
+    const next: ShadowRoot[] = [];
+    for (const root of roots) {
+      for (const host of resolveSelectorAll(root, sel)) {
+        const sr = host.shadowRoot;
+        if (sr && !next.includes(sr)) next.push(sr);
+      }
+    }
+    levels.push(next);
+    if (!next.length) break;
+    roots = next;
   }
-  return root;
+  return levels;
+}
+
+/** Every innermost open shadow root of a path ([doc] for an empty path), or null when a step matches no open host. */
+export function resolveShadowPathAll(doc: Document, path: string[]): (Document | ShadowRoot)[] | null {
+  if (!path.length) return [doc];
+  const levels = shadowPathLevels(doc, path);
+  const last = levels.length === path.length ? levels[levels.length - 1] : undefined;
+  return last && last.length ? last : null;
 }

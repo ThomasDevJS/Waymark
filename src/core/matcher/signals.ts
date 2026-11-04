@@ -5,10 +5,10 @@
  */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { getRole, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
+import { displayBox, getRole, isVisible as layoutVisible, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
 import { buildAncestors, buildCssPath, buildXPath, landmarksEqual, GUIDE_ID_ATTR } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
-import { linkPath } from '../url/url';
+import { isSamePageHref, linkPath } from '../url/url';
 
 export type SignalKey =
   | 'testId'
@@ -42,6 +42,30 @@ export const STRONG: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id'
 /** Signals that only describe where an element is, not what it is. */
 export const POSITIONAL: ReadonlySet<SignalKey> = new Set<SignalKey>(['xpath', 'position']);
 
+/**
+ * Signals that identify one element rather than a group it belongs to. Look-alikes may be
+ * treated as interchangeable (instance 'any') only when they share one of these; a shared
+ * `name` (a radio group, `commit` submit buttons) or link path is group-level (DECISIONS R5).
+ */
+export const IDENTIFYING: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text']);
+
+/** Controls whose `name` attribute is shared by a group: radios, checkboxes and buttons. */
+const GROUP_NAME_INPUT_TYPES = new Set(['radio', 'checkbox', 'submit', 'button', 'reset', 'image']);
+
+/**
+ * Strong signals per the spec table, except that `name` is not strong on radios, checkboxes and
+ * buttons, where the whole group shares it. A radio or checkbox with a recorded `value` is
+ * strong again: the name/value pair says which option it is (DECISIONS R4).
+ */
+export function isStrongSignal(key: SignalKey, fp: ElementFingerprint): boolean {
+  if (!STRONG.has(key)) return false;
+  if (key === 'name') {
+    if (fp.value !== undefined) return true;
+    return !(fp.tag === 'button' || (fp.tag === 'input' && GROUP_NAME_INPUT_TYPES.has(fp.inputType ?? 'text')));
+  }
+  return true;
+}
+
 export const ACCEPT_SCORE = 60;
 export const UNIQUE_MARGIN = 15;
 
@@ -52,7 +76,7 @@ export function presentSignals(fp: ElementFingerprint): SignalKey[] {
   if (fp.id) out.push('id');
   if (fp.role && fp.accessibleName) out.push('roleName');
   if (fp.text) out.push('text');
-  if (fp.name) out.push('name');
+  if (fp.name || fp.value !== undefined) out.push('name'); // name, with value for radios/checkboxes
   if (fp.hrefPath) out.push('href');
   if (fp.placeholder) out.push('placeholder');
   if (fp.cssPath) out.push('css');
@@ -66,6 +90,8 @@ export interface ScoreContext {
   profile?: ProfileOptions;
   /** Base URL for link paths (the frame's document URL). */
   base: string;
+  /** Visibility test (defaults to layout); picks the box that shows a hidden control. */
+  isVisible?: (el: Element) => boolean;
 }
 
 export interface Scored {
@@ -120,10 +146,13 @@ function signalMatches(key: SignalKey, el: Element, fp: ElementFingerprint, ctx:
     case 'text':
       return normText(rawOwnText(el)) === normText(fp.text);
     case 'name':
-      return el.getAttribute('name') === fp.name;
+      return (
+        (fp.name === undefined || el.getAttribute('name') === fp.name) &&
+        (fp.value === undefined || el.getAttribute('value') === fp.value)
+      );
     case 'href': {
       const href = el.getAttribute('href');
-      return href !== null && linkPath(href, ctx.base) === fp.hrefPath;
+      return href !== null && !isSamePageHref(href) && linkPath(href, ctx.base) === fp.hrefPath;
     }
     case 'placeholder':
       return normText(el.getAttribute('placeholder')) === normText(fp.placeholder);
@@ -138,7 +167,8 @@ function signalMatches(key: SignalKey, el: Element, fp: ElementFingerprint, ctx:
     case 'xpath':
       return buildXPath(el) === fp.xpath;
     case 'position':
-      return positionMatches(fp.rect, docRect(el));
+      // Same box as at record time: a visually hidden control is on screen as its label.
+      return positionMatches(fp.rect, docRect(displayBox(el, ctx.isVisible ?? layoutVisible) ?? el));
   }
 }
 
@@ -154,7 +184,7 @@ export function scoreCandidate(el: Element, fp: ElementFingerprint, ctx: ScoreCo
     if (signalMatches(key, el, fp, ctx)) {
       got += w;
       matched.push(key);
-      if (STRONG.has(key)) strongMatched = true;
+      if (isStrongSignal(key, fp)) strongMatched = true;
       if (!POSITIONAL.has(key)) coreWeight += w;
     }
   }

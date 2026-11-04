@@ -10,6 +10,15 @@ describe('isGeneratedToken', () => {
     'keeps %s',
     (t) => expect(isGeneratedToken(t)).toBe(false),
   );
+  // Review L1: camelCase identifiers are words, not hashes.
+  it.each(['addToCart', 'firstNameInput', 'deleteRowButton', 'goToTop', 'getHTMLElement', 'saveAndContinue', 'btn-addToCart', 'Save and continue'])(
+    'keeps camelCase %s',
+    (t) => expect(isGeneratedToken(t)).toBe(false),
+  );
+  it.each(['bdVaJa', 'iDuHsS', 'xKq3Fz', 'VaJaBo', 'item-123456', 'a8F3kL92', 'css-1x9f2k', 'sc-AxjAm', 'jss12', ':r0:', 'ember123', '550e8400-e29b-41d4-a716-446655440000'])(
+    'still flags hash %s',
+    (t) => expect(isGeneratedToken(t)).toBe(true),
+  );
   it('applies profile ignore patterns', () => {
     expect(isGeneratedToken('foo-bar', [/^foo-/])).toBe(true);
   });

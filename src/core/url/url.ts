@@ -114,6 +114,16 @@ export function urlMatches(rule: UrlRule, href: string, appOrigins: string[], op
   return matchPath(rule, routedPath(url, opts));
 }
 
+/**
+ * True for an href that points back to the current page: empty, a fragment (`#`, `#top`) or a
+ * query alone (`?page=2`). Its link path is the page's own path, shared by every such link, so
+ * it says nothing about which element it is (docs/DECISIONS.md R3).
+ */
+export function isSamePageHref(href: string): boolean {
+  const h = href.trim();
+  return h === '' || h.startsWith('#') || h.startsWith('?');
+}
+
 /** Normalized link path for a fingerprint: path only for same-origin links, origin + path otherwise. */
 export function linkPath(href: string, base: string): string | undefined {
   let url: URL;

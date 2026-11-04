@@ -249,28 +249,39 @@ function labelText(label: Element): string {
   return cleanText(clone.textContent);
 }
 
-const NAME_FROM_CONTENT_ROLES = new Set(['button', 'link', 'menuitem', 'tab', 'option', 'switch', 'checkbox', 'radio', 'treeitem']);
+/** Input types whose `value` is their visible label (never typed by the user). */
+const BUTTON_INPUT_TYPES = new Set(['button', 'submit', 'reset']);
 
-function isNameFromContent(el: Element): boolean {
-  const tag = tagOf(el);
-  if (tag === 'input' || tag === 'select' || tag === 'textarea') return false;
-  const role = getRole(el);
-  return role !== undefined && NAME_FROM_CONTENT_ROLES.has(role);
+/** Roles whose accessible name comes from their content (WAI-ARIA "name from content"). */
+const NAME_FROM_CONTENT = new Set([
+  'button',
+  'link',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'option',
+  'tab',
+  'checkbox',
+  'radio',
+  'switch',
+  'treeitem',
+]);
+
+export function inputTypeOf(el: Element): string {
+  return (el.getAttribute('type') ?? 'text').trim().toLowerCase() || 'text';
 }
 
-/** Name of the first icon inside an element: img alt, aria-label, or an svg <title>. */
-function iconName(el: Element): string | undefined {
-  for (const d of Array.from(el.querySelectorAll('img[alt], [aria-label], svg title')).slice(0, 10)) {
-    const hidden = d.closest('[aria-hidden="true"]');
-    if (hidden && el.contains(hidden)) continue; // hidden icons do not name their button
-    const t = d.tagName.toLowerCase() === 'img' ? d.getAttribute('alt') : d.tagName.toLowerCase() === 'title' ? d.textContent : d.getAttribute('aria-label');
-    const name = cleanText(t);
-    if (name) return name;
-  }
-  return undefined;
-}
-
-/** Raw accessible name per the spec's sources: aria-labelledby, aria-label or <label> text. Unfiltered. */
+/**
+ * Raw accessible name, computed the way browsers do for the cases that tell look-alikes apart:
+ * aria-labelledby, aria-label, <label> text; the `value` of input buttons; `alt` of image
+ * inputs and images; image `alt` (and descendant aria-labels) inside links, buttons and other
+ * name-from-content roles; `title` as the last fallback for every element; `placeholder` for
+ * fields. Unfiltered.
+ *
+ * Name from content that is just the element's own text is left out: that is the own-text
+ * signal already, and counting it twice would double its weight. So a `<button>Save</button>`
+ * has no accessible name here, and its `title` never overrides the visible text.
+ */
 export function rawAccessibleName(el: Element): string | undefined {
   const labelledBy = el.getAttribute('aria-labelledby');
   if (labelledBy) {
@@ -280,6 +291,41 @@ export function rawAccessibleName(el: Element): string | undefined {
   const aria = cleanText(el.getAttribute('aria-label'));
   if (aria) return aria;
   const tag = tagOf(el);
+  const labels = labelTextOf(el, tag);
+  if (labels) return labels;
+  if (tag === 'input') {
+    const type = inputTypeOf(el);
+    const alt = type === 'image' ? cleanText(el.getAttribute('alt')) : '';
+    if (alt) return alt;
+    if (type === 'image' || BUTTON_INPUT_TYPES.has(type)) {
+      const value = cleanText(el.getAttribute('value'));
+      if (value) return value;
+    }
+  }
+  if (tag === 'img' || tag === 'area') {
+    const alt = cleanText(el.getAttribute('alt'));
+    if (alt) return alt;
+  }
+  const role = getRole(el);
+  if (role && NAME_FROM_CONTENT.has(role) && !NO_TEXT_TAGS.has(tag)) {
+    const content = contentText(el, true);
+    // Content gives the name (title never overrides it); only image alt / aria-labels inside
+    // add anything to the own-text signal.
+    if (content) return content === contentText(el, false) ? undefined : content;
+  }
+  // Last fallbacks (accname): title for every element, then placeholder for fields.
+  // See docs/DECISIONS.md D2: without them a placeholder-only search box has no strong signal.
+  const title = cleanText(el.getAttribute('title'));
+  if (title) return title;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    const placeholder = cleanText(el.getAttribute('placeholder'));
+    if (placeholder) return placeholder;
+  }
+  return undefined;
+}
+
+/** Text of the <label>s of a form control, or '' (not a labelable control, or no label). */
+function labelTextOf(el: Element, tag: string): string {
   if (tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button') {
     const labels: Element[] = [];
     const native = (el as HTMLInputElement).labels;
@@ -293,24 +339,9 @@ export function rawAccessibleName(el: Element): string | undefined {
       const wrapping = el.closest('label');
       if (wrapping && !labels.includes(wrapping)) labels.push(wrapping);
     }
-    const t = labels.map(labelText).filter(Boolean).join(' ');
-    if (t) return t;
+    return labels.map(labelText).filter(Boolean).join(' ');
   }
-  // Buttons and links with no text of their own: the name of the icon inside (img alt, an
-  // aria-label or <title> on an svg or icon element), as browsers compute it. See D23.
-  if (isNameFromContent(el) && !rawOwnText(el)) {
-    const icon = iconName(el);
-    if (icon) return icon;
-  }
-  // Fallbacks browsers use for fields with no label (accname: title, then placeholder).
-  // See docs/DECISIONS.md: without them a placeholder-only search box has no strong signal.
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-    const title = cleanText(el.getAttribute('title'));
-    if (title) return title;
-    const placeholder = cleanText(el.getAttribute('placeholder'));
-    if (placeholder) return placeholder;
-  }
-  return undefined;
+  return '';
 }
 
 /** Accessible name, or undefined when missing or data-like. */
@@ -320,10 +351,12 @@ export function accessibleName(el: Element): string | undefined {
 
 const NO_TEXT_TAGS = new Set(['input', 'select', 'textarea', 'img', 'svg', 'canvas', 'iframe']);
 
-/** Raw own visible text (never field values). */
-export function rawOwnText(el: Element): string | undefined {
-  if (NO_TEXT_TAGS.has(tagOf(el))) return undefined;
-  if (isContentEditable(el)) return undefined; // typed content
+/**
+ * Visible text of an element's content (never field values). With `named`, descendants
+ * contribute what a browser's name-from-content does: an aria-label instead of their text,
+ * `alt` for images, and an svg's <title>.
+ */
+function contentText(el: Element, named: boolean): string {
   let out = '';
   const walk = (node: Node) => {
     for (let c = node.firstChild; c; c = c.nextSibling) {
@@ -331,17 +364,29 @@ export function rawOwnText(el: Element): string | undefined {
       else if (c.nodeType === 1) {
         const ce = c as Element;
         const t = tagOf(ce);
-        if (t === 'script' || t === 'style' || t === 'template' || NO_TEXT_TAGS.has(t)) continue;
+        if (t === 'script' || t === 'style' || t === 'template') continue;
         if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden')) continue;
         out += ' ';
-        walk(ce);
+        if (named) {
+          const label = cleanText(ce.getAttribute('aria-label'));
+          if (label) out += label;
+          else if (t === 'img' || t === 'area' || (t === 'input' && inputTypeOf(ce) === 'image')) out += ce.getAttribute('alt') ?? '';
+          else if (t === 'svg') out += Array.from(ce.children).find((k) => tagOf(k) === 'title')?.textContent ?? '';
+          else if (!NO_TEXT_TAGS.has(t)) walk(ce);
+        } else if (!NO_TEXT_TAGS.has(t)) walk(ce);
         out += ' ';
       }
     }
   };
   walk(el);
-  const t = cleanText(out);
-  return t || undefined;
+  return cleanText(out);
+}
+
+/** Raw own visible text (never field values). */
+export function rawOwnText(el: Element): string | undefined {
+  if (NO_TEXT_TAGS.has(tagOf(el))) return undefined;
+  if (isContentEditable(el)) return undefined; // typed content
+  return contentText(el, false) || undefined;
 }
 
 /** Own visible text, omitted if over 80 chars or data-like. */
@@ -367,6 +412,21 @@ export function isVisible(el: Element): boolean {
   return r.width > 0 || r.height > 0;
 }
 
+/**
+ * The element whose box shows `el` on screen: `el` itself when visible, else the first visible
+ * <label> of a visually hidden form control. Custom checkboxes, switches and file inputs hide
+ * the native input (opacity 0 at 0x0, display:none) and style its label; a click on the label
+ * still reaches the input. Null when neither is visible (docs/DECISIONS.md R7).
+ */
+export function displayBox(el: Element, isVis: (e: Element) => boolean = isVisible): Element | null {
+  if (isVis(el)) return el;
+  const labels = (el as Partial<HTMLInputElement>).labels;
+  if (labels) {
+    for (const label of Array.from(labels)) if (isVis(label)) return label;
+  }
+  return null;
+}
+
 export function cssEscape(s: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(s);
   return s.replace(/([^\w-])/g, '\\$1').replace(/^(\d)/, '\\3$1 ');
@@ -389,11 +449,34 @@ export function openShadowRoots(root: Document | ShadowRoot, limit = 200): Shado
   return out;
 }
 
-/** Elements in tree order for a root (document order within that tree). */
+/** [outermost shadow host, …, innermost host, el]: where an element sits in the composed tree. */
+function composedChain(el: Element): Element[] {
+  const chain = [el];
+  let root = el.getRootNode();
+  while (root instanceof ShadowRoot) {
+    chain.unshift(root.host);
+    root = root.host.getRootNode();
+  }
+  return chain;
+}
+
+/**
+ * Document order in the composed tree, so that elements in different shadow roots (twin
+ * widgets) sort by where their hosts are; compareDocumentPosition alone gives an arbitrary
+ * order for nodes in different trees. A host comes before its shadow content.
+ */
 export function compareDocumentOrder(a: Element, b: Element): number {
   if (a === b) return 0;
-  const pos = a.compareDocumentPosition(b);
-  if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-  if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-  return 0;
+  const ca = composedChain(a);
+  const cb = composedChain(b);
+  for (let i = 0; i < ca.length && i < cb.length; i++) {
+    const x = ca[i]!;
+    const y = cb[i]!;
+    if (x === y) continue;
+    const pos = x.compareDocumentPosition(y);
+    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  }
+  return ca.length - cb.length;
 }

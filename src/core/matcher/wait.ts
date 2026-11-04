@@ -4,7 +4,7 @@
  * shadow root on the step's shadowPath, because a document observer does not see inside them.
  */
 import type { ElementFingerprint } from '../model/schema';
-import { resolveSelector } from '../fingerprint/selectors';
+import { shadowPathLevels } from '../fingerprint/selectors';
 import { matchOnce, type MatchOptions, type MatchResult } from './match';
 
 export const WAIT_TIMEOUT_MS = 8000;
@@ -37,16 +37,14 @@ export function waitForMatch(doc: Document, fp: ElementFingerprint, opts: WaitOp
     const observer = new MutationObserver(() => schedule());
     const observeOpts: MutationObserverInit = { subtree: true, childList: true, attributes: true, characterData: true };
 
+    // Every shadow root the path reaches, at every level: all twins of a host are searched.
     const observeShadowPath = () => {
-      let root: Document | ShadowRoot = doc;
-      for (const sel of fp.shadowPath) {
-        const sr: ShadowRoot | null | undefined = resolveSelector(root, sel)?.shadowRoot;
-        if (!sr) break;
-        if (!observed.has(sr)) {
+      for (const level of shadowPathLevels(doc, fp.shadowPath)) {
+        for (const sr of level) {
+          if (observed.has(sr)) continue;
           observed.add(sr);
           observer.observe(sr, observeOpts);
         }
-        root = sr;
       }
     };
 

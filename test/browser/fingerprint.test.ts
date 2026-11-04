@@ -64,6 +64,13 @@ describe('fingerprint privacy and stability filters', () => {
     expect(fb.cssPath).toBe('div#fp-root button.btn');
   });
 
+  it('keeps camelCase ids, test ids and names (review L1)', () => {
+    html(`<button id="addToCart">Add</button><input name="firstNameInput" aria-label="First"><button data-testid="deleteRowButton">Delete</button>`);
+    expect(buildFingerprint(document.getElementById('addToCart')!).id).toBe('addToCart');
+    expect(buildFingerprint(host().querySelector('input')!).name).toBe('firstNameInput');
+    expect(buildFingerprint(host().querySelector('[data-testid]')!).testId).toEqual({ attr: 'data-testid', value: 'deleteRowButton' });
+  });
+
   it('prefers data-guide-id and test ids (fast path)', () => {
     html(`<button data-guide-id="save" class="a">Save</button><button data-testid="other">Save</button>`);
     const fp = buildFingerprint(host().querySelector('[data-guide-id]')!);

@@ -121,6 +121,7 @@ Each entry: date, spec section, what changed, why.
 - **Spec**: Data model (`accessibleName` sources); Template step text (`{name}` fallback).
 - **Change**: a button, link, tab, option or similar widget with no own text and no aria-label or label takes its accessible name from the first icon inside it that is not `aria-hidden`: `img[alt]`, an `aria-label`, or an `<svg><title>`. This matches how browsers compute the name from content.
 - **Why**: GitHub's branch menu close button (an `svg` with a label inside a `button`) was recorded as "Click **the button**", with no strong signal for playback.
+- **Superseded by R2** after merging PR #1: the browser-style accessible name there already takes descendant aria-labels, image `alt` and svg `<title>` for name-from-content roles. The D23 tests still pass on it.
 
 ### D24. "Clickable" stays the spec's list for now
 - **Spec**: Element targeting, record step 1.
@@ -206,3 +207,41 @@ Each entry: date, spec section, what changed, why.
 ### D37. Known limitation: outside-click isolation
 - **Spec**: Player, Overlay ("The host stops pointer, mouse and click events from reaching the app").
 - **Finding**: the overlay host stops these events in the bubble phase. App listeners in the capture phase on `window` or `document`, and the browser's light dismiss of `popover="auto"` elements, still see clicks on the tooltip, so some app menus may close when the learner presses Next. Stopping them in the capture phase at `window` would also stop the event before it reaches the tooltip's own buttons inside the shadow root. Left as is for v1; revisit if pilots hit it.
+## Review fixes (PR #1)
+
+Behavior changes made for the verified review findings on PR #1. IDs are R-numbers so they never collide with the D-entries.
+
+### R1. camelCase ids, test ids and names are kept (review L1)
+- **Spec**: Element targeting, record step 2 (drop ids that look generated).
+- **Change**: a token segment is only judged random by its case transitions when it does not read as camelCase words. The segment is split into words (`addToCart` → add, To, Cart; `getHTMLElement` → get, HTML, Element); it is kept when it has a word of 3+ letters and no two-letter chunk without a vowel. Every explicit pattern (`css-1x9f2k`, `sc-`, `jss12`, `:r0:`, `ember123`, UUIDs, long digit runs, hex) still applies first.
+- **Why**: `addToCart`, `firstNameInput` and `deleteRowButton` have four case transitions, as many as a hash, so they were dropped as id, test id and `name`. Hash fragments split into short vowelless chunks (`bdVaJa` → bd, `xKq3Fz` → Kq), so they stay filtered.
+
+### R2. Accessible names follow the browser for input buttons, images and `title` (review H1)
+- **Spec**: Data model (`accessibleName`: "aria-label, aria-labelledby or `<label>` text"); extends D2.
+- **Change**: after aria-labelledby, aria-label and `<label>` text, the name is: the `value` of `input` type button / submit / reset; `alt` (then `value`) of `input type=image`; `alt` of `img` / `area`; for name-from-content roles (button, link, menuitem, option, tab, checkbox, radio, switch, treeitem), the content name with image `alt`, descendant `aria-label`s and an svg's `<title>`; then `title` for every element; then `placeholder` for fields. A content name that is only the element's own text is not stored as the accessible name (it is the own-text signal already, and storing it twice would double its weight when text changes), so `title` never overrides visible text. The data-like filter still applies. Only `value` attributes of button-type inputs are read, never a typed field value.
+- **Why**: icon links labelled by `title` or by an `<img alt>`, and Rails-style `<input type=submit value="Publish">`, had no name at all, so look-alikes were told apart by nothing and recording "Edit" spotlighted "Delete".
+
+### R3. A link back to the current page has no link path
+- **Spec**: Element targeting, playback step 3 (link path is a strong signal).
+- **Change**: an `href` that is empty, a fragment (`#`, `#top`) or a query alone (`?page=2`) stores no `hrefPath`, and at playback such a candidate never matches a recorded link path.
+- **Why**: its link path is the page's own path, shared by every such link on the page, so it made unrelated `href="#"` icon links strong look-alikes of each other. Hash-routed (`#/…`) links fall in the same bucket for now; a route-aware link path for hash-routing profiles can come later.
+
+### R4. `name` is group-level on radios, checkboxes and buttons; radios and checkboxes store their `value`
+- **Spec**: Data model (new optional `ElementFingerprint.value`); Element targeting, playback step 3 (`name` attribute is strong).
+- **Change**: the `name` signal is not strong on `input` type radio / checkbox / submit / button / reset / image and on `<button>`, where a whole group shares it (`name="plan"`, `name="commit"`). Radios and checkboxes also store their `value` attribute (author-defined, not typed; dropped when data-like or generated); the `name` signal then requires both name and value to match and is strong again, because the pair says which option it is. Button-type inputs get their identity from their `value` through the accessible name (R2).
+- **Why**: unlabeled radios Monthly / Yearly sharing `name="plan"`, and submit buttons sharing `name="commit"`, matched each other on a strong signal.
+
+### R5. `instance: 'any'` only for groups that share an identifying signal
+- **Spec**: Element targeting, record step 3 and playback step 5; refines D5.
+- **Change**: at record time, more than one indistinguishable element sets `instance: 'any'` only when the fingerprint has an element-identifying signal: text, role plus accessible name, test id (or `data-guide-id`) or id. Otherwise it stays `unique` (with `matchCount` above 1), so playback applies the unique margin and returns ambiguous. At playback, the tied group of an `any` fingerprint must also share one of those signals; if the best candidate matched none of them, the unique rules apply instead. This covers crafted or older fingerprints too.
+- **Why**: a shared `name` or link path is group-level. A group held together only by those (a radio group, nameless icon links to the same page) is not a set of interchangeable elements, and spotlighting its first member, or advancing on a click on any member, was a wrong match. Cost: when the text of repeated row links changes (mutation set B), they are now not-found instead of matched on their shared link path.
+
+### R6. Every root a shadow path matches is searched (review H2)
+- **Spec**: Element targeting, playback steps 1, 2 and 6; Data model (`shadowPath`).
+- **Change**: each shadow path step resolves to every host it matches (`querySelectorAll`) in every root of the level above, and candidates from all the resulting shadow roots are scored together. The fast path counts test id / `data-guide-id` matches across every searched root (the twins, or the document plus every open shadow root when the path broke) and takes only a single match overall. Shadow path steps are now the host's CSS path even when other hosts match it too (XPath only if the CSS path does not select the host), so twins present at record time are counted like light DOM twins: `instance: 'any'` when they share an identifying signal (R5), ambiguous otherwise. The wait loop observes every shadow root on the path, at every level. Ties across shadow roots sort in composed-tree order (by host position). Iframe selectors (`framePath`) are unchanged and still unique.
+- **Why**: the path resolved with `querySelector` to the first matching host, so an identical widget inserted before the recorded one was the only root searched and its button scored 100, where the light DOM equivalent is ambiguous. With a broken path and the same test id in two widgets, the fast path took the first root that had exactly one match.
+
+### R7. A visually hidden form control is found and shown through its visible label (review M6)
+- **Spec**: Element targeting, record step 1 ("a `<label>` resolves to its control") and playback steps 3 and 5 ("visible" candidates, spotlight).
+- **Change**: the target stays the control (it carries the name, value and label signals), but a form control that is not visible counts as visible when one of its `<label>`s is, and that label is its display box: the recorded `rect`, the "position near the recorded spot" signal and the fast path all use it. A match result has a new `spotlight` element, the box the overlay outlines: the element itself, or that label. `element` and `tied` stay the controls, so advancing still listens for clicks on them; a click on the label reaches the control through the label's activation behavior (it toggles the checkbox). A control whose labels are hidden too is still not visible.
+- **Why**: custom checkboxes and switches hide the native input (`opacity: 0` at 0x0, or `display: none`) and style the label. The visibility filter dropped the input, so such a step returned no-candidates even on the unchanged page.

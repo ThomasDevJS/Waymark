@@ -2,9 +2,9 @@
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { cssEscape, getRole, nearestInteractive, openShadowRoots, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
-import { GUIDE_ID_ATTR, resolveShadowPath, resolveXPath } from '../fingerprint/selectors';
+import { GUIDE_ID_ATTR, resolveShadowPathAll, resolveXPath } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
-import { linkPath } from '../url/url';
+import { isSamePageHref, linkPath } from '../url/url';
 import { passesTagFilter } from './signals';
 
 export const FALLBACK_CAP = 500;
@@ -36,12 +36,13 @@ function qsa(root: Document | ShadowRoot, selector: string): Element[] {
   }
 }
 
-/** Roots to search: the shadow root at the end of shadowPath, else the document (plus every open shadow root if the path broke). */
+/**
+ * Roots to search: every shadow root the shadowPath reaches (all twins of a host, so they are
+ * scored together), else the document (plus every open shadow root if the path broke).
+ */
 export function searchRoots(doc: Document, fp: ElementFingerprint): (Document | ShadowRoot)[] {
   if (!fp.shadowPath.length) return [doc];
-  const root = resolveShadowPath(doc, fp.shadowPath);
-  if (root) return [root];
-  return [doc, ...openShadowRoots(doc)];
+  return resolveShadowPathAll(doc, fp.shadowPath) ?? [doc, ...openShadowRoots(doc)];
 }
 
 export function gatherCandidates(
@@ -59,6 +60,7 @@ export function gatherCandidates(
     if (fp.testId) add(qsa(root, `[${cssEscape(fp.testId.attr)}="${cssEscape(fp.testId.value)}"]`));
     if (fp.id) add(qsa(root, `#${cssEscape(fp.id)}`));
     if (fp.name) add(qsa(root, `[name="${cssEscape(fp.name)}"]`));
+    if (fp.value !== undefined) add(qsa(root, `input[value="${cssEscape(fp.value)}"]`));
     if (fp.role && fp.accessibleName) {
       const want = normText(fp.accessibleName);
       add(qsa(root, roleSelector(fp.role)).filter((e) => getRole(e) === fp.role && normText(rawAccessibleName(e)) === want));
@@ -72,7 +74,12 @@ export function gatherCandidates(
       const want = normText(fp.placeholder);
       add(qsa(root, '[placeholder]').filter((e) => normText(e.getAttribute('placeholder')) === want));
     }
-    if (fp.hrefPath) add(qsa(root, '[href]').filter((e) => linkPath(e.getAttribute('href') ?? '', opts.base) === fp.hrefPath));
+    if (fp.hrefPath) {
+      add(qsa(root, '[href]').filter((e) => {
+        const href = e.getAttribute('href') ?? '';
+        return !isSamePageHref(href) && linkPath(href, opts.base) === fp.hrefPath;
+      }));
+    }
     if (fp.cssPath) add(qsa(root, fp.cssPath));
     if (fp.xpath) {
       const x = resolveXPath(root, fp.xpath);
