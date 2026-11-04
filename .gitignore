@@ -10,3 +10,4 @@ playwright-report
 __screenshots__
 *.log
 artifacts
+.claude/settings.local.json
