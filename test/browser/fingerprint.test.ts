@@ -148,3 +148,16 @@ describe('icon-only buttons and links', () => {
     expect(fp('e').accessibleName).toBe('Outer');
   });
 });
+
+describe('targets with no strong signal (issue #6)', () => {
+  it('reports not-found at once instead of waiting out the timeout', async () => {
+    const p = document.createElement('p');
+    p.textContent = 'You have 3 overdue invoices this month. This sentence is plain text, not a button.';
+    host().append(p);
+    const fp = buildFingerprint(p);
+    const t0 = performance.now();
+    const r = await waitForMatch(document, fp, { timeoutMs: 3000 });
+    expect(r).toMatchObject({ status: 'not-found', reason: 'no-strong-signal' });
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+});

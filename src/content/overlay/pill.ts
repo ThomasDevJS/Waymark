@@ -19,9 +19,19 @@ const CSS = `
 `;
 
 let pill: HTMLElement | null = null;
+let lastView: RecordingView | null = null;
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** How long a notice replaces the last step in the pill. */
+export const FLASH_MS = 4000;
 
 export function showPill(view: RecordingView): void {
   if (window !== window.top) return;
+  lastView = view;
+  if (flashTimer) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
   if (!view.active) {
     pill?.remove();
     pill = null;
@@ -53,7 +63,26 @@ export function showPill(view: RecordingView): void {
   pill.replaceChildren(dot, label, last);
 }
 
+/** Shows a short notice in the pill for a few seconds, then the last step again. */
+export function flashPill(text: string): void {
+  if (window !== window.top || !pill?.isConnected || !lastView) return;
+  const view = lastView;
+  const last = pill.querySelector('.last');
+  if (!last) return;
+  last.textContent = text;
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    flashTimer = null;
+    if (pill?.isConnected) showPill(view);
+  }, FLASH_MS);
+}
+
 export function hidePill(): void {
+  if (flashTimer) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
+  lastView = null;
   pill?.remove();
   pill = null;
 }

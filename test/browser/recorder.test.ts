@@ -179,3 +179,66 @@ describe('review regressions', () => {
     host.remove();
   });
 });
+
+describe('steps that could never play back (issue #6)', () => {
+  it('skips clicks whose target has no strong signal and reports each skip', async () => {
+    const skipped: string[] = [];
+    rec?.stop();
+    rec = createRecorder({ emit: (op) => ops.push(op), onSkip: (reason) => skipped.push(reason) });
+    const box = document.createElement('div');
+    const long = document.createElement('p');
+    long.textContent = 'You have 3 overdue invoices this month. This sentence is plain text, not a button.';
+    const host = document.createElement('quick-pay-x');
+    host.attachShadow({ mode: 'closed' }).append(Object.assign(document.createElement('button'), { textContent: 'Quick pay' }));
+    host.style.cssText = 'display:inline-block;width:80px;height:30px';
+    const short = document.createElement('p');
+    short.textContent = 'Overview';
+    box.append(long, host, short);
+    document.body.append(box);
+    await userEvent.click(long);
+    await userEvent.click(host);
+    await userEvent.click(short);
+    await settle();
+    expect(titles()).toEqual(['click: Click **Overview**']);
+    expect(skipped).toEqual(['unfindable', 'unfindable']);
+    box.remove();
+  });
+});
+
+describe('skips keep the merge rules (issue #6 review)', () => {
+  const setup = () => {
+    const skipped: string[] = [];
+    rec?.stop();
+    rec = createRecorder({ emit: (op) => ops.push(op), onSkip: (reason) => skipped.push(reason) });
+    return skipped;
+  };
+
+  it('Enter in a field submits through the field when the default button has no name', async () => {
+    setup();
+    const form = document.createElement('form');
+    const input = Object.assign(document.createElement('input'), { name: 'q', placeholder: 'Search' });
+    const button = document.createElement('button');
+    button.append(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+    form.append(input, button);
+    form.addEventListener('submit', (e) => e.preventDefault());
+    document.body.append(form);
+    await userEvent.click(input);
+    await userEvent.keyboard('abc{Enter}');
+    await settle();
+    expect(titles()).toEqual(['input: Enter Search', 'submit: Submit the form']);
+    expect(steps()[1]!.target?.placeholder).toBe('Search');
+    form.remove();
+  });
+
+  it('typing into a field Waymark cannot find again reports one skip, not one per key', async () => {
+    const skipped = setup();
+    const input = document.createElement('input');
+    document.body.append(input);
+    await userEvent.click(input);
+    await userEvent.keyboard('hello');
+    await settle();
+    expect(titles()).toEqual([]);
+    expect(skipped).toEqual(['unfindable']);
+    input.remove();
+  });
+});
