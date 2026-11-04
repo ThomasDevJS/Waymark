@@ -27,6 +27,7 @@ const guide = (lang: string): Guide => ({
 
 let voices: Voice[];
 let local: Record<string, unknown>;
+let tabUrl = 'https://app.test/x';
 const getVoices = vi.fn((cb: (v: Voice[]) => void) => cb(voices));
 const speak = vi.fn();
 const stop = vi.fn();
@@ -41,7 +42,7 @@ function fakeChrome() {
       },
       session: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) },
     },
-    tabs: { get: vi.fn(async (id: number) => ({ id, active: true, windowId: 1 })), sendMessage: vi.fn(async () => undefined) },
+    tabs: { get: vi.fn(async (id: number) => ({ id, active: true, windowId: 1, url: tabUrl })), sendMessage: vi.fn(async () => undefined) },
     windows: { getLastFocused: vi.fn(async () => ({ id: 1 })) },
   };
 }
@@ -54,6 +55,7 @@ beforeEach(() => {
   getVoices.mockClear();
   speak.mockClear();
   stop.mockClear();
+  tabUrl = 'https://app.test/x';
   vi.stubGlobal('chrome', fakeChrome());
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -132,5 +134,18 @@ describe('chrome.tts voice choice', () => {
     expect(await speakSample('en')).toBe(false);
     expect(speak).not.toHaveBeenCalled();
     expect((await listVoices()).voices).toEqual([]);
+  });
+});
+
+describe('D47: a step is spoken only on its own sites', () => {
+  it('stays silent when the tab shows another site', async () => {
+    voices = mac;
+    tabUrl = 'https://other.example/';
+    const { speakCurrentStep } = await import('../../src/background/voice');
+    await speakCurrentStep(7, startRun(guide('en')));
+    expect(speak).not.toHaveBeenCalled();
+    tabUrl = 'https://app.test/x';
+    await speakCurrentStep(7, startRun(guide('en')));
+    expect(speak).toHaveBeenCalledTimes(1);
   });
 });
