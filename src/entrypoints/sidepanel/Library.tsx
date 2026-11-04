@@ -17,8 +17,10 @@ const all = signal<Guide[]>([]);
 const query = signal('');
 const selected = signal<Set<string>>(new Set());
 const exporting = signal<Guide[] | null>(null);
-const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice> } | null>(null);
+const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice>; origins: string[] } | null>(null);
 const pending = signal<string[]>([]);
+/** Sites the user unticked in the Allow banner (D47: every site is shown and can be left out). */
+const unticked = signal<Set<string>>(new Set());
 const message = signal<string | null>(null);
 const error = signal<string | null>(null);
 
@@ -41,11 +43,19 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-/** One Allow request for every site a pack or library uses (needs this click: SPEC A15). */
+/** The sites one Allow click requests: every listed site the user left ticked. */
+export function originsToAllow(pendingOrigins: string[], untickedOrigins: Set<string>): string[] {
+  return pendingOrigins.filter((o) => !untickedOrigins.has(o));
+}
+
+/** One Allow request for the ticked sites a pack or library uses (needs this click: SPEC A15). */
 async function allowAll() {
-  const origins = pending.value;
+  const origins = originsToAllow(pending.value, unticked.value);
+  if (!origins.length) return;
   const ok = await chrome.permissions.request({ origins: origins.map(originToMatchPattern) }).catch(() => false);
+  // Unticked sites count as "Not now".
   if (ok) await send('allow.dismiss', {});
+  unticked.value = new Set();
   await load();
 }
 
@@ -62,7 +72,7 @@ async function readFile(file: File) {
     error.value = check.error ?? 'This file is not a Waymark pack.';
     return;
   }
-  importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])) };
+  importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])), origins: check.origins };
 }
 
 /** A link to the guide's start page that offers the guide (SPEC: Discovery, "Deep link"). */
@@ -146,10 +156,29 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     <>
       {pending.value.length > 0 && (
         <div class="row banner" role="status" data-testid="allow-banner">
-          <span class="grow">
-            Your guides run on {pending.value.length === 1 ? pending.value[0] : `${pending.value.length} sites`}. Allow Waymark there to see and play them.
-          </span>
-          <button type="button" class="primary" data-testid="allow-all" onClick={() => void allowAll()}>
+          <div class="grow">
+            Your guides run on {pending.value.length === 1 ? 'this site' : `these ${pending.value.length} sites`}. Allow Waymark there to see and play them.
+            <ul class="sites" data-testid="allow-sites">
+              {pending.value.map((o) => (
+                <li key={o}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!unticked.value.has(o)}
+                      onChange={(e) => {
+                        const next = new Set(unticked.value);
+                        if ((e.target as HTMLInputElement).checked) next.delete(o);
+                        else next.add(o);
+                        unticked.value = next;
+                      }}
+                    />{' '}
+                    {o}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <button type="button" class="primary" data-testid="allow-all" disabled={!originsToAllow(pending.value, unticked.value).length} onClick={() => void allowAll()}>
             Allow
           </button>
           <button type="button" onClick={() => void send('allow.dismiss', {}).then(load)}>
@@ -167,6 +196,11 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </li>
             ))}
           </ul>
+          {imp.origins.length > 0 && (
+            <p class="muted" data-testid="import-sites">
+              Runs on: {imp.origins.join(', ')}
+            </p>
+          )}
           {imp.conflicts.map((c) => (
             <label key={c.id} class="grow">
               <span class="muted">You already have a different copy of “{c.existingTitle}”.</span>

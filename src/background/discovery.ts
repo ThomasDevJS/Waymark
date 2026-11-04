@@ -47,6 +47,8 @@ export async function updateAllBadges(): Promise<void> {
 const SITE_KEY = 'siteSettings';
 const PENDING_KEY = 'pendingAllow';
 const DISMISSED_KEY = 'dismissedAllow';
+/** Sites the Allow banner can list at once; each is shown by name and can be unticked (D47). */
+export const MAX_PENDING_ALLOW = 50;
 
 async function grantedOrigin(o: string): Promise<boolean> {
   try {
@@ -98,7 +100,9 @@ async function addPendingAllow(origins: string[]): Promise<void> {
     if (cur.includes(o) || dismissed.includes(o) || !isSiteOrigin(o)) continue;
     if (!(await grantedOrigin(o))) missing.push(o);
   }
-  if (missing.length) await chrome.storage.local.set({ [PENDING_KEY]: [...cur, ...missing].sort() });
+  // A pack or library cannot queue an unbounded list of sites for the one Allow click (D47).
+  const room = Math.max(0, MAX_PENDING_ALLOW - cur.length);
+  if (missing.length && room) await chrome.storage.local.set({ [PENDING_KEY]: [...cur, ...missing.slice(0, room)].sort() });
 }
 
 async function pendingAllow(): Promise<string[]> {

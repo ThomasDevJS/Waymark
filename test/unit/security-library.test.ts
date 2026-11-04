@@ -90,3 +90,27 @@ describe('site settings (D47)', () => {
     expect(Object.keys(stored)).toEqual(['https://app.test']);
   });
 });
+
+describe('one Allow click (D47)', () => {
+  it('queues at most 50 sites from a pack, each listed by name', async () => {
+    const fake = fakeChrome('');
+    fake.permissions.contains = async () => false;
+    vi.stubGlobal('chrome', fake);
+    const { discoveryHandlers, MAX_PENDING_ALLOW } = await import('../../src/background/discovery');
+    const origins = Array.from({ length: 300 }, (_, i) => `https://s${i}.example`);
+    const guides = Array.from({ length: 6 }, (_, g) => ({
+      id: `g${g}`, schemaVersion: 1, revisionId: `r${g}`, title: `G${g}`, lang: 'en', tags: [],
+      appOrigins: origins.slice(g * 50, g * 50 + 50), startUrl: `${origins[g * 50]}/`, matchUrls: [], steps: [],
+      version: 1, source: 'local', updatedAt: '2026-01-01T00:00:00Z',
+    }));
+    const text = JSON.stringify({ format: 'waymark-pack', formatVersion: 1, exportedAt: '2026-01-01T00:00:00Z', guides });
+    await discoveryHandlers['pack.import']!({ text, choices: {} }, {} as never);
+    const pending = (await discoveryHandlers['allow.pending']!({}, {} as never)) as { origins: string[] };
+    expect(MAX_PENDING_ALLOW).toBe(50);
+    expect(pending.origins.length).toBeLessThanOrEqual(50);
+  });
+  it('requests only the sites left ticked', async () => {
+    const { originsToAllow } = await import('../../src/entrypoints/sidepanel/Library');
+    expect(originsToAllow(['https://a.test', 'https://b.test'], new Set(['https://b.test']))).toEqual(['https://a.test']);
+  });
+});
