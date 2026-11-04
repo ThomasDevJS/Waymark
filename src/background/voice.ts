@@ -6,6 +6,8 @@
 import type { ContentPush } from '../core/messaging/protocol';
 import { currentStep, type Run } from '../core/player/run';
 import { enqueue } from '../core/storage/queue';
+import { getHdStatus, hdSpeak, hdStop } from './hd';
+import { hdSpeed, useHd } from '../core/voice/hd';
 import { DEFAULT_VOICE_SETTINGS, pickVoice, usableVoices, VoiceSettingsSchema, voiceTextFor, type VoiceSettings } from '../core/voice/voice';
 
 const SETTINGS_KEY = 'voiceSettings';
@@ -50,6 +52,7 @@ const FALLBACK_TAB_KEY = 'ttsFallbackTab';
 
 export function stopSpeech(): void {
   if (ttsAvailable()) chrome.tts.stop();
+  hdStop();
   void chrome.storage.session.get(FALLBACK_TAB_KEY).then((r) => {
     const tabId = r[FALLBACK_TAB_KEY] as number | undefined;
     if (tabId === undefined) return;
@@ -94,7 +97,25 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
   if (!settings.autoPlay || settings.muted) return;
   // One voice channel: only the focused tab speaks.
   if (!(await isFocusedTab(tabId))) return;
-  await speak(tabId, voiceTextFor(step), run.guideSnapshot.lang, settings);
+  const text = voiceTextFor(step);
+  const lang = run.guideSnapshot.lang;
+  if (text && useHd(await getHdStatus(), lang)) {
+    // The next step's text is generated while this one plays, so it starts at once.
+    const nextStep = run.guideSnapshot.steps[run.stepIndex + 1];
+    const next = nextStep ? voiceTextFor(nextStep) || null : null;
+    if (await hdSpeak(run.stepToken, text, hdSpeed(settings.rate), next)) return;
+  }
+  await speak(tabId, text, lang, settings);
+}
+
+const SAMPLE = 'This is how Waymark will read your guides.';
+
+/** "Test HD voice" in the options page. */
+export async function speakHdSample(): Promise<boolean> {
+  const settings = await getVoiceSettings();
+  if (!useHd(await getHdStatus(), 'en')) return false;
+  stopSpeech();
+  return hdSpeak(`sample-${Date.now()}`, SAMPLE, hdSpeed(settings.rate), null);
 }
 
 /** "Test voice" in the options page: a fixed sample, never user-supplied text. */
@@ -104,6 +125,6 @@ export async function speakSample(lang = 'en'): Promise<boolean> {
   const voice = pickVoice(await getVoices(), lang, settings, uiLang());
   if (!voice) return false;
   chrome.tts.stop();
-  chrome.tts.speak('This is how Waymark will read your guides.', { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
+  chrome.tts.speak(SAMPLE, { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
   return true;
 }

@@ -6,6 +6,8 @@ import { originToMatchPattern } from '../../core/url/url';
 import type { LibraryState } from '../../background/discovery';
 import type { Problem } from '../../core/storage/problems';
 import { libraryUrlAllowed } from '../../core/sharing/library';
+import { useHd } from '../../core/voice/hd';
+import { HdVoice, hdStatus } from './HdVoice';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
@@ -145,7 +147,11 @@ export function Options() {
           </select>
         </label>
         {forLang.length === 0 && <p class="muted">No on-device voice for this language: guides stay silent; their text still shows.</p>}
-        {available.value && inUse && (
+        {useHd(hdStatus.value, lang.value) ? (
+          <p data-testid="voice-in-use">
+            In use: <strong>HD voice</strong> (on this device)
+          </p>
+        ) : available.value && inUse && (
           <p data-testid="voice-in-use">
             In use: <strong>{inUse.voiceName}</strong>
             {inUse.remote ? ' (online)' : ' (on this device)'}
@@ -184,6 +190,7 @@ export function Options() {
           {status.value && <span role="status">{status.value}</span>}
         </div>
       </section>
+      <HdVoice />
       <section class="site" aria-label="Team library">
         <h2>Team library</h2>
         <p class="muted">

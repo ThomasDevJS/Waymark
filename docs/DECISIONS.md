@@ -318,3 +318,43 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Fallback**: the `speechSynthesis` fallback (no `chrome.tts`) uses the same ranking over on-device voices. It cannot honor the user's choice, because settings never reach content scripts.
 - **Unverified on real machines**: whether Chrome and Edge show macOS "(Premium)"/"(Enhanced)" in voice names, and the exact ChromeOS menu path. On Windows, the natural voices added for Narrator are Narrator-only, so the Windows help says so and points to Edge's online natural voices. Speech-dispatcher modules on Linux (RHVoice, Piper) have no telling names, so Settings may still call them basic.
 - **Review fixes** (independent review, each with a regression test that fails on the first version): voices without `lang`, CamelCase names, script subtags, a saved online voice with online voices off, and a stale saved voice no longer blanking the picker.
+
+## 2026-11-05 — HD voice (issue #4, part 2)
+
+### D47. Optional on-device HD voice: Kokoro-82M, without GPL code
+- **Spec**: Voiceover and AI text; Permissions, privacy and security; Distribution and cost.
+- **Change**: a new opt-in **HD voice** in Settings. It is the Kokoro-82M neural voice (Apache-2.0), run by transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. Before, voices came only from the browser.
+- **Why Kokoro**: a spike in Chromium compared Kokoro and Piper ([results on #4](https://github.com/ThomasDevJS/Waymark/issues/4#issuecomment-6645098454)).
+  - Kokoro sounds far more natural. Its weights and voices are Apache-2.0.
+  - Piper is about 7× faster, but its good English voices are often non-commercial.
+- **License decision (provisional; Thomas may reverse it)**: both engines phonemize with eSpeak NG, which is GPL-3.0. That includes the npm `phonemizer` package that kokoro-js uses. To ship no GPL code, Waymark has its own English G2P (`src/core/voice/g2p/`). It reads words from the misaki lexicon (Apache-2.0; the dictionaries Kokoro was trained with), downloaded as data with the model. For unknown words it tries, in order:
+  1. word forms (-s, -es, -ed, -ing);
+  2. CamelCase and two-word compounds ("dropdown", "Gmail", "QuickBooks");
+  3. spelled acronyms ("CSV", "PDFs");
+  4. numbers, money, times, emails and web addresses as words;
+  5. rough letter-to-sound rules ("Jira", "Okta").
+
+  The phonemizer sits behind one function type (`Phonemizer` in `src/offscreen/kokoro.ts`), so a GPL engine could be swapped in if Thomas accepts GPL-3. Consequence: the HD voice is English only. Other languages keep the system voice.
+- **Model size**: fp16 (163 MB), not q8 (92 MB). On the spike machine (4 vCPU, no GPU), q8 ran at about 1.9× real time with 4 threads, over the 1.5× limit. fp16 ran at about 0.8–0.95×. Listening samples of both are in the PR.
+- **Download**:
+  - The opt-in click requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*`. Both serve CORS, but the permission makes the consent explicit and keeps the download working if that changes.
+  - The offscreen document fetches seven files at pinned revisions: Kokoro `1939ad2a…`, misaki `fba12365…`. It checks each file's size and SHA-256 and stores them in Cache Storage (`waymark-hd-v1`).
+  - When the download ends (ready, too slow or failed), the service worker removes the host permissions it added. A host the user had already granted is left alone.
+  - `grantedSitePatterns` never treats these two hosts as guide sites, so the content script is not registered there, even during the download. The cost: guides can't run on huggingface.co or raw.githubusercontent.com.
+- **Loading**: transformers.js reads only Cache Storage. Remote models are off, and its local path doesn't exist, so a missing file fails instead of fetching. ORT's `.wasm` ships in the extension (`/ort/`) and `wasmPaths` points there. The `onnxruntime-web` import is aliased to its WebAssembly-only bundle (no WebGPU), which adds about 11 MB unpacked (about 3 MB zipped).
+- **Manifest**:
+  - `extension_pages` CSP is `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`; without it, compiling the WebAssembly fails. The manifest guard now requires exactly this CSP.
+  - COEP `require-corp` and COOP `same-origin` make extension pages cross-origin isolated, so ORT can use up to 4 threads; one thread was about 3× slower than real time. The full e2e suite (side panel, options, library subscribe and refresh) passes with them.
+  - New permission `offscreen`, which shows no install warning. Still no `host_permissions` and no `content_scripts`.
+- **Offscreen document**: reasons `AUDIO_PLAYBACK` and `WORKERS`. With `AUDIO_PLAYBACK` alone, Chrome closes the document 30 s after audio stops, which killed long generations in the spike. The service worker creates it on demand and closes it after 3 idle minutes (`hd-idle` alarm), because the model takes about 800 MB. The document acts only on messages from the service worker, by sender URL, with a Zod schema. Content scripts can send runtime messages that extension pages receive, so this check matters.
+- **Playback**:
+  - Each step sends its text plus the next step's text, which is generated while the current one plays. The player keeps 4 clips and runs one inference at a time.
+  - A step waits at most `HD_WAIT_MS` (4 s) for HD audio. After that, or on any engine error, it sends a cancel and the system voice reads the step.
+  - Speak and stop carry a timestamp, so a stop sent before a speak but delivered after it cannot cancel the new step.
+  - After the download, one sample sentence measures speed. If it takes more than 1.5× real time, the status is "too slow" and the system voice is used.
+  - fp16 inference can output NaN samples, which play as silence.
+- **Remove HD voice** deletes the cache, closes the document and releases any hosts still held. **Cancel** during a download does the same. A download whose document disappeared (browser closed) shows as failed, with **Try again**.
+- **Tests**:
+  - unit: the G2P, numbers and letter rules; the player (cache, prefetch, one inference at a time, cancellation, stale stops, speed check); the service worker (HD vs system voice, timeout and failure fallback, host release, remove); the offscreen sender check.
+  - e2e: a stub engine, only in test builds, so CI never downloads the model.
+- **Licenses**: `THIRD_PARTY_NOTICES.md` (also shipped in the extension) covers everything bundled or downloaded. Version 0.3.0.

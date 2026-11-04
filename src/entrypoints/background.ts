@@ -14,7 +14,8 @@ import { editorHandlers, endPick } from '../background/editor';
 import { discoveryHandlers, LIBRARY_ALARM, refreshLibrary, scheduleLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { rebuildIndex } from '../core/storage/guides';
 import { setupPanelFallback } from '../background/panel-fallback';
-import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
+import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample } from '../background/voice';
+import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
@@ -51,6 +52,16 @@ const handlers: Handlers = {
   'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
   'voice.settings.get': () => getVoiceSettings(),
   'voice.settings.set': ({ patch }) => setVoiceSettings(patch),
+  'hd.status': () => hdStatusForSettings(),
+  'hd.enable': ({ added }) => hdEnable(added),
+  'hd.remove': () => hdRemove(),
+  'hd.test': async () => ({ ok: await speakHdSample() }),
+  'hd.report': async (payload, ctx) => {
+    // Only the offscreen document reports; other extension pages may not.
+    if (ctx.sender.url !== chrome.runtime.getURL('/offscreen.html')) throw new Error('hd.report is for the offscreen document');
+    await onHdReport(payload);
+    return { ok: true as const };
+  },
   'tab.current': ({ windowId, tabId }) => tabInfo(windowId, tabId),
   'site.list': async () => {
     const { origins = [] } = await chrome.permissions.getAll();
@@ -118,6 +129,7 @@ export default defineBackground(() => {
   });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === LIBRARY_ALARM) void refreshLibrary();
+    if (alarm.name === HD_IDLE_ALARM) void onHdIdle();
   });
   // The badge learns the URL from tabs.onUpdated (readable on granted sites) and route reports.
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {

@@ -3,7 +3,8 @@
  * gets the stored voiceText once per step, and stop on step change and Exit.
  */
 import type { Page } from '@playwright/test';
-import { canGrant, expect, marker, test, type ExtensionHelper } from './fixtures';
+import { execFileSync } from 'node:child_process';
+import { canGrant, expect, KEYS_SCRIPT, marker, test, type ExtensionHelper } from './fixtures';
 
 test.skip(!canGrant, 'needs a headed browser under X (xvfb-run) to accept the permission dialog');
 
@@ -303,4 +304,68 @@ test('Settings shows the best-ranked voice in use; Edge natural online voices le
   await options.getByTestId('online').uncheck();
   await expect(options.getByTestId('voice-in-use')).toContainText('Ava (Premium)');
   await expect(options.getByTestId('voice')).toHaveValue('');
+});
+
+test('HD voice (stub engine): opt-in downloads, steps play in HD, a failure falls back to the system voice, Remove frees it', async ({ context, ext, site, extensionId }) => {
+  const sw = await ext.sw();
+  // CI must not download the model: the test build's stub engine stands in for Kokoro.
+  await sw.evaluate(() => chrome.storage.local.set({ 'test:hdStub': true }));
+  const { app, tabId } = await setup(context, ext, site);
+  const { guideId } = await record(ext, app, tabId, 'HD voice', [
+    (p) => p.getByRole('button', { name: 'Import', exact: true }).click(),
+    (p) => p.getByRole('button', { name: 'Export', exact: true }).click(),
+  ]);
+  const guide = await msg<{ revisionId: string; steps: { voiceText?: string }[] }>(ext, 'guide.get', { id: guideId });
+  guide.steps[0]!.voiceText = 'Import your orders.';
+  guide.steps[1]!.voiceText = 'Export them. STUB-FAIL';
+  await msg(ext, 'guide.save', { guide, baseRevisionId: guide.revisionId });
+  await sw.evaluate(() => {
+    const log: string[] = [];
+    (self as unknown as { __tts: string[] }).__tts = log;
+    chrome.tts.getVoices = ((cb: (v: chrome.tts.TtsVoice[]) => void) => cb([{ voiceName: 'Test Voice', lang: 'en-US', remote: false }])) as typeof chrome.tts.getVoices;
+    chrome.tts.speak = ((text: string) => void log.push(text)) as unknown as typeof chrome.tts.speak;
+    chrome.tts.stop = (() => undefined) as unknown as typeof chrome.tts.stop;
+  });
+  const ttsLog = () => sw.evaluate(() => (self as unknown as { __tts: string[] }).__tts.slice());
+  const hdLog = () => sw.evaluate(async () => ((await chrome.storage.session.get('test:hdPlayed'))['test:hdPlayed'] as string[] | undefined) ?? []);
+
+  // Opt in: the click asks for the two download hosts (accepted in Chrome's dialog).
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(options.getByTestId('hd-state')).toHaveText('Off.');
+  await expect(options.getByTestId('hd-enable')).toContainText('170 MB');
+  await options.bringToFront();
+  await options.getByTestId('hd-enable').click();
+  await options.waitForTimeout(1200);
+  execFileSync('python3', [KEYS_SCRIPT, 'Tab,Return']);
+  await expect(options.getByTestId('hd-state')).toHaveText('On. English guides use the HD voice.', { timeout: 15_000 });
+  await expect(options.getByTestId('voice-in-use')).toContainText('HD voice');
+  // The download hosts are released, and Waymark never runs on them.
+  const after = await sw.evaluate(async () => ({ perms: (await chrome.permissions.getAll()).origins ?? [], regs: (await chrome.scripting.getRegisteredContentScripts()).flatMap((r) => r.matches ?? []) }));
+  expect(after.perms).not.toContain('https://huggingface.co/*');
+  expect(after.perms).not.toContain('https://raw.githubusercontent.com/*');
+  expect(after.regs).toEqual(['http://127.0.0.1/*']);
+
+  await options.getByTestId('hd-test').click();
+  await expect.poll(hdLog).toEqual(['This is how Waymark will read your guides.']);
+
+  // A run: step 1 plays in HD; step 2's HD audio fails, so the system voice reads it.
+  await app.bringToFront();
+  await msg(ext, 'run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  await expect.poll(hdLog).toEqual(['This is how Waymark will read your guides.', 'Import your orders.']);
+  expect(await ttsLog()).toEqual([]);
+  await app.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:1');
+  await expect.poll(ttsLog).toEqual(['Export them. STUB-FAIL']);
+  expect((await hdLog()).length).toBe(2);
+  await tooltip(app).locator('[data-action="exit"]').click();
+  await expect.poll(() => marker(app, 'player')).toBe('off');
+
+  // Remove frees the model and closes the offscreen document; guides use the system voice again.
+  await options.bringToFront();
+  await options.getByTestId('hd-remove').click();
+  await expect(options.getByTestId('hd-state')).toHaveText('Off.');
+  await expect.poll(() => sw.evaluate(() => chrome.offscreen.hasDocument())).toBe(false);
+  await expect(options.getByTestId('voice-in-use')).toContainText('Test Voice');
 });
