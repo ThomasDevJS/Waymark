@@ -2,7 +2,7 @@
   "name": "waymark",
   "description": "Record click-by-click walkthroughs of web apps and replay them on the live page.",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
