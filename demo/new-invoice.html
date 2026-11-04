@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New invoice · Demo Invoices</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>New invoice</h1>
+  <form id="invoice-form" class="card" novalidate>
+    <h2>Customer <span class="tag">text fields</span></h2>
+    <label class="field"><span>Customer name</span><input type="text" name="customer" autocomplete="off" /></label>
+    <label class="field"><span>Email</span><input type="email" name="email" autocomplete="off" /></label>
+
+    <h2>Details <span class="tag">dropdown, date, number, radio</span></h2>
+    <label class="field"><span>Payment terms</span>
+      <select name="terms">
+        <option value="">Choose…</option>
+        <option value="7">Net 7</option>
+        <option value="30">Net 30</option>
+        <option value="60">Net 60</option>
+      </select>
+    </label>
+    <label class="field"><span>Due date</span><input type="date" name="due" /></label>
+    <label class="field"><span>Amount</span><input type="number" name="amount" min="0" step="0.01" /></label>
+    <fieldset>
+      <legend>Currency</legend>
+      <label><input type="radio" name="currency" value="usd" checked /> USD</label>
+      <label><input type="radio" name="currency" value="eur" /> EUR</label>
+      <label><input type="radio" name="currency" value="gbp" /> GBP</label>
+    </fieldset>
+
+    <h2>Options <span class="tag">checkbox, switch</span></h2>
+    <p><label><input type="checkbox" name="copy" /> Send me a copy</label></p>
+    <p><button type="button" class="switch" role="switch" aria-checked="false"><span class="track"></span> Recurring every month</button></p>
+
+    <label class="field"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
+
+    <div class="row">
+      <button type="button" id="preview-btn">Preview</button>
+      <button type="submit" class="primary">Create invoice</button>
+    </div>
+  </form>
+
+  <dialog id="preview">
+    <h2>Preview <span class="tag">modal dialog</span></h2>
+    <p>This is how the invoice will look. (Demo only.)</p>
+    <div class="row">
+      <button type="button" id="preview-close">Close</button>
+      <button type="button" id="preview-ok" class="primary">Looks good</button>
+    </div>
+  </dialog>
+</main>
+<script type="module">
+  import './header.js';
+  const dlg = document.getElementById('preview');
+  document.getElementById('preview-btn').addEventListener('click', () => dlg.showModal());
+  document.getElementById('preview-close').addEventListener('click', () => dlg.close());
+  document.getElementById('preview-ok').addEventListener('click', () => dlg.close());
+  // Values are never sent anywhere; submit just moves to the next page.
+  document.getElementById('invoice-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    location.href = 'invoice-created.html';
+  });
+</script>
+</body>
+</html>

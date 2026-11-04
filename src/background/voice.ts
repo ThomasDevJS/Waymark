@@ -103,7 +103,7 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
   const settings = await getVoiceSettings();
   if (!settings.autoPlay || settings.muted) return;
   // One voice channel: only the focused tab speaks, and only on the guide's own sites: a
-  // step is never read out (or sent to the speechSynthesis fallback) on another site (D47).
+  // step is never read out (or sent to the speechSynthesis fallback) on another site (D48).
   const tab = await focusedTab(tabId);
   if (!tab || !onGuideSite(tab.url, run.guideSnapshot.appOrigins)) return;
   await speak(tabId, voiceTextFor(step), run.guideSnapshot.lang, settings);

@@ -7,13 +7,13 @@
 export const NONCE_TTL_MS = 30_000;
 /**
  * Pending nonces kept per tab. A page can make its iframes post "hello" in a loop, and each
- * hello asks for a nonce: without a cap they would fill chrome.storage.session (D47).
+ * hello asks for a nonce: without a cap they would fill chrome.storage.session (D48).
  */
 export const MAX_PENDING_NONCES = 32;
 /**
  * Mapped frames kept per tab. A page can create and remove iframes in a loop; frames that are
  * gone are never reported, so the oldest (lowest frameId: Chromium numbers frames in order of
- * creation) are dropped first (D47).
+ * creation) are dropped first (D48).
  */
 export const MAX_MAPPED_FRAMES = 64;
 

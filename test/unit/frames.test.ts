@@ -35,7 +35,7 @@ describe('frame nonce registry', () => {
     expect(await claimNonce(kv, self, 7, 5)).toBe(false);
     expect(await claimNonce(kv, 'made-up', 7, 11)).toBe(false);
   });
-  // D47: a page can make its iframes post "hello" in a loop; every hello asks for a nonce.
+  // D48: a page can make its iframes post "hello" in a loop; every hello asks for a nonce.
   it('keeps pending nonces bounded per tab and drops expired ones', async () => {
     const m = new Map<string, unknown>();
     const kv = memKV(m);
@@ -52,7 +52,7 @@ describe('frame nonce registry', () => {
     await issueNonce(kv, 9, 0, 'iframe.b');
     expect(Object.keys(m.get('nonces:9') as object)).toHaveLength(1);
   });
-  it('keeps the frame map bounded when a page churns iframes (D47)', async () => {
+  it('keeps the frame map bounded when a page churns iframes (D48)', async () => {
     const m = new Map<string, unknown>();
     const kv = memKV(m);
     for (let f = 1; f <= 1000; f++) expect(await claimNonce(kv, await issueNonce(kv, 7, 0, 'iframe.' + 'y'.repeat(1000)), 7, f)).toBe(true);

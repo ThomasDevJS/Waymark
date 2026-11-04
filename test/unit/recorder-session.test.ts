@@ -89,7 +89,7 @@ describe('review fixes', () => {
   });
 });
 
-describe('D47: a page cannot make a recording unsaveable', () => {
+describe('D48: a page cannot make a recording unsaveable', () => {
   it('stops adding navigate steps and sites at the guide limits', () => {
     const s = startRecording('t', 1, 'https://app.test/a', 0);
     for (let i = 0; i < 600; i++) {

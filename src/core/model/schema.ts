@@ -29,12 +29,12 @@ const SiteOriginSchema = z.string().max(500).refine(isSiteOrigin, 'not a site or
 /**
  * Guide, revision and step ids: ULIDs when Waymark makes them. Packs are untrusted, so ids are
  * limited to letters, digits, `-` and `_` (the deep link rule): no `__proto__`, separators or
- * spaces that could reach object keys, storage keys or URLs (D47).
+ * spaces that could reach object keys, storage keys or URLs (D48).
  */
 export const ID_PATTERN = /^[0-9A-Za-z_-]{1,64}$/;
 const IdSchema = z.string().regex(ID_PATTERN, 'not an id').refine((s) => s !== '__proto__', 'not an id');
 
-/** An http(s) start URL on one of the guide's own sites (D47). */
+/** An http(s) start URL on one of the guide's own sites (D48). */
 export function startUrlOk(startUrl: string, appOrigins: string[]): boolean {
   try {
     const u = new URL(startUrl);

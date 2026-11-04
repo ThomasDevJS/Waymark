@@ -319,9 +319,22 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Unverified on real machines**: whether Chrome and Edge show macOS "(Premium)"/"(Enhanced)" in voice names, and the exact ChromeOS menu path. On Windows, the natural voices added for Narrator are Narrator-only, so the Windows help says so and points to Edge's online natural voices. Speech-dispatcher modules on Linux (RHVoice, Piper) have no telling names, so Settings may still call them basic.
 - **Review fixes** (independent review, each with a regression test that fails on the first version): voices without `lang`, CamelCase names, script subtags, a saved online voice with online voices off, and a stale saved voice no longer blanking the picker.
 
+## 2026-11-04 — Tester feedback (issue #6)
+
+### D47. Steps that could never play are not recorded
+- **Spec**: Recorder, "Capture rules" (non-interactive clicks are kept, flagged low-confidence; closed shadow hosts are recorded and flagged), and Element targeting, playback step 4 (a strong signal is required).
+- **Finding**: a click whose target has no strong signal (no test id, id, role + name, own text, name or link) was recorded with only a ⚠ flag. Playback step 4 then rejects every candidate, so the step always ended on "can't find this step", on screen or not. Cases: plain text over 80 characters or data-like (its text is dropped, D22/R1), and a closed-shadow host with no id or label.
+- **Change** (the owner chose "skip" over "record and warn": if a step can fail, people will hit it):
+  - the recorder does not emit such a step; the REC pill shows "Not recorded: Waymark could not find this again. Click a button, link or field." for 4 s;
+  - **Re-pick element** refuses such a target and keeps picking, with the same reason in the banner;
+  - the wait loop reports such a target as not-found at once instead of after 8 s (guides recorded before 0.2.2, or imported).
+- Low-confidence and closed-shadow steps that do have a strong signal (short plain text; a host with an id, a test id, or a role plus a label) are still recorded and flagged. An `aria-label` alone is not enough: role + name needs a role, as in the matcher. The matcher is unchanged. Version 0.2.2.
+- **Merge rules** (independent review): a skipped step still counts as the last action, so typing into an unfindable field reports one skip, not one per key, and a skip never merges with a later submit. With Enter in a field whose form's default button has nothing to find it by (an icon-only button), the submit step targets the field instead of being lost.
+- **Limits**: the pill and the pick banner live in the top frame. A click skipped inside an iframe is not announced on the page (the step is still left out), and a refused Re-pick inside an iframe shows no reason (picking goes on; Esc cancels).
+
 ## 2026-11-04 — Security and privacy audit
 
-### D47. Fixes from the security audit (threat model in docs/SECURITY.md)
+### D48. Fixes from the security audit (threat model in docs/SECURITY.md)
 - **Spec**: Permissions, privacy and security; Sharing and storage ("Import rules", library URL); Discovery ("First-run access"); Data model.
 - **Method**: a written threat model, an audit of the code, and an independent review by a subagent that saw only the code and the threat model. Each fix has a regression test that fails on the previous code.
 - **Medium**:
@@ -341,4 +354,4 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - Frame and shadow paths can't be removed in the export review, because the guide needs them to find frames. `rect` and the viewport size are not listed.
   - The minimatch advisory, which comes in through typescript-eslint and only affects lint. Fixing it needs a major-version override.
   - Entry caps on records that only extension pages can send.
-- Version 0.2.2.
+- Version 0.2.3.

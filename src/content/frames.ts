@@ -26,7 +26,7 @@ function findIframeFor(source: MessageEventSource | null): HTMLIFrameElement | n
   return null;
 }
 
-/** A child retries hello at 0, 0.5, 1.5 and 4 s; faster repeats from one iframe are ignored (D47). */
+/** A child retries hello at 0, 0.5, 1.5 and 4 s; faster repeats from one iframe are ignored (D48). */
 export const HELLO_MIN_GAP_MS = 250;
 
 export function startFrameMapping(): { dispose: () => void; framePath: () => string[] } {

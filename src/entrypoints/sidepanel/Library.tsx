@@ -19,7 +19,7 @@ const selected = signal<Set<string>>(new Set());
 const exporting = signal<Guide[] | null>(null);
 const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice>; origins: string[] } | null>(null);
 const pending = signal<string[]>([]);
-/** Sites the user unticked in the Allow banner (D47: every site is shown and can be left out). */
+/** Sites the user unticked in the Allow banner (D48: every site is shown and can be left out). */
 const unticked = signal<Set<string>>(new Set());
 const message = signal<string | null>(null);
 const error = signal<string | null>(null);

@@ -1,4 +1,4 @@
-/** D47: content scripts on another site learn only that a run exists, not which guide. */
+/** D48: content scripts on another site learn only that a run exists, not which guide. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Guide } from '../../src/core/model/schema';
 import { startRun } from '../../src/core/player/run';
@@ -12,7 +12,7 @@ const guide: Guide = {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('run view off the guide sites (D47)', () => {
+describe('run view off the guide sites (D48)', () => {
   it('carries no guide id, title, sites or step', async () => {
     const run = startRun(guide);
     vi.stubGlobal('chrome', {

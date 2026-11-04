@@ -137,7 +137,7 @@ describe('chrome.tts voice choice', () => {
   });
 });
 
-describe('D47: a step is spoken only on its own sites', () => {
+describe('D48: a step is spoken only on its own sites', () => {
   it('stays silent when the tab shows another site', async () => {
     voices = mac;
     tabUrl = 'https://other.example/';

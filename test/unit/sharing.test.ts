@@ -179,7 +179,7 @@ describe('M5 review: origins and the export review', () => {
   });
 });
 
-describe('D47: pack ids and start URLs', () => {
+describe('D48: pack ids and start URLs', () => {
   const ok = (g: Guide) => parsePack(JSON.stringify(makePack([g]))).ok;
   it('accepts only id-like guide, revision and step ids', () => {
     for (const bad of ['__proto__', 'a b', 'a|note', '../x', 'x:y', '', 'é']) {

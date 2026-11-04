@@ -66,6 +66,14 @@ export function isStrongSignal(key: SignalKey, fp: ElementFingerprint): boolean 
   return true;
 }
 
+/**
+ * True when the fingerprint has at least one strong signal. Without one, playback step 4 rejects
+ * every candidate, so a step with this target could never be found (issue #6).
+ */
+export function hasStrongSignal(fp: ElementFingerprint): boolean {
+  return presentSignals(fp).some((k) => isStrongSignal(k, fp));
+}
+
 export const ACCEPT_SCORE = 60;
 export const UNIQUE_MARGIN = 15;
 

@@ -5,6 +5,7 @@
 import { send } from '../core/messaging/client';
 import type { ContentPush } from '../core/messaging/protocol';
 import { buildFingerprint, resolveTargetFromPath } from '../core/fingerprint';
+import { hasStrongSignal } from '../core/matcher/signals';
 import { waitForMatch, STRONG } from '../core/matcher';
 import { NO_RUN } from '../core/player/run';
 import { roleWord, stepTitle } from '../core/text/templates';
@@ -12,6 +13,9 @@ import type { TestResult } from '../background/editor';
 import { isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot } from './overlay/host';
 import { PlayerUI, openModalDialog } from './player/ui';
 import { testMark } from './test-hooks';
+
+/** Pick banner after a click on something Waymark could not find again (issue #6). */
+export const PICK_REJECTED = 'Waymark could not find that again. Click a button, link or field · Esc to cancel';
 
 const PICK_CSS = `
 .pick-box { position: fixed; border: 2px dashed #e8710a; background: rgba(232,113,10,.08); pointer-events: none; border-radius: 4px; box-sizing: border-box; }
@@ -46,7 +50,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   };
 
   const onKey = (e: KeyboardEvent) => {
-    // Only the user's own Escape cancels: a page cannot dispatch one to stop a pick (D47).
+    // Only the user's own Escape cancels: a page cannot dispatch one to stop a pick (D48).
     if (e.key === 'Escape' && e.isTrusted) {
       e.stopImmediatePropagation();
       stopPick();
@@ -63,6 +67,12 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
       return;
     }
     const fp = buildFingerprint(t.element, { framePath: framePath() });
+    if (!hasStrongSignal(fp)) {
+      // It could never be found again (issue #6): keep picking and say why.
+      if (banner) banner.textContent = PICK_REJECTED;
+      testMark('pick-rejected', fp.tag);
+      return;
+    }
     const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? roleWord(fp.role);
     send('pick.result', { target: fp, title: stepTitle('click', { name }) }).catch(() => undefined);
     testMark('picked', fp.text ?? fp.accessibleName ?? fp.tag);

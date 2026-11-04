@@ -141,7 +141,7 @@ export const LEAVING_VALID_MS = 60_000;
  */
 export function navigationStep(state: RecordingState, r: RouteReport, opts: UrlOptions = {}): Step | null {
   if (state.status !== 'recording' || !r.prevUrl || r.prevUrl === urlKey(r.url)) return null;
-  // A page that keeps changing its route must not push the recording past what can be saved (D47).
+  // A page that keeps changing its route must not push the recording past what can be saved (D48).
   if (state.steps.length >= MAX_STEPS_PER_GUIDE) return null;
   let a: URL;
   let b: URL;

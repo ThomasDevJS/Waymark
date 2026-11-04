@@ -47,7 +47,7 @@ export async function updateAllBadges(): Promise<void> {
 const SITE_KEY = 'siteSettings';
 const PENDING_KEY = 'pendingAllow';
 const DISMISSED_KEY = 'dismissedAllow';
-/** Sites the Allow banner can list at once; each is shown by name and can be unticked (D47). */
+/** Sites the Allow banner can list at once; each is shown by name and can be unticked (D48). */
 export const MAX_PENDING_ALLOW = 50;
 
 async function grantedOrigin(o: string): Promise<boolean> {
@@ -100,7 +100,7 @@ async function addPendingAllow(origins: string[]): Promise<void> {
     if (cur.includes(o) || dismissed.includes(o) || !isSiteOrigin(o)) continue;
     if (!(await grantedOrigin(o))) missing.push(o);
   }
-  // A pack or library cannot queue an unbounded list of sites for the one Allow click (D47).
+  // A pack or library cannot queue an unbounded list of sites for the one Allow click (D48).
   const room = Math.max(0, MAX_PENDING_ALLOW - cur.length);
   if (missing.length && room) await chrome.storage.local.set({ [PENDING_KEY]: [...cur, ...missing.slice(0, room)].sort() });
 }
@@ -213,7 +213,7 @@ export const discoveryHandlers: Handlers = {
   },
   'site.settings.get': async ({ origin }) => ({ launcher: isSiteOrigin(origin) && !!ownSetting(await siteSettings(), origin)?.launcher }),
   'site.settings.set': async ({ origin, launcher }) => {
-    // Settings are keyed by origin: only real site origins, never "__proto__" or other junk (D47).
+    // Settings are keyed by origin: only real site origins, never "__proto__" or other junk (D48).
     if (!isSiteOrigin(origin)) throw new Error('Not a site.');
     await enqueue(async () => {
       const all = await siteSettings();

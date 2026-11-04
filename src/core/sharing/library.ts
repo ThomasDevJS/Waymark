@@ -11,11 +11,11 @@ export function libraryUrlAllowed(url: string): boolean {
   }
 }
 
-/** A library that does not answer within this time fails the refresh (D47). */
+/** A library that does not answer within this time fails the refresh (D48). */
 export const LIBRARY_TIMEOUT_MS = 30_000;
 
 /**
- * Fetches the library pack as text. The library server is untrusted (D47): the answer is read
+ * Fetches the library pack as text. The library server is untrusted (D48): the answer is read
  * in chunks and abandoned as soon as it passes the 5 MB pack cap, the whole fetch is limited
  * in time, and a redirect must still land on an allowed URL (https, or http on localhost).
  */

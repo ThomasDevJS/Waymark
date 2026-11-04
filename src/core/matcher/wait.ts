@@ -6,6 +6,7 @@
 import type { ElementFingerprint } from '../model/schema';
 import { shadowPathLevels } from '../fingerprint/selectors';
 import { matchOnce, type MatchOptions, type MatchResult } from './match';
+import { hasStrongSignal } from './signals';
 
 export const WAIT_TIMEOUT_MS = 8000;
 export const MIN_INTERVAL_MS = 100;
@@ -29,6 +30,8 @@ export function waitForMatch(doc: Document, fp: ElementFingerprint, opts: WaitOp
     let last: MatchResult = matchOnce(doc, fp, opts);
     if (last.status === 'found') return resolve(last);
     if (opts.signal?.aborted) return resolve(last);
+    // No page change can make a target with no strong signal findable: say so now (issue #6).
+    if (!hasStrongSignal(fp)) return resolve(last);
 
     let done = false;
     let lastRun = Date.now();

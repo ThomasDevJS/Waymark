@@ -49,7 +49,7 @@ export async function viewFor(tabId: number | undefined, topUrl?: string): Promi
     pageOrigin = null;
   }
   const view = { ...runView(run, await getBoard(tabId)), muted: (await getVoiceSettings()).muted };
-  // On another site the content scripts learn only that a run exists, not which guide (D47).
+  // On another site the content scripts learn only that a run exists, not which guide (D48).
   if (!pageOrigin || !run.guideSnapshot.appOrigins.includes(pageOrigin)) return { ...view, guideId: null, guideTitle: null, appOrigins: [], step: null, stepToken: null, winner: null };
   return view;
 }

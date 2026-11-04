@@ -17,7 +17,7 @@ describe('rec.step sanitization', () => {
   });
 });
 
-describe('D47: titles from content scripts', () => {
+describe('D48: titles from content scripts', () => {
   it('never keep a live link', () => {
     const forged: Step = { id: 'a', kind: 'click', title: 'Click [Open admin](https://phish.example)', url: { kind: 'pattern', value: '/' }, target, advance: 'action' };
     const out = recorderStep(forged)!;

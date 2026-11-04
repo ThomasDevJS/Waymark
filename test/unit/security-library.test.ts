@@ -1,4 +1,4 @@
-/** D47: the library server is untrusted. Its answer is bounded in size, time and destination. */
+/** D48: the library server is untrusted. Its answer is bounded in size, time and destination. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { refreshLibrary } from '../../src/background/discovery';
 
@@ -31,7 +31,7 @@ function streamOf(chunks: number, chunkBytes: number, pulled: { n: number }): Re
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('library refresh (D47)', () => {
+describe('library refresh (D48)', () => {
   it('stops reading an oversized answer at the 5 MB cap', async () => {
     vi.stubGlobal('chrome', fakeChrome('https://lib.example/pack.json'));
     const pulled = { n: 0 };
@@ -76,7 +76,7 @@ describe('library refresh (D47)', () => {
   });
 });
 
-describe('site settings (D47)', () => {
+describe('site settings (D48)', () => {
   it('stores the launcher setting only for real site origins', async () => {
     const fake = fakeChrome('');
     vi.stubGlobal('chrome', fake);
@@ -91,7 +91,7 @@ describe('site settings (D47)', () => {
   });
 });
 
-describe('one Allow click (D47)', () => {
+describe('one Allow click (D48)', () => {
   it('queues at most 50 sites from a pack, each listed by name', async () => {
     const fake = fakeChrome('');
     fake.permissions.contains = async () => false;

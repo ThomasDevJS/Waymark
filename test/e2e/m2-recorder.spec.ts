@@ -270,3 +270,30 @@ test('revoking site access stops recording in that tab', async ({ context, ext, 
   expect(rec.steps).toEqual([]);
   expect(rec.tabIds).not.toContain(tabId);
 });
+
+test('a click Waymark could never find again is not recorded, and the pill says so (issue #6)', async ({ context, ext, site }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const sw = await ext.sw();
+  const tabId = await sw.evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  const panel = await ext.extensionPage();
+  const reply = await panel.evaluate((id) => chrome.runtime.sendMessage({ type: 'rec.start', payload: { tabId: id, title: 'Skip' } }), tabId);
+  expect(reply.ok).toBe(true);
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+
+  await app.evaluate(() => {
+    const p = document.createElement('p');
+    p.textContent = 'You have 3 overdue invoices this month. This sentence is plain text, not a button.';
+    document.body.prepend(p);
+  });
+  await app.bringToFront();
+  await app.getByText('You have 3 overdue invoices this month.').click();
+  await expect.poll(() => marker(app, 'rec-skipped')).toBe('1');
+  await expect(await overlayPill(app)).toContainText('Not recorded');
+  const st = await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'rec.state', payload: {} }));
+  expect(st.ok).toBe(true);
+  expect(st.data.steps).toHaveLength(0);
+  await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'rec.stop', payload: {} }));
+});

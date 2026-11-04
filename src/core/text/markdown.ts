@@ -124,7 +124,7 @@ export function escapeMd(s: string): string {
 
 /**
  * A title that came from a content script: recorder titles escape every page label, so a live
- * link can only be forged. Such a title is kept as plain, escaped text (D47).
+ * link can only be forged. Such a title is kept as plain, escaped text (D48).
  */
 export function withoutLinks(src: string): string {
   const hasLink = (tokens: InlineToken[]): boolean => tokens.some((t) => t.type === 'link' || ((t.type === 'bold' || t.type === 'italic') && hasLink(t.children)));
