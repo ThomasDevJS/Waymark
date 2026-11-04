@@ -25,6 +25,15 @@ jobs:
         run: pnpm build && pnpm build:test
       - name: Manifest guard (no content_scripts, no host_permissions)
         run: pnpm check:manifest
+      - name: Package the production build
+        run: pnpm zip
+      - name: Upload the extension zip (download it from this run's Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: waymark-extension
+          path: .output/waymark-*-chrome.zip
+          if-no-files-found: error
+          retention-days: 30
       - name: Install Chromium for Playwright and Vitest browser mode
         run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:unit

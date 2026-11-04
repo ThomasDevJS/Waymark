@@ -10,8 +10,22 @@ const root = fileURLToPath(new URL('./site/', import.meta.url));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 export function startFixtureServer(port = Number(process.env.FIXTURE_PORT ?? 4173)) {
+  /** Test-only library pack: set with PUT /__library, served at /library.waymark.json. */
+  let library = null;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
+    if (url.pathname === '/__library' && req.method === 'PUT') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      library = body;
+      res.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === '/library.waymark.json') {
+      if (library === null) res.writeHead(404).end();
+      else res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(library);
+      return;
+    }
     let path = decodeURIComponent(url.pathname);
     // /slow/... serves the app shell after 2.5 s (slow full page loads).
     if (path.startsWith('/slow/')) {

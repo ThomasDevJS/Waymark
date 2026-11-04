@@ -137,3 +137,14 @@ describe('popup fallback', () => {
     expect(calls).toEqual(['sidepanel.html']);
   });
 });
+
+describe('deep links keep the rest of the query exactly', () => {
+  it('does not re-encode other parameters', () => {
+    let replaced = '';
+    const hist = { state: null, replaceState: (_s: unknown, _t: string, u: string) => void (replaced = u) } as unknown as History;
+    expect(takeDeepLink({ href: 'https://app.test/o?static&waymark=01ABC#/keep' } as Location, hist)).toBe('01ABC');
+    expect(replaced).toBe('https://app.test/o?static#/keep');
+    expect(takeDeepLink({ href: 'https://app.test/o?waymark=01ABC&a=b%20c' } as Location, hist)).toBe('01ABC');
+    expect(replaced).toBe('https://app.test/o?a=b%20c');
+  });
+});
