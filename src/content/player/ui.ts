@@ -8,7 +8,7 @@ import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
 import { renderInline } from '../../core/text/markdown';
 import { composedParent } from '../../core/fingerprint/dom';
-import { mountOverlayIn, overlayLayer, overlayRoot } from '../overlay/host';
+import { claimOverlay, mountOverlayIn, overlayLayer, overlayRoot, releaseOverlay } from '../overlay/host';
 
 const CSS = `
 .panel { position: fixed; background: rgba(15, 18, 24, .45); pointer-events: none; }
@@ -103,6 +103,7 @@ export class PlayerUI {
   /** Shows the tooltip for the current step, anchored to `target` with a spotlight, or centered when there is none. */
   showStep(view: RunView, target: Element | null, onLost?: () => void): void {
     this.clear();
+    claimOverlay(this, () => this.clear());
     this.ensureStyle();
     // Inside an open modal dialog the tooltip must live in the dialog, or it would be inert.
     mountOverlayIn(target ? (modalDialogOf(target) ?? openModalDialog()) : openModalDialog());
@@ -161,6 +162,7 @@ export class PlayerUI {
 
   showCard(kind: Card, view: RunView): void {
     this.clear();
+    claimOverlay(this, () => this.clear());
     this.ensureStyle();
     mountOverlayIn(openModalDialog());
     const tip = this.tooltipShell(view);
@@ -201,6 +203,7 @@ export class PlayerUI {
   }
 
   clear(): void {
+    releaseOverlay(this);
     this.stopAuto?.();
     this.stopAuto = null;
     this.panels.forEach((p) => p.remove());

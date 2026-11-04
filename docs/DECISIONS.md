@@ -245,3 +245,21 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Spec**: Element targeting, record step 1 ("a `<label>` resolves to its control") and playback steps 3 and 5 ("visible" candidates, spotlight).
 - **Change**: the target stays the control (it carries the name, value and label signals), but a form control that is not visible counts as visible when one of its `<label>`s is, and that label is its display box: the recorded `rect`, the "position near the recorded spot" signal and the fast path all use it. A match result has a new `spotlight` element, the box the overlay outlines: the element itself, or that label. `element` and `tied` stay the controls, so advancing still listens for clicks on them; a click on the label reaches the control through the label's activation behavior (it toggles the checkbox). A control whose labels are hidden too is still not visible.
 - **Why**: custom checkboxes and switches hide the native input (`opacity: 0` at 0x0, or `display: none`) and style the label. The visibility filter dropped the input, so such a step returned no-candidates even on the unchanged page.
+
+## 2026-11-04 — M4
+
+### D38. Editor and voice messages
+- **Spec**: Security (content allowlist); User flows, Edit; Voiceover.
+- **Change**: content scripts may also send `run.mute` (the tooltip's mute toggle, which sets the global voice setting) and `pick.result` (Re-pick element). `pick.result` is accepted only while the side panel has asked that tab for a pick (within 2 minutes), and its fingerprint is validated with the Zod schema. Extension pages get `guide.get`, `guide.save`, `step.test`, `pick.start`, `pick.cancel`, `voice.list`, `voice.test` and `voice.settings.get/set`. The service worker answers Test step by asking the frame on the step's recorded `framePath` (found through the frame map) to match and briefly spotlight the element.
+- **Save**: the editor sends the whole draft; the service worker keeps the id, refuses library guides (read-only), adds 1 to `version`, gives a new `revisionId` and `updatedAt`, validates with the schema and writes guide and index in one queued task. Stop opens the editor for the new guide.
+- **Fragile steps**: Test step shows which signals matched, and calls the match fragile when only one strong signal matched (Element targeting, "Per-site profiles").
+
+### D39. Voice: who speaks, when, and with which voice
+- **Spec**: Voiceover; Player, "Runs across pages" (one voice channel: only the focused tab speaks).
+- **Change**: the service worker speaks the current step's stored `voiceText` (or, if empty, the plain-text title plus note) once, when the step becomes current: at Start and after each advance, Back or Skip. Re-broadcasts, frame reports and service worker restarts never speak again. Every step change, Exit, Stop and mute first calls `chrome.tts.stop`. "Focused tab" means the active tab of the last-focused normal browser window, because `windows.focused` is unreliable without a window manager and the side panel shares the window. The voice is the user's choice for the guide's language, else the first on-device voice for it; with no usable on-device voice Waymark stays silent rather than use a remote voice. Where `chrome.tts` is missing, the top frame speaks with `speechSynthesis` using an on-device (`localService`) voice only.
+- **Settings** (options page, `voiceSettings` in local storage): auto-play, speed 0.5×–2×, a voice per language, Allow online voices (off by default, with a note that online voices send the text to the provider), and Test voice with a fixed sample sentence.
+
+### D40. One overlay owner at a time
+- **Spec**: Player and overlay.
+- **Change**: the player, the Test step highlight and the picker share the overlay host; when one draws, the previous one is cleared.
+- **Why**: found by the re-pick acceptance test: a Test step highlight (shown for 4 s) and the run that started right after both drew a spotlight.

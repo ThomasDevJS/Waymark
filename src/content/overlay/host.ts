@@ -72,3 +72,20 @@ export function destroyOverlay(): void {
   host = null;
   root = null;
 }
+
+/**
+ * One thing draws in the overlay at a time (the player, a Test step highlight, the picker):
+ * a new owner clears the previous one.
+ */
+let owner: { id: object; clear: () => void } | null = null;
+export function claimOverlay(id: object, clear: () => void): void {
+  if (owner && owner.id !== id) {
+    const prev = owner;
+    owner = null;
+    prev.clear();
+  }
+  owner = { id, clear };
+}
+export function releaseOverlay(id: object): void {
+  if (owner?.id === id) owner = null;
+}

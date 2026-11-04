@@ -5,6 +5,7 @@ import type { RecordingState } from '../../core/recorder/session';
 import type { GuideIndexEntry } from '../../core/storage/guides';
 import type { RunView } from '../../core/player/run';
 import { Markdown } from './Markdown';
+import { Editor } from './Editor';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
@@ -14,6 +15,7 @@ const noteTitle = signal('');
 const noteOpen = signal(false);
 const error = signal<string | null>(null);
 const run = signal<RunView | null>(null);
+const editing = signal<string | null>(null);
 const needsStart = signal<{ guideId: string; startUrl: string; reachable: boolean; pattern: string } | null>(null);
 
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -56,6 +58,25 @@ export function Recorder({ tabId }: { tabId: number | null }) {
   }, [tabId]);
 
   const r = recording.value;
+  if (!r && editing.value) {
+    return (
+      <>
+        {saved.value && (
+          <p role="status" data-testid="saved">
+            Saved “{saved.value.title}” with {saved.value.count} steps. Review the steps below.
+          </p>
+        )}
+        <Editor
+          guideId={editing.value}
+          tabId={tabId}
+          onClose={() => {
+            editing.value = null;
+            saved.value = null;
+          }}
+        />
+      </>
+    );
+  }
   if (!r) {
     return (
       <section class="site" aria-label="Recorder">
@@ -124,6 +145,9 @@ export function Recorder({ tabId }: { tabId: number | null }) {
                   <span class="grow">
                     {g.title} <span class="muted">· {g.steps} steps</span>
                   </span>
+                  <button type="button" data-testid={`edit-${g.id}`} onClick={() => (editing.value = g.id)}>
+                    Edit
+                  </button>
                   <button type="button" data-testid={`start-${g.id}`} disabled={tabId === null} onClick={() => tabId !== null && void startGuide(tabId, g.id)}>
                     Start
                   </button>
@@ -167,7 +191,10 @@ export function Recorder({ tabId }: { tabId: number | null }) {
             void attempt(async () => {
               const res = await send('rec.stop', {});
               recording.value = null;
-              if (res) saved.value = { title: res.title, count: res.steps.length };
+              if (res) {
+                saved.value = { title: res.title, count: res.steps.length };
+                editing.value = res.guideId; // Stop opens the editor (SPEC: Record step 6)
+              }
               await refresh(tabId);
             })
           }

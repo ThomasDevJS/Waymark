@@ -4,12 +4,13 @@
  * pages we do not trust. Each sender type has its own allowlist.
  */
 import { z } from 'zod';
-import { StepSchema, type Guide, type Step } from '../model/schema';
+import { ElementFingerprintSchema, GuideSchema, StepSchema, type Guide, type Step } from '../model/schema';
 import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
 import type { VoiceSettings } from '../voice/voice';
+import type { TestResult } from '../../background/editor';
 
 const url = z.string().max(4096);
 
@@ -30,6 +31,11 @@ export const RequestSchemas = {
   'run.stop': z.object({ tabId: z.number().int() }),
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
+  'guide.get': z.object({ id: z.string().max(64) }),
+  'guide.save': z.object({ guide: GuideSchema }),
+  'step.test': z.object({ tabId: z.number().int(), step: StepSchema }),
+  'pick.start': z.object({ tabId: z.number().int() }),
+  'pick.cancel': z.object({ tabId: z.number().int() }),
   'voice.list': z.object({}),
   'voice.test': z.object({ lang: z.string().max(35).optional() }),
   'voice.settings.get': z.object({}),
@@ -68,6 +74,7 @@ export const RequestSchemas = {
   }),
   'run.problem': z.object({ stepId: z.string().max(64) }),
   'run.mute': z.object({ muted: z.boolean() }),
+  'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
   'rec.step': z.discriminatedUnion('op', [
     z.object({ op: z.literal('add'), step: StepSchema }),
     z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
@@ -110,6 +117,12 @@ export interface ResponseMap {
   'voice.settings.get': VoiceSettings;
   'voice.settings.set': VoiceSettings;
   'run.mute': { ok: boolean };
+  'guide.get': Guide;
+  'guide.save': Guide;
+  'step.test': TestResult;
+  'pick.start': { ok: boolean };
+  'pick.cancel': { ok: boolean };
+  'pick.result': { ok: boolean };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -137,6 +150,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.match',
   'run.problem',
   'run.mute', // the tooltip's mute toggle (D38)
+  'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -163,6 +177,11 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'run.stop',
   'run.state',
   'problems.list',
+  'guide.get',
+  'guide.save',
+  'step.test',
+  'pick.start',
+  'pick.cancel',
   'voice.list',
   'voice.test',
   'voice.settings.get',
@@ -175,7 +194,11 @@ export type ContentPush =
   | { type: 'run.changed'; payload: RunView }
   // speechSynthesis fallback where chrome.tts is missing (SPEC: Voiceover)
   | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }
-  | { type: 'tts.stop' };
+  | { type: 'tts.stop' }
+  // editor: Test step (answered with a TestResult) and Re-pick element
+  | { type: 'test.step'; payload: { step: Step } }
+  | { type: 'pick.start' }
+  | { type: 'pick.stop' };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

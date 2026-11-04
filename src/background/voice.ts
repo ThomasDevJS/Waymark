@@ -50,12 +50,13 @@ export function stopSpeech(): void {
   }
 }
 
+/** The active tab of the browser window the user last focused (the side panel lives there too). */
 async function isFocusedTab(tabId: number): Promise<boolean> {
   try {
     const tab = await chrome.tabs.get(tabId);
     if (!tab.active) return false;
-    const win = await chrome.windows.get(tab.windowId);
-    return win.focused;
+    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+    return win.id === tab.windowId;
   } catch {
     return false;
   }
