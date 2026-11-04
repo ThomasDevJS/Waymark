@@ -52,6 +52,8 @@ interface LastStep {
   time: number;
   form: HTMLFormElement | null;
   fp: ElementFingerprint;
+  /** Left out as unfindable: merge guards still see it (one skip per field), but it never merges. */
+  skipped?: boolean;
 }
 
 export interface Recorder {
@@ -104,6 +106,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]) => {
     if (!hasStrongSignal(fp)) {
       opts.onSkip?.('unfindable');
+      last = { id: '', kind, el, time: now(), form: null, fp, skipped: true };
       return null;
     }
     const step = makeStep(kind, el, fp, title, flags);
@@ -215,6 +218,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     flushFieldClick();
     const title = stepTitle('select', { name: nameFor(el, fp), ...(option ? { option } : {}) }, lang);
     if (last && last.kind === 'select' && last.el === el) {
+      if (last.skipped) return;
       // Changing the same select again (arrow keys) updates the step.
       const step = makeStep('select', el, fp, title);
       step.id = last.id;
@@ -262,7 +266,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const form = e.composedPath()[0];
     if (!(form instanceof HTMLFormElement)) return;
     const title = stepTitle('submit', {}, lang);
-    if (last && last.kind === 'click' && last.form === form && now() - last.time <= SUBMIT_MERGE_MS) {
+    if (last && !last.skipped && last.kind === 'click' && last.form === form && now() - last.time <= SUBMIT_MERGE_MS) {
       // A click on a submit button followed by submit is one submit step.
       const step = makeStep('submit', last.el, last.fp, title);
       step.id = last.id;
@@ -272,7 +276,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     }
     if (enter && now() - enter.time <= SUBMIT_MERGE_MS && (enter.el as HTMLInputElement).form === form) {
       const button = form.querySelector('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
-      const target = button ?? enter.el;
+      // A default button with nothing to find it by (an icon) would be skipped: use the field.
+      const target = button && hasStrongSignal(fpOf(button)) ? button : enter.el;
       add('submit', target, fpOf(target), title);
       enter = null;
     }

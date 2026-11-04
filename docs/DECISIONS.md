@@ -328,5 +328,6 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - the recorder does not emit such a step; the REC pill shows "Not recorded: Waymark could not find this again. Click a button, link or field." for 4 s;
   - **Re-pick element** refuses such a target and keeps picking, with the same reason in the banner;
   - the wait loop reports such a target as not-found at once instead of after 8 s (guides recorded before 0.2.2, or imported).
-- Low-confidence and closed-shadow steps that do have a strong signal (short plain text, a host with an id or label) are still recorded and flagged. The matcher is unchanged. Version 0.2.2.
-- **Limit**: the pill lives in the top frame, so a click skipped inside an iframe is not announced on the page (the step is still left out).
+- Low-confidence and closed-shadow steps that do have a strong signal (short plain text; a host with an id, a test id, or a role plus a label) are still recorded and flagged. An `aria-label` alone is not enough: role + name needs a role, as in the matcher. The matcher is unchanged. Version 0.2.2.
+- **Merge rules** (independent review): a skipped step still counts as the last action, so typing into an unfindable field reports one skip, not one per key, and a skip never merges with a later submit. With Enter in a field whose form's default button has nothing to find it by (an icon-only button), the submit step targets the field instead of being lost.
+- **Limits**: the pill and the pick banner live in the top frame. A click skipped inside an iframe is not announced on the page (the step is still left out), and a refused Re-pick inside an iframe shows no reason (picking goes on; Esc cancels).
