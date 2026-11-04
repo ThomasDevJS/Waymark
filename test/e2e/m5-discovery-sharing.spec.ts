@@ -205,7 +205,7 @@ test('library URL: subscribe, read-only team guides, refresh on chrome.alarms, u
   const alarm = await sw.evaluate(() => chrome.alarms.get('library-refresh'));
   expect(alarm?.periodInMinutes).toBe(360);
 
-  const all = await msg<{ guides: { id: string; source: string; title: string }[] }>(ext, 'guide.all', {});
+  const all = await msg<{ guides: { id: string; source: string; title: string }[] }>(ext, 'guide.list', {});
   expect(all.guides).toEqual([expect.objectContaining({ id: guideId, source: 'library' })]);
   // Read-only: saving is refused; Duplicate gives an editable copy.
   await expect(msg(ext, 'guide.save', { guide: { ...guide, source: 'library' }, baseRevisionId: guide.revisionId })).rejects.toThrow(/read-only/);
@@ -215,10 +215,10 @@ test('library URL: subscribe, read-only team guides, refresh on chrome.alarms, u
   // A new revision replaces the library copy; a guide dropped from the pack disappears.
   await publish([{ ...guide, revisionId: '01NEWREVISION0000000000000', title: 'Team guide v2' }]);
   await options.getByTestId('library-refresh').click();
-  await expect.poll(async () => (await msg<{ guides: { id: string; title: string }[] }>(ext, 'guide.all', {})).guides.find((g) => g.id === guideId)?.title).toBe('Team guide v2');
+  await expect.poll(async () => (await msg<{ guides: { id: string; title: string }[] }>(ext, 'guide.list', {})).guides.find((g) => g.id === guideId)?.title).toBe('Team guide v2');
   await publish([]);
   await options.getByTestId('library-refresh').click();
-  await expect.poll(async () => (await msg<{ guides: { id: string }[] }>(ext, 'guide.all', {})).guides.map((g) => g.id)).toEqual([copy.id]);
+  await expect.poll(async () => (await msg<{ guides: { id: string }[] }>(ext, 'guide.list', {})).guides.map((g) => g.id)).toEqual([copy.id]);
 
   // A broken library file is reported, and nothing is changed.
   await fetch(`${site.main}/__library`, { method: 'PUT', body: '{"format":"waymark-pack","formatVersion":9,"guides":[]}' });
@@ -250,7 +250,7 @@ test('review fixes: unsubscribing during a slow library fetch wins; a malformed 
   await msg(ext, 'library.set', { url: null });
   await options.waitForTimeout(3500);
   expect((await msg<{ url: string | null }>(ext, 'library.get', {})).url).toBeNull();
-  const titles = (await msg<{ guides: { title: string }[] }>(ext, 'guide.all', {})).guides.map((g) => g.title);
+  const titles = (await msg<{ guides: { title: string }[] }>(ext, 'guide.list', {})).guides.map((g) => g.title);
   expect(titles).not.toContain('Slow team guide');
 
   // A malformed deep link is ignored; the content script still runs.

@@ -2,7 +2,7 @@
   "name": "waymark",
   "description": "Record click-by-click walkthroughs of web apps and replay them on the live page.",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
@@ -16,6 +16,7 @@
     "test": "pnpm test:unit && pnpm test:browser",
     "test:unit": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
+    "bench": "vitest run --project perf",
     "test:e2e": "pnpm build:test && playwright test",
     "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json",
     "fixture": "node test/fixtures/server.mjs",
