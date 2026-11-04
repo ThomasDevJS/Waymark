@@ -28,7 +28,7 @@ const GENERATED: RegExp[] = [
   UUID,
   ULID,
   /^[0-9a-f]{8,}$/i, // bare hex hashes
-  /^[_-]?[a-z]{0,3}\d+$/i, // short prefix + number: a12, _3, x9
+  /^[_-]?[a-z]{0,3}\d{2,}$/i, // short prefix + number: a12, _31, x99
 ];
 
 const STATE_CLASS =

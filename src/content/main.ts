@@ -6,7 +6,6 @@ import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
 
 interface Instance {
-  alive(): boolean;
   dispose(): void;
 }
 
@@ -15,17 +14,17 @@ const GLOBAL_KEY = '__waymarkContent';
 export function startContent(): void {
   const g = globalThis as unknown as Record<string, Instance | undefined>;
   const previous = g[GLOBAL_KEY];
-  if (previous) {
-    if (previous.alive()) return; // already running (registered script + executeScript)
-    previous.dispose(); // leftover from an old version
-  }
+  // A previous instance in this world is either a leftover from an old version or a duplicate
+  // injection (registered script + executeScript). Liveness cannot be told apart reliably from
+  // here, so the newest instance always takes over.
+  previous?.dispose();
 
   const disposers: (() => void)[] = [];
+  const instanceId = Math.random().toString(36).slice(2, 8);
   const instance: Instance = {
-    alive: contextAlive,
     dispose: () => {
       disposers.splice(0).forEach((d) => d());
-      testMark('loaded', 'disposed');
+      testMark('disposed', instanceId);
       if (g[GLOBAL_KEY] === instance) g[GLOBAL_KEY] = undefined;
     },
   };
@@ -40,4 +39,18 @@ export function startContent(): void {
   disposers.push(startFrameMapping());
   disposers.push(watchContext(() => instance.dispose()));
   testMark('loaded', 'yes');
+  testMark('instance', instanceId);
+  if (__WAYMARK_TEST__) void probeStorage();
+}
+
+/** Test builds only: proves storage is TRUSTED_CONTEXTS (content scripts get data via the service worker). */
+async function probeStorage(): Promise<void> {
+  for (const area of ['local', 'session'] as const) {
+    try {
+      await chrome.storage[area].get(null);
+      testMark(`storage-${area}`, 'allowed');
+    } catch {
+      testMark(`storage-${area}`, 'denied');
+    }
+  }
 }

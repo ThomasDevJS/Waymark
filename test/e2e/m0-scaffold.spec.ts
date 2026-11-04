@@ -44,6 +44,9 @@ test.describe('per-site permission', () => {
     const granted = await context.newPage();
     await granted.goto(`${site.main}/?static`);
     await expect.poll(() => marker(granted, 'loaded')).toBe('yes');
+    // Storage is TRUSTED_CONTEXTS: content scripts cannot read guides or settings directly.
+    await expect.poll(() => marker(granted, 'storage-local')).toBe('denied');
+    await expect.poll(() => marker(granted, 'storage-session')).toBe('denied');
 
     // Another site does not, and neither does the cross-origin iframe inside the granted page.
     const other = await context.newPage();

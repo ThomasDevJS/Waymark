@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Build (production and test builds)
+        run: pnpm build && pnpm build:test
+      - name: Manifest guard (no content_scripts, no host_permissions)
+        run: pnpm check:manifest
+      - name: Install Chromium for Playwright and Vitest browser mode
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:unit
+      - name: Browser tests and robustness suite
+        run: pnpm test:browser
+      - name: Install Xvfb and XTest (accepting the native permission dialog)
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6 python3
+      - name: End-to-end tests (headed under Xvfb)
+        run: xvfb-run -a pnpm exec playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

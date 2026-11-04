@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     projects: [
       {
-        define,
+        extends: true,
         test: {
           name: 'unit',
           environment: 'happy-dom',
@@ -16,7 +16,7 @@ export default defineConfig({
         },
       },
       {
-        define,
+        extends: true,
         test: {
           name: 'browser',
           include: ['test/browser/**/*.test.ts'],
