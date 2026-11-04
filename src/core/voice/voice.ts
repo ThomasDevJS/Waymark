@@ -44,13 +44,81 @@ export function usableVoices<V extends VoiceLike>(voices: V[], allowOnline: bool
   return voices.filter((v) => !!v.voiceName && (allowOnline || v.remote !== true));
 }
 
+/** Names of the better voices: Edge's "… Online (Natural)", Windows natural, macOS Premium / Enhanced. */
+const HIGH_QUALITY = /\b(natural|neural|enhanced|premium)\b/i;
+/** The same words inside a CamelCase name, such as "en-US-AriaNeural". */
+const HIGH_QUALITY_CAMEL = /[a-z](Natural|Neural|Enhanced|Premium)(?![a-z])/;
+
+export function isHighQuality(v: VoiceLike): boolean {
+  const name = v.voiceName ?? '';
+  return HIGH_QUALITY.test(name) || HIGH_QUALITY_CAMEL.test(name);
+}
+
 /**
- * The voice for a guide's language: the user's choice if it is usable, else the first usable
- * voice for that language. Undefined means stay silent (never fall back to a remote voice).
+ * Lower is better. Remote natural voices come first (they are only usable once the user allows
+ * online voices), then on-device natural ones, then other on-device voices, then other remote ones.
  */
-export function pickVoice<V extends VoiceLike>(voices: V[], lang: string, settings: Pick<VoiceSettings, 'allowOnlineVoices' | 'voices'>): V | undefined {
+function tier(v: VoiceLike): number {
+  const hq = isHighQuality(v);
+  const remote = v.remote === true;
+  if (hq) return remote ? 0 : 1;
+  return remote ? 3 : 2;
+}
+
+/** 0 when the voice's region matches the wanted one (e.g. en-US for an en-US guide), else 1. */
+function regionRank(v: VoiceLike, region: string | undefined): number {
+  if (!region) return 0;
+  return regionOf(v.lang) === region ? 0 : 1;
+}
+
+/** The region subtag (2 letters or 3 digits), skipping a script subtag: zh-Hant-TW → "tw". */
+function regionOf(lang: string | undefined): string | undefined {
+  return lang
+    ?.split(/[-_]/)
+    .slice(1)
+    .find((p) => /^([a-z]{2}|\d{3})$/i.test(p))
+    ?.toLowerCase();
+}
+
+/**
+ * Usable voices for a language, best first: natural-sounding names, then local over remote,
+ * then the guide's (or else the browser's) region, then the order the browser lists them in,
+ * which puts the OS default voice first. The sort is stable.
+ */
+export function rankVoices<V extends VoiceLike>(voices: V[], lang: string, allowOnline: boolean, uiLang?: string): V[] {
   const want = primaryLang(lang);
-  const usable = usableVoices(voices, settings.allowOnlineVoices).filter((v) => primaryLang(v.lang) === want);
-  const chosen = settings.voices[want];
-  return usable.find((v) => v.voiceName === chosen) ?? usable[0];
+  const uiRegion = primaryLang(uiLang) === want ? regionOf(uiLang) : undefined;
+  const region = regionOf(lang) ?? uiRegion;
+  return usableVoices(voices, allowOnline)
+    // A voice without a lang is not assumed to speak this language (the options page agrees).
+    .filter((v) => !!v.lang && primaryLang(v.lang) === want)
+    .map((v, i) => ({ v, i }))
+    .sort((a, b) => tier(a.v) - tier(b.v) || regionRank(a.v, region) - regionRank(b.v, region) || a.i - b.i)
+    .map((x) => x.v);
+}
+
+/**
+ * The voice for a guide's language: the user's choice if it is usable, else the best-ranked
+ * usable voice for that language. Undefined means stay silent (never fall back to a remote voice).
+ */
+export function pickVoice<V extends VoiceLike>(
+  voices: V[],
+  lang: string,
+  settings: Pick<VoiceSettings, 'allowOnlineVoices' | 'voices'>,
+  uiLang?: string,
+): V | undefined {
+  const ranked = rankVoices(voices, lang, settings.allowOnlineVoices, uiLang);
+  const chosen = settings.voices[primaryLang(lang)];
+  return ranked.find((v) => v.voiceName === chosen) ?? ranked[0];
+}
+
+/** The speechSynthesis fallback: the best on-device voice, ranked the same way. */
+export function bestSpeechVoice<S extends { name: string; lang: string; localService: boolean }>(voices: S[], lang: string, uiLang?: string): S | undefined {
+  const best = rankVoices(
+    voices.map((s) => ({ voiceName: s.name, lang: s.lang, remote: !s.localService, s })),
+    lang,
+    false,
+    uiLang,
+  )[0];
+  return best?.s;
 }
