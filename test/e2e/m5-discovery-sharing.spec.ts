@@ -225,3 +225,40 @@ test('library URL: subscribe, read-only team guides, refresh on chrome.alarms, u
   await options.getByTestId('library-refresh').click();
   await expect(options.getByTestId('library-status')).toContainText('newer version');
 });
+
+test('review fixes: unsubscribing during a slow library fetch wins; a malformed deep link breaks nothing; badges clear when access is removed; Copy link', async ({ context, ext, site, extensionId }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await openApp(context, `${site.main}/app/orders?static`);
+  const { guideId } = await recordOrdersGuide(ext, app, 'Linked guide');
+  const tabId = await tabIdFor(ext, app);
+  const guide = await msg<Record<string, unknown>>(ext, 'guide.get', { id: guideId });
+
+  // Copy link gives a working deep link (clipboard, or the link itself shown when it is blocked).
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId(`link-${guideId}`).click();
+  await expect(panel.getByTestId('library-message')).toContainText(/Link copied|waymark=/);
+
+  // Library: a refresh still waiting on a slow host must not bring guides back after unsubscribing.
+  await fetch(`${site.main}/__library`, { method: 'PUT', body: JSON.stringify({ format: 'waymark-pack', formatVersion: 1, exportedAt: '', guides: [{ ...guide, id: '01TEAMGUIDE000000000000000', title: 'Slow team guide' }] }) });
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await options.getByTestId('library-url').fill(`${site.main}/library.waymark.json?delay=2500`);
+  await options.getByTestId('library-subscribe').click(); // the library answers after 2.5 s
+  // Once the subscription is saved its first refresh is in flight: unsubscribe now.
+  await expect.poll(async () => (await msg<{ url: string | null }>(ext, 'library.get', {})).url, { timeout: 4000, intervals: [100] }).not.toBeNull();
+  await msg(ext, 'library.set', { url: null });
+  await options.waitForTimeout(3500);
+  expect((await msg<{ url: string | null }>(ext, 'library.get', {})).url).toBeNull();
+  const titles = (await msg<{ guides: { title: string }[] }>(ext, 'guide.all', {})).guides.map((g) => g.title);
+  expect(titles).not.toContain('Slow team guide');
+
+  // A malformed deep link is ignored; the content script still runs.
+  await app.goto(`${site.main}/app/orders?static&waymark=%E0%A4%A`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await expect.poll(() => badge(ext, tabId)).toBe('1');
+
+  // Removing site access clears the badge.
+  await ext.revoke('http://127.0.0.1/*');
+  await expect.poll(() => badge(ext, tabId)).toBe('');
+});

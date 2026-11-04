@@ -11,7 +11,7 @@ import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 import { editorHandlers, endPick } from '../background/editor';
-import { discoveryHandlers, LIBRARY_ALARM, refreshLibrary, scheduleLibrary, updateBadge } from '../background/discovery';
+import { discoveryHandlers, LIBRARY_ALARM, refreshLibrary, scheduleLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { rebuildIndex } from '../core/storage/guides';
 import { setupPanelFallback } from '../background/panel-fallback';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
@@ -132,6 +132,7 @@ export default defineBackground(() => {
     void sync();
     void onSitesRevoked();
     void endRunsOnRevokedSites();
+    void updateAllBadges();
   });
 
   chrome.tabs.onCreated.addListener((tab) => {

@@ -99,8 +99,10 @@ export function planImport(existing: Guide[], pack: GuidePack, choices: Record<s
       continue;
     }
     if (cur.source === 'library') {
-      // An imported copy of a library guide becomes the user's own: keep both.
-      write.push({ ...g, id: newId(), forkedFrom: { guideId: g.id, revisionId: g.revisionId } });
+      // An imported copy of a library guide becomes the user's own: keep both, once per revision.
+      const already = existing.some((e) => e.forkedFrom?.guideId === g.id && e.forkedFrom.revisionId === g.revisionId);
+      if (already || cur.revisionId === g.revisionId) skipped++;
+      else write.push({ ...g, id: newId(), forkedFrom: { guideId: g.id, revisionId: g.revisionId } });
       continue;
     }
     const choice = choices[g.id] ?? 'keep';

@@ -34,6 +34,7 @@ export const RequestSchemas = {
   'run.stop': z.object({ tabId: z.number().int() }),
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
+  'problems.clear': z.object({}),
   'guide.get': z.object({ id: z.string().max(64) }),
   'guide.all': z.object({}),
   'guide.delete': z.object({ id: z.string().max(64) }),
@@ -130,6 +131,7 @@ export interface ResponseMap {
   'run.match': { ok: boolean };
   'run.problem': { ok: boolean };
   'problems.list': { problems: Problem[] };
+  'problems.clear': { ok: boolean };
   'voice.list': { voices: { voiceName: string; lang: string; remote: boolean }[]; available: boolean };
   'voice.test': { ok: boolean };
   'voice.settings.get': VoiceSettings;
@@ -224,6 +226,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'run.stop',
   'run.state',
   'problems.list',
+  'problems.clear',
   'guide.get',
   'guide.save',
   'step.test',

@@ -290,3 +290,15 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 ### D43. Popup fallback, version, downloadable builds
 - **Spec**: Distribution and cost, "Browser differences"; Milestones M6.
 - **Change**: when `chrome.sidePanel` is missing, the service worker sets the action popup to the panel at runtime (`setupPanelFallback`); the popup's **Edit** and Stop-then-edit open the editor in a full-page tab (`sidepanel.html?edit=<id>&tab=<id>`). Recording relies on the on-page pill, which already shows the last step. The `?tab=` parameter is no longer test-only, because the full-page editor needs it; only extension pages can open that URL. Version 0.2.0. CI packages the production build (`pnpm zip`) and uploads it as the `waymark-extension` artifact of every run.
+
+### D44. Fixes from the independent M5 review
+- **Spec**: Sharing (packs are untrusted; export review); Permissions (one site at a time, no `<all_urls>`); Discovery.
+- **Changes**, each with a regression test:
+  - **Origins are validated.** A guide's `appOrigins` must be real http(s) origins exactly as `new URL(o).origin` writes them, with no wildcard, and at least one. A pack claiming `https://*` is rejected, so it can never reach the one-click Allow request or the content script registration. Pending-allow checks also never throw on a bad entry.
+  - **The export review shows everything identifying, and removal is complete.** The review now also lists sites, page rules (`matchUrls`), the test id and `data-guide-id`, the CSS path (which embeds ids, names and ancestor labels), the XPath, and shadow and frame paths. Test id, guide id and CSS path can be removed (the CSS path falls back to the tag). With everything removable removed, no element id, test id, landmark label, note or own text is left in the file.
+  - **Library refresh races**: a refresh writes only if the subscription URL is still the one it fetched, so unsubscribing or changing the URL during a slow fetch wins.
+  - **Deep links**: malformed percent-encoding is ignored and can no longer stop the content script.
+  - **Badge**: removing site access clears the badge (tabs whose URL can no longer be read get no count), and REC is re-checked just before a count is written.
+  - **Library subscribe**: the URL is validated before any permission request, and the CORS probe is limited to 1.5 s so the click still counts as a user gesture for the request.
+  - **Allow banner**: "Not now" is remembered per site, so library refreshes do not bring the banner back. Re-importing a pack that contains a library guide no longer adds another local copy each time.
+- **Also for testing** (docs/TESTING.md): **Copy link** per guide (a deep link to its start page), and a **Problems** list in Settings with Copy and Clear for "Report broken step".

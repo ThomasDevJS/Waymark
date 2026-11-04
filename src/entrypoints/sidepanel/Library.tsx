@@ -65,6 +65,13 @@ async function readFile(file: File) {
   importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])) };
 }
 
+/** A link to the guide's start page that offers the guide (SPEC: Discovery, "Deep link"). */
+export function deepLinkFor(g: Guide): string {
+  const u = new URL(g.startUrl);
+  u.searchParams.set('waymark', g.id);
+  return u.href;
+}
+
 export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string) => void }) {
   useEffect(() => {
     void load();
@@ -114,6 +121,20 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           Edit
         </button>
       )}
+      <button
+        type="button"
+        data-testid={`link-${g.id}`}
+        title="Copy a link that offers this guide when opened"
+        onClick={() => {
+          const link = deepLinkFor(g);
+          void navigator.clipboard.writeText(link).then(
+            () => (message.value = 'Link copied. Opening it offers to start the guide.'),
+            () => (message.value = link),
+          );
+        }}
+      >
+        Copy link
+      </button>
       <button type="button" data-testid={`start-${g.id}`} disabled={tabId === null} onClick={() => onStart(g.id)}>
         Start
       </button>

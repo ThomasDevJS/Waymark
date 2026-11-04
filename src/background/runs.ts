@@ -175,6 +175,10 @@ export const runHandlers: Handlers = {
   },
   'run.state': ({ tabId }) => viewFor(tabId),
   'problems.list': async () => ({ problems: await listProblems() }),
+  'problems.clear': async () => {
+    await enqueue(() => chrome.storage.local.remove('problems'));
+    return { ok: true };
+  },
   'run.advance': async ({ stepId, op }, ctx: HandlerContext) => {
     if (ctx.tabId === undefined) return { ok: false };
     if (op === 'exit') return { ok: await runOp(ctx.tabId, 'exit', stepId) };

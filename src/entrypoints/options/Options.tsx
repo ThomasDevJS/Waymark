@@ -4,8 +4,19 @@ import { send } from '../../core/messaging/client';
 import { primaryLang, type VoiceSettings } from '../../core/voice/voice';
 import { originToMatchPattern } from '../../core/url/url';
 import type { LibraryState } from '../../background/discovery';
+import type { Problem } from '../../core/storage/problems';
+import { libraryUrlAllowed } from '../../core/sharing/library';
 
 const library = signal<LibraryState | null>(null);
+const problems = signal<Problem[]>([]);
+const copied = signal(false);
+
+/** Plain text a learner can send to the author (no server in v1). */
+export function problemReport(list: Problem[]): string {
+  return list
+    .map((p) => `Guide: ${p.guideTitle}\nStep ${p.stepIndex + 1}: ${p.stepTitle.replace(/\*\*/g, '')}\nPage: ${p.url}\nWhen: ${new Date(p.at).toLocaleString()}`)
+    .join('\n\n');
+}
 const libraryUrl = signal('');
 const libraryBusy = signal(false);
 const libraryError = signal<string | null>(null);
@@ -20,11 +31,20 @@ async function subscribe() {
     libraryError.value = 'Enter the full address of the pack file, starting with https://';
     return;
   }
+  if (!libraryUrlAllowed(url.href)) {
+    libraryError.value = 'The library URL must start with https://';
+    return;
+  }
   libraryBusy.value = true;
   try {
     let readable = false;
     try {
-      readable = (await fetch(url.href, { method: 'GET', cache: 'no-store', credentials: 'omit' })).ok; // works when the host sends CORS headers
+      // Works when the host sends CORS headers. Kept short so the click still counts as a user
+      // gesture for the permission request that may follow.
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), 1500);
+      readable = (await fetch(url.href, { method: 'GET', cache: 'no-store', credentials: 'omit', signal: ac.signal })).ok;
+      clearTimeout(t);
     } catch {
       readable = false;
     }
@@ -50,6 +70,7 @@ const lang = signal('en');
 const status = signal<string | null>(null);
 
 async function load() {
+  problems.value = (await send('problems.list', {})).problems;
   library.value = await send('library.get', {});
   libraryUrl.value = library.value.url ?? '';
   settings.value = await send('voice.settings.get', {});
@@ -177,6 +198,37 @@ export function Options() {
           </p>
         )}
         {libraryError.value && <p role="alert">{libraryError.value}</p>}
+      </section>
+      <section class="site" aria-label="Problems">
+        <h2>Problems</h2>
+        {problems.value.length === 0 ? (
+          <p class="muted">No broken steps reported. When a guide can't find a step, the learner can press “Report broken step”; reports are listed here.</p>
+        ) : (
+          <>
+            <ul class="guides" data-testid="problems">
+              {problems.value.map((p) => (
+                <li key={`${p.stepId}-${p.at}`}>
+                  <strong>{p.guideTitle}</strong> · step {p.stepIndex + 1}: {p.stepTitle.replace(/\*\*/g, '')}
+                  <div class="muted">
+                    {p.url} · {new Date(p.at).toLocaleString()}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div class="row">
+              <button
+                type="button"
+                data-testid="copy-problems"
+                onClick={() => void navigator.clipboard.writeText(problemReport(problems.value)).then(() => (copied.value = true))}
+              >
+                {copied.value ? 'Copied' : 'Copy'}
+              </button>
+              <button type="button" onClick={() => void send('problems.clear', {}).then(() => (problems.value = []))}>
+                Clear
+              </button>
+            </div>
+          </>
+        )}
       </section>
     </main>
   );

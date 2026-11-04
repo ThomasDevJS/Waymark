@@ -4,7 +4,7 @@
  */
 import type { Guide, Step } from '../model/schema';
 
-export type StringKind = 'guide-title' | 'description' | 'tag' | 'url' | 'step-title' | 'note' | 'voice' | 'label' | 'link';
+export type StringKind = 'guide-title' | 'description' | 'tag' | 'url' | 'site' | 'step-title' | 'note' | 'voice' | 'label' | 'link' | 'selector';
 
 export interface PackString {
   /** Stable key: guideId|stepId|field */
@@ -30,6 +30,8 @@ export function packStrings(guides: Guide[]): PackString[] {
     push(g, null, 'description', 'description', g.description, true);
     g.tags.forEach((t, i) => push(g, null, 'tag', `tags.${i}`, t, true));
     push(g, null, 'url', 'startUrl', g.startUrl, false);
+    g.appOrigins.forEach((o, i) => push(g, null, 'site', `appOrigins.${i}`, o, false));
+    g.matchUrls.forEach((r, i) => push(g, null, 'url', `matchUrls.${i}`, r.value, false));
     g.steps.forEach((s: Step, i) => {
       push(g, i, 'step-title', 'title', s.title, false, s.id);
       push(g, i, 'url', 'url', s.url.value, false, s.id);
@@ -40,6 +42,13 @@ export function packStrings(guides: Guide[]): PackString[] {
         for (const f of LABEL_FIELDS) push(g, i, 'label', `target.${f}`, typeof t[f] === 'string' ? (t[f] as string) : undefined, true, s.id);
         push(g, i, 'link', 'target.hrefPath', s.target?.hrefPath, true, s.id);
         s.target?.ancestors.forEach((a, j) => push(g, i, 'label', `target.ancestors.${j}.label`, a.label, true, s.id));
+        // Selectors embed ids, test ids, names and ancestor labels: shown, and removable.
+        push(g, i, 'label', 'target.testId', s.target?.testId ? `${s.target.testId.attr}="${s.target.testId.value}"` : undefined, true, s.id);
+        push(g, i, 'label', 'target.guideId', s.target?.guideId, true, s.id);
+        push(g, i, 'selector', 'target.cssPath', s.target?.cssPath, true, s.id);
+        push(g, i, 'selector', 'target.xpath', s.target?.xpath, false, s.id);
+        s.target?.shadowPath.forEach((p, j) => push(g, i, 'selector', `target.shadowPath.${j}`, p, false, s.id));
+        s.target?.framePath.forEach((p, j) => push(g, i, 'selector', `target.framePath.${j}`, p, false, s.id));
       }
     });
   }
@@ -60,6 +69,10 @@ export function applyRemovals(guides: Guide[], removed: Set<string>): Guide[] {
       if (!t) continue;
       for (const f of LABEL_FIELDS) if (has(s.id, `target.${f}`)) delete t[f];
       if (has(s.id, 'target.hrefPath')) delete t.hrefPath;
+      if (has(s.id, 'target.testId')) delete t.testId;
+      if (has(s.id, 'target.guideId')) delete t.guideId;
+      // The CSS path is required: removing it keeps just the tag (a weak signal, nothing else).
+      if (has(s.id, 'target.cssPath')) t.cssPath = t.tag;
       t.ancestors = t.ancestors.map((a, j) => {
         if (!has(s.id, `target.ancestors.${j}.label`)) return a;
         const { label: _label, ...rest } = a;

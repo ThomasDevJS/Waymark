@@ -12,6 +12,20 @@ export const MAX_STEPS_PER_GUIDE = 500;
 
 const shortStr = (max = 2000) => z.string().max(max);
 
+/**
+ * A real site origin: http(s), exactly as `new URL(o).origin` writes it, with no wildcard. Packs
+ * are untrusted: a guide claiming "https://*" must never reach a permission request (D44).
+ */
+export function isSiteOrigin(o: string): boolean {
+  try {
+    const u = new URL(o);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.origin === o && !u.hostname.includes('*');
+  } catch {
+    return false;
+  }
+}
+const SiteOriginSchema = z.string().max(500).refine(isSiteOrigin, 'not a site origin');
+
 export const UrlRuleSchema = z.object({
   kind: z.enum(['prefix', 'pattern']),
   value: shortStr(2000),
@@ -90,7 +104,7 @@ export const GuideSchema = z.object({
   description: shortStr(5000).optional(),
   lang: shortStr(35),
   tags: z.array(shortStr(100)).max(50),
-  appOrigins: z.array(shortStr(500)).max(50),
+  appOrigins: z.array(SiteOriginSchema).min(1).max(50),
   startUrl: shortStr(2000),
   matchUrls: z.array(UrlRuleSchema).max(50),
   steps: z.array(StepSchema).max(MAX_STEPS_PER_GUIDE),

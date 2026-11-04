@@ -22,6 +22,8 @@ export function startFixtureServer(port = Number(process.env.FIXTURE_PORT ?? 417
       return;
     }
     if (url.pathname === '/library.waymark.json') {
+      const delay = Number(url.searchParams.get('delay') ?? 0);
+      if (delay) await new Promise((r) => setTimeout(r, delay));
       if (library === null) res.writeHead(404).end();
       else res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(library);
       return;

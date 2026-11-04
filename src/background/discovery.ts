@@ -9,7 +9,7 @@ import { duplicateGuide, findConflicts, packOrigins, parsePack, planImport, type
 import { allGuides, guideKey, listGuides, writeGuides } from '../core/storage/guides';
 import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
-import { GuideSchema } from '../core/model/schema';
+import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
 import { startRunInTab } from './runs';
 
@@ -22,11 +22,14 @@ export async function updateBadge(tabId: number, url?: string): Promise<void> {
     const recording = !!rec && rec.tabIds.includes(tabId);
     let count = 0;
     if (!recording) {
+      // A tab whose URL Waymark can no longer read (access removed) gets no count.
       const pageUrl = url ?? (await chrome.tabs.get(tabId).catch(() => undefined))?.url;
       if (pageUrl) count = guidesForUrl(await listGuides(), pageUrl).length;
     }
-    await chrome.action.setBadgeText({ tabId, text: badgeText(recording, count) });
-    await chrome.action.setBadgeBackgroundColor({ tabId, color: recording ? '#c62828' : '#2f5fd0' });
+    // Recording may have started meanwhile: REC always wins.
+    const nowRec = !!(await getRecording())?.tabIds.includes(tabId);
+    await chrome.action.setBadgeText({ tabId, text: badgeText(recording || nowRec, count) });
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: recording || nowRec ? '#c62828' : '#2f5fd0' });
   } catch {
     // tab gone
   }
@@ -35,13 +38,23 @@ export async function updateBadge(tabId: number, url?: string): Promise<void> {
 /** After guides change: every tab whose URL Waymark can read (granted sites) gets a fresh count. */
 export async function updateAllBadges(): Promise<void> {
   const tabs = await chrome.tabs.query({});
-  await Promise.all(tabs.filter((t) => t.id !== undefined && t.url).map((t) => updateBadge(t.id!, t.url)));
+  // Tabs without a readable URL (not granted) are cleared too, e.g. after access is removed.
+  await Promise.all(tabs.filter((t) => t.id !== undefined).map((t) => (t.url ? updateBadge(t.id!, t.url) : chrome.action.setBadgeText({ tabId: t.id!, text: '' }).catch(() => undefined))));
 }
 
 // ---------- settings: launcher per site, pending Allow, library ----------
 
 const SITE_KEY = 'siteSettings';
 const PENDING_KEY = 'pendingAllow';
+const DISMISSED_KEY = 'dismissedAllow';
+
+async function grantedOrigin(o: string): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: [originToMatchPattern(o)] });
+  } catch {
+    return true; // not a usable origin: never offer it
+  }
+}
 const LIBRARY_KEY = 'library';
 export const LIBRARY_ALARM = 'library-refresh';
 export const LIBRARY_PERIOD_MIN = 6 * 60;
@@ -74,16 +87,12 @@ async function setLibraryState(patch: Partial<LibraryState>): Promise<LibrarySta
 /** Sites from imported guides that are not granted yet: the panel offers one Allow request. */
 async function addPendingAllow(origins: string[]): Promise<void> {
   const cur = ((await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] as string[] | undefined) ?? [];
+  const dismissed = ((await chrome.storage.local.get(DISMISSED_KEY))[DISMISSED_KEY] as string[] | undefined) ?? [];
   const missing: string[] = [];
   for (const o of origins) {
-    if (cur.includes(o)) continue;
-    let granted = false;
-    try {
-      granted = await chrome.permissions.contains({ origins: [originToMatchPattern(o)] });
-    } catch {
-      granted = false;
-    }
-    if (!granted) missing.push(o);
+    // Only real site origins (schema-checked), and not ones the user already said "Not now" to.
+    if (cur.includes(o) || dismissed.includes(o) || !isSiteOrigin(o)) continue;
+    if (!(await grantedOrigin(o))) missing.push(o);
   }
   if (missing.length) await chrome.storage.local.set({ [PENDING_KEY]: [...cur, ...missing].sort() });
 }
@@ -91,20 +100,13 @@ async function addPendingAllow(origins: string[]): Promise<void> {
 async function pendingAllow(): Promise<string[]> {
   const cur = ((await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] as string[] | undefined) ?? [];
   const still: string[] = [];
-  for (const o of cur) if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(o)] }).catch(() => false))) still.push(o);
+  for (const o of cur) if (isSiteOrigin(o) && !(await grantedOrigin(o))) still.push(o);
   if (still.length !== cur.length) await chrome.storage.local.set({ [PENDING_KEY]: still });
   return still;
 }
 
-/** http(s) only; plain http only for local development hosts. */
-export function libraryUrlAllowed(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname));
-  } catch {
-    return false;
-  }
-}
+export { libraryUrlAllowed } from '../core/sharing/library';
+import { libraryUrlAllowed } from '../core/sharing/library';
 
 /** Fetches the library pack and replaces the library guides (SPEC: Sharing, "v1: library URL"). */
 export async function refreshLibrary(): Promise<LibraryState> {
@@ -117,10 +119,14 @@ export async function refreshLibrary(): Promise<LibraryState> {
     const parsed = parsePack(text);
     if (!parsed.ok) throw new Error(parsed.error);
     const pack = parsed.pack;
-    await enqueue(async () => {
+    const applied = await enqueue(async () => {
+      // The user may have unsubscribed or changed the URL while this fetch was running.
+      if ((await libraryState()).url !== state.url) return false;
       const plan = planImport(await allGuides(), pack, {}, 'library');
       await writeGuides(plan.write, plan.remove);
+      return true;
     });
+    if (!applied) return libraryState();
     await addPendingAllow(packOrigins(pack.guides));
     await updateAllBadges();
     return setLibraryState({ lastFetchAt: new Date().toISOString(), lastError: null, count: pack.guides.length });
@@ -189,7 +195,14 @@ export const discoveryHandlers: Handlers = {
   },
   'allow.pending': async () => ({ origins: await pendingAllow() }),
   'allow.dismiss': async () => {
-    await chrome.storage.local.set({ [PENDING_KEY]: [] });
+    await enqueue(async () => {
+      const cur = ((await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] as string[] | undefined) ?? [];
+      const dismissed = ((await chrome.storage.local.get(DISMISSED_KEY))[DISMISSED_KEY] as string[] | undefined) ?? [];
+      const still: string[] = [];
+      for (const o of cur) if (!(await grantedOrigin(o))) still.push(o);
+      // "Not now" is remembered: library refreshes do not bring the banner back for these sites.
+      await chrome.storage.local.set({ [PENDING_KEY]: [], [DISMISSED_KEY]: [...new Set([...dismissed, ...still])].slice(-200) });
+    });
     return { ok: true };
   },
   'site.settings.get': async ({ origin }) => ({ launcher: !!(await siteSettings())[origin]?.launcher }),

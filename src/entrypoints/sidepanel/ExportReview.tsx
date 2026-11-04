@@ -20,6 +20,8 @@ const KIND: Record<StringKind, string> = {
   voice: 'Voice text',
   label: 'Element label',
   link: 'Link path',
+  site: 'Site',
+  selector: 'Element path',
 };
 
 /** Builds the pack JSON for the reviewed copy. */
@@ -45,7 +47,7 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
     <section class="site" aria-label="Export review" data-testid="export-review">
       <h2>Review before export</h2>
       <p class="muted">
-        This is everything the pack will contain. Remove anything that is business data (customer names, amounts, internal codes). Titles and pages cannot be removed here; edit the guide to change them.
+        This is everything the pack will contain, word for word. Remove anything that is business data (customer names, amounts, internal codes). Titles, sites and pages cannot be removed here; edit the guide to change them.
       </p>
       {guides.map((g) => (
         <div key={g.id} class="review-guide">

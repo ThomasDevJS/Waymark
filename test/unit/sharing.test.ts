@@ -148,3 +148,33 @@ describe('deep links keep the rest of the query exactly', () => {
     expect(replaced).toBe('https://app.test/o?a=b%20c');
   });
 });
+
+describe('M5 review: origins and the export review', () => {
+  it('rejects packs whose guides claim wildcard or malformed origins', () => {
+    for (const bad of ['https://*', 'https://*.com', 'foo', 'https://app.test/', 'chrome://settings', 'file:///etc']) {
+      expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [bad] })]))).ok, bad).toBe(false);
+    }
+    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [] })]))).ok).toBe(false);
+    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: ['http://127.0.0.1:4173'] })]))).ok).toBe(true);
+  });
+
+  it('shows every identifying string, and removing them all leaves none in the pack', () => {
+    const g = guide('a', { matchUrls: [{ kind: 'prefix', value: '/clients/acme' }] });
+    g.steps[0]!.target = {
+      ...target,
+      id: 'acme-corp-renewal',
+      testId: { attr: 'data-testid', value: 'customer-JohnSmith' },
+      guideId: 'acme-pay',
+      cssPath: 'form[aria-label="Acme Payroll"] button#acme-corp-renewal',
+    };
+    const strings = packStrings([g]);
+    const shown = strings.map((s) => s.value).join('\n');
+    for (const secret of ['acme-corp-renewal', 'customer-JohnSmith', 'Acme Payroll', '/clients/acme', 'acme-pay']) expect(shown).toContain(secret);
+    const [out] = applyRemovals([g], new Set(strings.filter((s) => s.removable).map((s) => s.key)));
+    const json = JSON.stringify(out);
+    for (const secret of ['acme-corp-renewal', 'JohnSmith', 'Acme Payroll', 'acme-pay', 'Ada Lovelace', 'ACME']) expect(json, secret).not.toContain(secret);
+    // what remains is only what the review showed as not removable (pages and sites)
+    expect(json).toContain('/clients/acme');
+    expect(parsePack(JSON.stringify(makePack([out!])))).toMatchObject({ ok: true });
+  });
+});

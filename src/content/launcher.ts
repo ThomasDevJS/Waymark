@@ -24,17 +24,33 @@ const CSS = `
 
 /** Reads and removes `waymark=<id>` from the URL (query or hash), keeping hash routes intact. */
 export function takeDeepLink(loc: Location = location, hist: History = history): string | null {
+  try {
+    return takeDeepLinkUnsafe(loc, hist);
+  } catch {
+    return null; // e.g. malformed percent-encoding: ignore the link, never break the page
+  }
+}
+
+function safeDecode(s: string): string | null {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return null;
+  }
+}
+
+function takeDeepLinkUnsafe(loc: Location, hist: History): string | null {
   const url = new URL(loc.href);
   let id: string | null = null;
   // Remove only the waymark=… segment and keep the rest of the query exactly as it was.
   const q = /([?&])waymark=([^&#]*)(&?)/.exec(url.search);
   if (q) {
-    id = decodeURIComponent(q[2] ?? '');
+    id = safeDecode(q[2] ?? '');
     url.search = url.search.replace(q[0], q[3] ? q[1]! : '').replace(/[?&]$/, '');
   } else if (url.hash.includes('waymark=')) {
     const m = /([#&?])waymark=([^&#]*)&?/.exec(url.hash);
     if (m) {
-      id = decodeURIComponent(m[2] ?? '');
+      id = safeDecode(m[2] ?? '');
       url.hash = url.hash.replace(m[0], m[1] === '#' ? '#' : m[1]!).replace(/[?&]$/, '');
       if (url.hash === '#') url.hash = '';
     }
