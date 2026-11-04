@@ -9,6 +9,7 @@ import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
 import { buildFingerprint } from '../fingerprint/build';
+import { hasStrongSignal } from '../matcher/signals';
 import { composedParent, isInteractive, resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { safeLabel } from '../fingerprint/filters';
 import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
@@ -27,6 +28,11 @@ export interface RecorderOptions {
   lang?: string;
   now?: () => number;
   isVisible?: (el: Element) => boolean;
+  /**
+   * Called instead of emitting a step whose target could never be found again: no test id, id,
+   * role + name, text, name or link (issue #6, docs/DECISIONS.md D47).
+   */
+  onSkip?: (reason: 'unfindable') => void;
 }
 
 export const PENDING_LINK_MS = 1000;
@@ -96,6 +102,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   };
 
   const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]) => {
+    if (!hasStrongSignal(fp)) {
+      opts.onSkip?.('unfindable');
+      return null;
+    }
     const step = makeStep(kind, el, fp, title, flags);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
     opts.emit({ op: 'add', step });

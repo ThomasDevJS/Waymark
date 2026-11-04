@@ -179,3 +179,28 @@ describe('review regressions', () => {
     host.remove();
   });
 });
+
+describe('steps that could never play back (issue #6)', () => {
+  it('skips clicks whose target has no strong signal and reports each skip', async () => {
+    const skipped: string[] = [];
+    rec?.stop();
+    rec = createRecorder({ emit: (op) => ops.push(op), onSkip: (reason) => skipped.push(reason) });
+    const box = document.createElement('div');
+    const long = document.createElement('p');
+    long.textContent = 'You have 3 overdue invoices this month. This sentence is plain text, not a button.';
+    const host = document.createElement('quick-pay-x');
+    host.attachShadow({ mode: 'closed' }).append(Object.assign(document.createElement('button'), { textContent: 'Quick pay' }));
+    host.style.cssText = 'display:inline-block;width:80px;height:30px';
+    const short = document.createElement('p');
+    short.textContent = 'Overview';
+    box.append(long, host, short);
+    document.body.append(box);
+    await userEvent.click(long);
+    await userEvent.click(host);
+    await userEvent.click(short);
+    await settle();
+    expect(titles()).toEqual(['click: Click **Overview**']);
+    expect(skipped).toEqual(['unfindable', 'unfindable']);
+    box.remove();
+  });
+});
