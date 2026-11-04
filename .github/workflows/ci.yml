@@ -26,12 +26,13 @@ jobs:
       - name: Manifest guard (no content_scripts, no host_permissions)
         run: pnpm check:manifest
       - name: Package the production build
-        run: pnpm zip
+        # upload-artifact skips hidden folders such as .output, so the zip is copied out first.
+        run: pnpm zip && mkdir -p artifacts && cp .output/waymark-*-chrome.zip artifacts/
       - name: Upload the extension zip (download it from this run's Artifacts)
         uses: actions/upload-artifact@v4
         with:
           name: waymark-extension
-          path: .output/waymark-*-chrome.zip
+          path: artifacts/waymark-*-chrome.zip
           if-no-files-found: error
           retention-days: 30
       - name: Install Chromium for Playwright and Vitest browser mode

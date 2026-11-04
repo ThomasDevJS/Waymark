@@ -302,3 +302,8 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - **Library subscribe**: the URL is validated before any permission request, and the CORS probe is limited to 1.5 s so the click still counts as a user gesture for the request.
   - **Allow banner**: "Not now" is remembered per site, so library refreshes do not bring the banner back. Re-importing a pack that contains a library guide no longer adds another local copy each time.
 - **Also for testing** (docs/TESTING.md): **Copy link** per guide (a deep link to its start page), and a **Problems** list in Settings with Copy and Clear for "Report broken step".
+
+### D45. A frame re-sends its match result when the service worker has no winner
+- **Spec**: Element targeting, playback step 8.
+- **Finding** (CI only, a timing race): with **Open start page**, the new page could find the element and report it before the service worker handled that page's own load report, which clears the frame board (D25). The report was lost and the page stayed "searching". **Change**: whenever a frame receives a view for its current step with no winner and its own search has finished, it sends its result again. The board broadcasts only on a change, so a repeat report cannot loop.
+- **CI**: `upload-artifact` skips hidden folders such as `.output`, so the zip is copied to `artifacts/` before upload.
