@@ -11,6 +11,9 @@ import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
 import type { VoiceSettings } from '../voice/voice';
 import type { TestResult } from '../../background/editor';
+import type { StartResult } from '../../background/runs';
+import type { LibraryState } from '../../background/discovery';
+import type { Conflict } from '../sharing/pack';
 
 const url = z.string().max(4096);
 
@@ -32,6 +35,18 @@ export const RequestSchemas = {
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
   'guide.get': z.object({ id: z.string().max(64) }),
+  'guide.all': z.object({}),
+  'guide.delete': z.object({ id: z.string().max(64) }),
+  'guide.duplicate': z.object({ id: z.string().max(64) }),
+  'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
+  'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: z.record(z.string().max(64), z.enum(['keep', 'replace', 'both'])) }),
+  'allow.pending': z.object({}),
+  'allow.dismiss': z.object({}),
+  'site.settings.get': z.object({ origin: z.string().max(500) }),
+  'site.settings.set': z.object({ origin: z.string().max(500), launcher: z.boolean() }),
+  'library.get': z.object({}),
+  'library.set': z.object({ url: z.string().max(2000).nullable() }),
+  'library.refresh': z.object({}),
   'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
   'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50) }),
   'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
@@ -59,6 +74,8 @@ export const RequestSchemas = {
     timeOrigin: z.number().optional(),
   }),
   'guide.forPage': z.object({ url }),
+  'launcher.start': z.object({ guideId: z.string().max(64), openStart: z.boolean().optional() }),
+  'deeplink.check': z.object({ guideId: z.string().max(64) }),
   'frame.nonce': z.object({ selector: z.string().max(2000) }),
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
@@ -107,7 +124,7 @@ export interface ResponseMap {
   'rec.state': RecordingState | null;
   'guide.list': { guides: GuideIndexEntry[] };
   'route.report': { ok: true; recording: RecordingView; run: RunView };
-  'run.start': { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string };
+  'run.start': StartResult;
   'run.stop': { ok: boolean };
   'run.state': RunView;
   'run.match': { ok: boolean };
@@ -125,7 +142,21 @@ export interface ResponseMap {
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
   'pick.abort': { ok: boolean };
-  'guide.forPage': { guides: Guide[] };
+  'guide.forPage': { guides: { id: string; title: string }[]; launcher: boolean };
+  'launcher.start': StartResult;
+  'deeplink.check': { guide: { id: string; title: string } | null };
+  'guide.all': { guides: Guide[] };
+  'guide.delete': { ok: boolean };
+  'guide.duplicate': Guide;
+  'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[] };
+  'pack.import': { imported: number; skipped: number };
+  'allow.pending': { origins: string[] };
+  'allow.dismiss': { ok: boolean };
+  'site.settings.get': { launcher: boolean };
+  'site.settings.set': { launcher: boolean };
+  'library.get': LibraryState;
+  'library.set': LibraryState;
+  'library.refresh': LibraryState;
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
   'frame.path': { framePath: string[] | null };
@@ -154,6 +185,8 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.mute', // the tooltip's mute toggle (D38)
   'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
   'pick.abort', // Esc in the page cancels the pick everywhere (D41)
+  'launcher.start', // on-page launcher and deep link: only guides of the sender's origin (D42)
+  'deeplink.check',
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -167,8 +200,19 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'tab.current',
   'site.list',
   'site.sync',
-  'guide.forPage',
   'guide.list',
+  'guide.all',
+  'guide.delete',
+  'guide.duplicate',
+  'pack.check',
+  'pack.import',
+  'allow.pending',
+  'allow.dismiss',
+  'site.settings.get',
+  'site.settings.set',
+  'library.get',
+  'library.set',
+  'library.refresh',
   'rec.start',
   'rec.pause',
   'rec.resume',

@@ -131,29 +131,34 @@ function problemUrl(url: string | undefined): string {
   }
 }
 
+export type StartResult = { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string };
+
+/** Starts a guide in a tab (side panel Start, on-page launcher, deep link). */
+export async function startRunInTab(tabId: number, guideId: string, openStart: boolean): Promise<StartResult> {
+  const guide = await loadGuide(guideId);
+  const url = await tabUrl(tabId);
+  const origin = new URL(guide.startUrl).origin;
+  if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) throw new Error('Allow Waymark on this site first.');
+  if (!url || !onStartPage(guide, url)) {
+    // The stored start URL has no ids (D33); when the first page needs one, the learner has
+    // to open it themselves (D36).
+    const reachable = onStartPage(guide, guide.startUrl);
+    if (!openStart || !reachable) return { status: 'needs-start', startUrl: guide.startUrl, reachable, pattern: guide.steps[0]?.url.value ?? '/' };
+    await chrome.tabs.update(tabId, { url: guide.startUrl });
+  }
+  const run = startRun(guide);
+  await enqueue(async () => {
+    await chrome.storage.session.remove(boardKey(tabId));
+    await chrome.storage.session.set({ [runKey(tabId)]: run });
+  });
+  await broadcast(tabId);
+  // With "Open start page", the first step is read when that page arrives (onTopFrameLoad).
+  if (!url || onStartPage(guide, url)) await voiceSync(tabId);
+  return { status: 'started' };
+}
+
 export const runHandlers: Handlers = {
-  'run.start': async ({ tabId, guideId, openStart }) => {
-    const guide = await loadGuide(guideId);
-    const url = await tabUrl(tabId);
-    const origin = new URL(guide.startUrl).origin;
-    if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) throw new Error('Allow Waymark on this site first.');
-    if (!url || !onStartPage(guide, url)) {
-      // The stored start URL has no ids (D33); when the first page needs one, the learner has
-      // to open it themselves (D36).
-      const reachable = onStartPage(guide, guide.startUrl);
-      if (!openStart || !reachable) return { status: 'needs-start' as const, startUrl: guide.startUrl, reachable, pattern: guide.steps[0]?.url.value ?? '/' };
-      await chrome.tabs.update(tabId, { url: guide.startUrl });
-    }
-    const run = startRun(guide);
-    await enqueue(async () => {
-      await chrome.storage.session.remove(boardKey(tabId));
-      await chrome.storage.session.set({ [runKey(tabId)]: run });
-    });
-    await broadcast(tabId);
-    // With "Open start page", the first step is read when that page arrives (onTopFrameLoad).
-    if (!url || onStartPage(guide, url)) await voiceSync(tabId);
-    return { status: 'started' as const };
-  },
+  'run.start': ({ tabId, guideId, openStart }) => startRunInTab(tabId, guideId, !!openStart),
   'run.mute': async ({ muted }) => {
     await setVoiceSettings({ muted });
     if (muted) stopSpeech();

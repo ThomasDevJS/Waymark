@@ -11,6 +11,9 @@ import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 import { editorHandlers, endPick } from '../background/editor';
+import { discoveryHandlers, LIBRARY_ALARM, refreshLibrary, scheduleLibrary, updateBadge } from '../background/discovery';
+import { rebuildIndex } from '../core/storage/guides';
+import { setupPanelFallback } from '../background/panel-fallback';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakSample } from '../background/voice';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
@@ -42,6 +45,7 @@ const handlers: Handlers = {
   ...recordingHandlers,
   ...runHandlers,
   ...editorHandlers,
+  ...discoveryHandlers,
   'guide.list': async () => ({ guides: await listGuides() }),
   'voice.list': () => listVoices(),
   'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
@@ -59,6 +63,8 @@ const handlers: Handlers = {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
     const recording = await onRouteReport(payload, ctx);
+    // In-app route changes update the badge count (SPEC: Discovery, toolbar badge).
+    if (ctx.frameId === 0 && ctx.tabId !== undefined && payload.via !== 'leaving') await updateBadge(ctx.tabId, ctx.sender.tab?.url ?? payload.url);
     if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) {
       await onTopFrameLoad(ctx.tabId, payload.url);
       // A new page has no picker running: end a pending pick so the panel stops waiting.
@@ -66,8 +72,6 @@ const handlers: Handlers = {
     }
     return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
   },
-  // Guides arrive in M5; content scripts only ever get guides for their own origin.
-  'guide.forPage': () => ({ guides: [] }),
   'frame.nonce': async ({ selector }, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId === undefined) throw new Error('no frame');
     return { nonce: await issueNonce(sessionKV, ctx.tabId, ctx.frameId, selector) };
@@ -86,10 +90,12 @@ const handlers: Handlers = {
 };
 
 export default defineBackground(() => {
+  setupPanelFallback(chrome as unknown as Parameters<typeof setupPanelFallback>[0]);
+
   // Open the side panel from the toolbar click. sidePanel.open must run before any await,
   // while the user gesture is still valid; the click also grants activeTab for this tab.
   chrome.action.onClicked.addListener((tab) => {
-    if (tab.windowId !== undefined) void chrome.sidePanel.open({ windowId: tab.windowId });
+    if (tab.windowId !== undefined) void chrome.sidePanel?.open({ windowId: tab.windowId });
   });
 
   chrome.runtime.onMessage.addListener(createRouter(handlers, chrome.runtime.id));
@@ -99,11 +105,24 @@ export default defineBackground(() => {
   void (chrome.storage.local as chrome.storage.StorageArea).setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
 
   chrome.runtime.onInstalled.addListener(async () => {
+    await rebuildIndex();
+    await scheduleLibrary();
+    void refreshLibrary();
     const patterns = await sync();
     // After install or update, already-open tabs of granted sites get the new script.
     await injectIntoOpenTabs(patterns);
   });
-  chrome.runtime.onStartup.addListener(() => void sync());
+  chrome.runtime.onStartup.addListener(() => {
+    void sync();
+    void scheduleLibrary().then(() => refreshLibrary());
+  });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === LIBRARY_ALARM) void refreshLibrary();
+  });
+  // The badge learns the URL from tabs.onUpdated (readable on granted sites) and route reports.
+  chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+    if (info.url || info.status === 'complete') void updateBadge(tabId, tab.url);
+  });
 
   chrome.permissions.onAdded.addListener(async (added) => {
     await sync();

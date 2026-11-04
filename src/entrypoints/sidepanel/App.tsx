@@ -4,14 +4,16 @@ import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { Recorder } from './Recorder';
+import { Library } from './Library';
 
 const tab = signal<TabInfo | null>(null);
 const error = signal<string | null>(null);
 
 async function refresh() {
   try {
-    // Test builds only: e2e tests open the panel as a tab and point it at the fixture tab.
-    const testTab = __WAYMARK_TEST__ ? new URLSearchParams(location.search).get('tab') : null;
+    // ?tab=<id>: the panel opened as a page targets that tab (the full-page editor of the popup
+    // fallback, and e2e tests). Only extension pages can open this URL.
+    const testTab = new URLSearchParams(location.search).get('tab');
     if (testTab) {
       tab.value = await send('tab.current', { tabId: Number(testTab) });
       error.value = null;
@@ -37,6 +39,36 @@ async function allow(origin: string) {
 async function revoke(origin: string) {
   await chrome.permissions.remove({ origins: [originToMatchPattern(origin)] });
   await refresh();
+}
+
+const initialEdit = new URLSearchParams(location.search).get('edit');
+const launcherOn = signal<boolean | null>(null);
+
+/** The on-page "?" launcher is off by default and turned on per site (SPEC: Discovery). */
+function LauncherToggle({ origin }: { origin: string }) {
+  useEffect(() => {
+    void send('site.settings.get', { origin }).then((r) => (launcherOn.value = r.launcher));
+  }, [origin]);
+  return (
+    <label class="row">
+      <input
+        type="checkbox"
+        data-testid="launcher-toggle"
+        checked={!!launcherOn.value}
+        onChange={(e) => void send('site.settings.set', { origin, launcher: (e.target as HTMLInputElement).checked }).then((r) => (launcherOn.value = r.launcher))}
+      />
+      Show the ? guide button on this site's pages
+    </label>
+  );
+}
+
+/** Guides stay visible (search, import, Allow) on sites Waymark is not allowed on yet. */
+function LibraryOnly() {
+  return (
+    <section class="site" aria-label="Guides">
+      <Library tabId={null} tabUrl={null} onEdit={() => undefined} onStart={() => undefined} />
+    </section>
+  );
 }
 
 export function App() {
@@ -93,7 +125,9 @@ export function App() {
           </>
         )}
       </section>
-      {t?.granted && <Recorder tabId={t.tabId} />}
+      {t?.granted && <LauncherToggle origin={t.origin!} />}
+      {(t?.granted || initialEdit) && <Recorder tabId={t?.tabId ?? null} tabUrl={t?.url ?? null} initialEdit={initialEdit} />}
+      {t && !t.granted && <LibraryOnly />}
     </main>
   );
 }

@@ -36,3 +36,10 @@ button:disabled { opacity: .5; cursor: default; }
 .edit-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .edit-step { border: 1px solid var(--border); border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
 textarea, select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg); }
+.banner { border: 1px solid var(--accent); border-radius: 8px; padding: 8px; }
+.button-like { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.review { margin: 4px 0 8px; padding-left: 16px; display: grid; gap: 2px; font-size: 13px; }
+.review .removed .value { text-decoration: line-through; opacity: .6; }
+.review button { padding: 0 6px; font-size: 12px; }
+.value { word-break: break-word; }
