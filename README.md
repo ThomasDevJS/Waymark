@@ -4,7 +4,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 
 The spec, which is the source of truth, is [`docs/SPEC.md`](docs/SPEC.md). Deviations and findings are in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
-**Status:** M0 (scaffold), M1 (fingerprint and matcher), M2 (recorder) and M3 (player) are done. The editor and voice (M4) are next.
+**Status:** M0–M4 are done: scaffold, fingerprint and matcher, recorder, player, editor and voice. Discovery and sharing (M5) are next.
 
 ## Build
 
@@ -25,6 +25,7 @@ pnpm dev            # WXT dev mode with reload
 4. Open a web app and click the Waymark toolbar icon. The side panel opens; click **Allow on this site** to grant that site only.
 5. Name a new guide and press **Record**, then use the app. Each action appears in the panel and in the on-page pill. Press **Stop** to save the guide.
 6. To play it, press **Start** next to the guide. Waymark spotlights each element and shows a tooltip; do the action (or press **Next** on note steps) to move on. If you are not on the guide's first page, the panel offers **Open start page**. Shortcuts: `Alt+.` next, `Alt+,` back (change them at `chrome://extensions/shortcuts`); `Esc` in the tooltip exits.
+8. **Settings** (in the side panel) choose the voice per language, speed and auto-play. Only on-device voices are used unless you turn on **Allow online voices**, which send step text to the voice provider.
 
 ## Tests
 
