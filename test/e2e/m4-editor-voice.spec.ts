@@ -268,3 +268,34 @@ test('review fixes: a Test step during a live run hands the overlay back to the 
   await expect(tip).toHaveAttribute('aria-label', 'Waymark guide: Live', { timeout: 8000 });
   await expect(tip).toContainText('Step 1 of 1');
 });
+
+test('Settings shows the best-ranked voice in use; Edge natural online voices lead once allowed', async ({ context, ext, extensionId }) => {
+  const sw = await ext.sw();
+  await sw.evaluate(() => {
+    const log: string[] = [];
+    (self as unknown as { __tts: string[] }).__tts = log;
+    chrome.tts.getVoices = ((cb: (v: chrome.tts.TtsVoice[]) => void) =>
+      cb([
+        { voiceName: 'Microsoft David - English (United States)', lang: 'en-US', remote: false },
+        { voiceName: 'Microsoft Aria Online (Natural) - English (United States)', lang: 'en-US', remote: true },
+        { voiceName: 'Microsoft Jenny (Natural) - English (United States)', lang: 'en-US', remote: false },
+      ])) as typeof chrome.tts.getVoices;
+    chrome.tts.speak = ((_t: string, o: chrome.tts.TtsOptions) => void log.push(`speak:${o.voiceName}`)) as unknown as typeof chrome.tts.speak;
+    chrome.tts.stop = (() => undefined) as unknown as typeof chrome.tts.stop;
+  });
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft Jenny (Natural)');
+  await expect(options.getByTestId('voice-in-use')).toContainText('(on this device)');
+  await expect(options.getByTestId('better-voices')).toContainText('Linux'); // the CI runner's OS
+  await options.getByTestId('test-voice').click();
+  await expect.poll(() => sw.evaluate(() => (self as unknown as { __tts: string[] }).__tts.slice())).toEqual(['speak:Microsoft Jenny (Natural) - English (United States)']);
+
+  await options.getByTestId('online').check();
+  await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft Aria Online (Natural)');
+  await expect(options.getByTestId('voice-in-use')).toContainText('(online)');
+  // The user's own choice wins over the ranking.
+  await options.getByTestId('voice').selectOption('Microsoft David - English (United States)');
+  await expect(options.getByTestId('voice-in-use')).toContainText('Microsoft David');
+  await expect(options.getByTestId('voice-in-use')).toContainText('a basic voice');
+});

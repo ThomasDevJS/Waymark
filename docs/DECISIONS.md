@@ -307,3 +307,11 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Spec**: Element targeting, playback step 8.
 - **Finding** (CI only, a timing race): with **Open start page**, the new page could find the element and report it before the service worker handled that page's own load report, which clears the frame board (D25). The report was lost and the page stayed "searching". **Change**: whenever a frame receives a view for its current step with no winner and its own search has finished, it sends its result again. The board broadcasts only on a change, so a repeat report cannot loop.
 - **CI**: `upload-artifact` skips hidden folders such as `.output`, so the zip is copied to `artifacts/` before upload.
+
+## 2026-11-04 — Voice quality (issue #4, part 1)
+
+### D46. The best voice is picked automatically
+- **Spec**: Voiceover and AI text, "Voiceover" (voice picker).
+- **Change**: with no voice chosen, Waymark used the first on-device voice for the guide's language, which is usually the oldest, most robotic OS voice. It now ranks the usable voices (`rankVoices` in `src/core/voice/voice.ts`): names containing Natural, Neural, Enhanced or Premium first; then on-device over remote; then the guide's region (or the browser's, when the guide's `lang` has none); then the order the browser lists them in, which puts the OS default first. `chrome.tts` has no "default voice" flag, so the list order is the closest signal. A voice the user picked still wins.
+- **Online voices**: Edge's "… Online (Natural)" voices stay hidden until **Allow online voices** is on (they send the text to Microsoft). Once it is on, remote natural voices rank first, as the owner asked in issue #4; plain remote voices such as "Google US English" still rank after every on-device voice.
+- **Settings**: shows the voice in use (and whether it is on this device or online) and a "Get better voices" help text with steps for the user's OS (`chrome.runtime.getPlatformInfo`). Version 0.2.1.
