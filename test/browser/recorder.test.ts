@@ -134,3 +134,48 @@ describe('privacy guards', () => {
     box.remove();
   });
 });
+
+describe('review regressions', () => {
+  it('clicking back into a field already typed into adds no step', async () => {
+    const form = q('form[aria-label="Profile"]') as HTMLFormElement;
+    form.addEventListener('submit', (e) => e.preventDefault(), { once: true });
+    await userEvent.click(q('#first-name'));
+    await userEvent.keyboard('Ada');
+    await userEvent.click(q('#first-name'));
+    await userEvent.click(byText('button', 'Save'));
+    await settle();
+    expect(titles()).toEqual(['input: Enter First name', 'submit: Submit the form']);
+  });
+
+  it('records a native select and a form submit inside an open shadow root', async () => {
+    const host = document.createElement('fx-shadow-form');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const form = document.createElement('form');
+    form.setAttribute('aria-label', 'Shadow form');
+    form.addEventListener('submit', (e) => e.preventDefault());
+    const label = document.createElement('label');
+    label.htmlFor = 'size';
+    label.textContent = 'Size';
+    const select = document.createElement('select');
+    select.id = 'size';
+    for (const t of ['Small', 'Large']) {
+      const o = document.createElement('option');
+      o.textContent = t;
+      select.append(o);
+    }
+    const save = document.createElement('button');
+    save.textContent = 'Apply';
+    form.append(label, select, save);
+    root.append(form);
+
+    await userEvent.click(select);
+    select.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(save);
+    await settle();
+    expect(titles()).toEqual(['select: Choose **Large** in **Size**', 'submit: Submit the form']);
+    host.remove();
+  });
+});

@@ -18,12 +18,18 @@ export const guideKey = (id: string) => `guide:${id}`;
 
 export function saveGuide(guide: Guide): Promise<void> {
   const parsed = GuideSchema.parse(guide);
-  return enqueue(async () => {
+  return enqueue(() => writeGuide(parsed));
+}
+
+/** Validates and writes a guide plus its index entry. Call only from inside a queued task. */
+export async function writeGuide(guide: Guide): Promise<void> {
+  const parsed = GuideSchema.parse(guide);
+  {
     const index = ((await chrome.storage.local.get(INDEX_KEY))[INDEX_KEY] as GuideIndexEntry[] | undefined) ?? [];
     const entry: GuideIndexEntry = { id: parsed.id, title: parsed.title, updatedAt: parsed.updatedAt, appOrigins: parsed.appOrigins, steps: parsed.steps.length };
     const next = [...index.filter((e) => e.id !== parsed.id), entry];
     await chrome.storage.local.set({ [guideKey(parsed.id)]: parsed, [INDEX_KEY]: next });
-  });
+  }
 }
 
 export async function listGuides(): Promise<GuideIndexEntry[]> {

@@ -9,8 +9,8 @@ import { sessionKV } from '../core/storage/session-kv';
 import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
-import { onRouteReport, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
-import { carryRunToNewTab, dropRun, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
+import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
+import { carryRunToNewTab, dropRun, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
 
@@ -98,7 +98,11 @@ export default defineBackground(() => {
     await sync();
     await injectIntoOpenTabs(grantedSitePatterns(added.origins ?? []));
   });
-  chrome.permissions.onRemoved.addListener(() => void sync());
+  chrome.permissions.onRemoved.addListener(() => {
+    void sync();
+    void onSitesRevoked();
+    void endRunsOnRevokedSites();
+  });
 
   chrome.tabs.onCreated.addListener((tab) => {
     void onTabCreated(tab);

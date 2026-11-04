@@ -2,7 +2,8 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { enqueue } from '../core/storage/queue';
-import { saveGuide } from '../core/storage/guides';
+import { writeGuide } from '../core/storage/guides';
+import type { Step } from '../core/model/schema';
 import {
   addOrigin,
   applyOp,
@@ -13,6 +14,7 @@ import {
   toGuide,
   viewOf,
   type RecordingState,
+  urlKey,
 } from '../core/recorder/session';
 import { originToMatchPattern, stepUrlRule } from '../core/url/url';
 
@@ -61,6 +63,47 @@ async function tabUrl(tabId: number): Promise<string | undefined> {
   }
 }
 
+const RECORDER_KINDS = new Set<Step['kind']>(['click', 'input', 'select', 'check', 'submit']);
+
+/** Keeps only what the recorder produces: no notes, voice text or placement from a page. */
+export function recorderStep(step: Step): Step | null {
+  if (!RECORDER_KINDS.has(step.kind) || !step.target) return null;
+  const out: Step = { id: step.id, kind: step.kind, title: step.title, url: step.url, target: step.target, advance: 'action' };
+  if (step.flags?.length) out.flags = step.flags;
+  return out;
+}
+
+async function siteGranted(origin: string): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] });
+  } catch {
+    return false;
+  }
+}
+
+/** After site access is revoked, recording stops in tabs on that site. */
+export async function onSitesRevoked(): Promise<void> {
+  const st = await getRecording();
+  if (!st) return;
+  const revoked: number[] = [];
+  for (const tabId of st.tabIds) {
+    const url = await tabUrl(tabId); // unreadable once access is gone
+    let ok = false;
+    try {
+      ok = !!url && (await siteGranted(new URL(url).origin));
+    } catch {
+      ok = false;
+    }
+    if (!ok) revoked.push(tabId);
+  }
+  if (!revoked.length) return;
+  await mutate((s2) => {
+    if (s2) s2.tabIds = s2.tabIds.filter((t) => !revoked.includes(t));
+    return s2;
+  });
+  await broadcast(null, revoked);
+}
+
 export const recordingHandlers: Handlers = {
   'rec.state': () => getRecording(),
   'rec.start': async ({ tabId, title }) => {
@@ -104,31 +147,39 @@ export const recordingHandlers: Handlers = {
     const s = await mutate(async (st) => {
       if (!st) return st;
       const url = (await tabUrl(st.tabIds[0]!)) ?? st.startUrl;
-      st.steps.push(noteStep(st, title, note, url));
+      const step = noteStep(st, title, note, url);
+      if (step) st.steps.push(step);
       return st;
     });
     if (s) await broadcast(s, s.tabIds);
     return s;
   },
   'rec.stop': async () => {
-    const state = await enqueue(async () => {
+    // Validate and save inside the same queued task; the recording is cleared only after the
+    // guide is safely stored, so a failed save never loses it.
+    const result = await enqueue(async () => {
       const st = await getRecording();
+      if (!st) return null;
+      const guide = toGuide(st);
+      await writeGuide(guide);
       await setRecording(null);
-      return st;
+      return { state: st, guide };
     });
-    if (!state) return null;
-    await broadcast(null, state.tabIds);
-    const guide = toGuide(state);
-    await saveGuide(guide);
-    return { guideId: guide.id, title: guide.title, steps: guide.steps };
+    if (!result) return null;
+    await broadcast(null, result.state.tabIds);
+    return { guideId: result.guide.id, title: result.guide.title, steps: result.guide.steps };
   },
   'rec.step': async (op, ctx: HandlerContext) => {
     const tabId = ctx.tabId;
     const top = ctx.sender.tab?.url;
+    // A script left in a page whose site access was revoked must not keep recording.
+    if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return { ok: false };
+    const clean = recorderStep(op.step);
+    if (!clean) return { ok: false };
     const result = await mutate((st) => {
       // Content scripts may send rec.step only while their tab is recording (SPEC: Security).
       if (!st || !isRecordingTab(st, tabId) || st.status !== 'recording') return false;
-      const step = { ...op.step };
+      const step = clean;
       // Steps belong to the page: a step recorded in a frame gets the top page's URL rule.
       if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top);
       if (top) addOrigin(st, new URL(top).origin);
@@ -144,7 +195,7 @@ export const recordingHandlers: Handlers = {
 
 /** Route reports from a recording tab's top frame can become navigate steps. */
 export async function onRouteReport(
-  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined },
+  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined; timeOrigin?: number | undefined },
   ctx: HandlerContext,
 ): Promise<ReturnType<typeof viewOf>> {
   const tabId = ctx.tabId;
@@ -157,7 +208,10 @@ export async function onRouteReport(
       return st;
     }
     const prevUrl = st.lastUrl[key];
-    const leavingAt = payload.via === 'load' ? st.leavingAt?.[key] : undefined;
+    // Navigation start: when the old page started leaving, or the new document's time origin
+    // (which survives even when the "leaving" report was lost).
+    const marks = [st.leavingAt?.[key], payload.timeOrigin].filter((x): x is number => typeof x === 'number');
+    const leavingAt = payload.via === 'load' && marks.length ? Math.min(...marks) : undefined;
     const step = navigationStep(st, {
       url: payload.url,
       prevUrl,
@@ -166,7 +220,7 @@ export async function onRouteReport(
       ...(leavingAt !== undefined ? { leavingAt } : {}),
     });
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
-    st.lastUrl[key] = payload.url;
+    st.lastUrl[key] = urlKey(payload.url);
     if (step) {
       st.steps.push(step);
       changed = true;

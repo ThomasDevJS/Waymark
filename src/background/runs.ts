@@ -229,3 +229,20 @@ export async function onRunCommand(command: string, tab?: chrome.tabs.Tab): Prom
   else if (command === 'next-step' && step) await runOp(tabId, 'next', step.id);
   else if (command === 'previous-step' && step) await runOp(tabId, 'back', step.id);
 }
+
+/** After site access is revoked, runs end in tabs whose page is no longer granted. */
+export async function endRunsOnRevokedSites(): Promise<void> {
+  const all = await chrome.storage.session.get(null);
+  for (const key of Object.keys(all)) {
+    if (!key.startsWith('run:')) continue;
+    const tabId = Number(key.slice(4));
+    const url = await tabUrl(tabId);
+    let ok = false;
+    try {
+      ok = !!url && (await chrome.permissions.contains({ origins: [originToMatchPattern(new URL(url).origin)] }));
+    } catch {
+      ok = false;
+    }
+    if (!ok) await endRun(tabId);
+  }
+}

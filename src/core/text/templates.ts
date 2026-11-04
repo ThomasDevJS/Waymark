@@ -34,6 +34,7 @@ export function stepTitle(kind: Exclude<StepKind, 'note'>, vars: TemplateVars, l
     ...vars,
     name: escapeMd(vars.name ?? 'the element'),
     ...(vars.option !== undefined ? { option: escapeMd(vars.option) } : {}),
+    ...(vars.pageTitle !== undefined ? { pageTitle: escapeMd(vars.pageTitle) } : {}),
   });
 }
 

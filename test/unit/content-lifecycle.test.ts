@@ -24,7 +24,7 @@ describe('content script lifecycle', () => {
     const second = document.documentElement.getAttribute('data-waymark-test-instance');
     expect(second).not.toBe(first);
     expect(document.documentElement.getAttribute('data-waymark-test-disposed')).toBe(first);
-    expect(runtime.sendMessage).toHaveBeenCalledWith({ type: 'route.report', payload: { url: location.href, via: 'load', title: document.title } });
+    expect(runtime.sendMessage).toHaveBeenCalledWith({ type: 'route.report', payload: { url: location.href, via: 'load', title: document.title, timeOrigin: expect.any(Number) } });
 
     runtime.id = undefined; // extension updated or removed
     vi.advanceTimersByTime(2500);

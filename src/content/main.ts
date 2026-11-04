@@ -42,7 +42,11 @@ export function startContent(): void {
     watchRoutes((change) => {
       if (!contextAlive()) return;
       player.onRoute(change.url);
-      send('route.report', { ...change, title: document.title.slice(0, 500) })
+      send('route.report', {
+        ...change,
+        title: document.title.slice(0, 500),
+        ...(change.via === 'load' ? { timeOrigin: Math.round(performance.timeOrigin) } : {}),
+      })
         .then((r) => {
           recording.apply(r.recording);
           player.apply(r.run);

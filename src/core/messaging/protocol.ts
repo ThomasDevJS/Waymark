@@ -35,6 +35,7 @@ export const RequestSchemas = {
     via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll', 'leaving']),
     navigationType: z.string().max(32).optional(),
     title: z.string().max(500).optional(),
+    timeOrigin: z.number().optional(),
   }),
   'guide.forPage': z.object({ url }),
   'frame.nonce': z.object({ selector: z.string().max(2000) }),

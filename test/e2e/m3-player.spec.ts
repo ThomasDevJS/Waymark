@@ -101,7 +101,7 @@ test('plays the scenario across 3 pages, an in-app route change, an iframe and a
   await panel.getByTestId(`start-${guideId}`).click();
   await panel.getByTestId('open-start').click();
   await app.bringToFront();
-  await app.waitForURL(`${site.main}/?static`);
+  await app.waitForURL(`${site.main}/`); // the stored start URL has no query (D33)
 
   const targets = [
     () => app.getByRole('link', { name: 'Orders', exact: true }),

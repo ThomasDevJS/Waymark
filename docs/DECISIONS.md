@@ -164,3 +164,24 @@ Each entry: date, spec section, what changed, why.
 ### D31. Voice and mute are M4
 - **Spec**: Player, Tooltip (mute toggle); Voiceover.
 - **Change**: the tooltip has the mute toggle, but it only changes its own state until `chrome.tts` arrives in M4.
+
+## 2026-11-04 — Recorder fixes from the independent M0–M2 review
+
+### D33. A recording is never lost; start URLs keep no query or fragment
+- **Spec**: Data model (`Guide.startUrl`); Privacy ("no page text beyond element labels"; the data-like filter covers URL segments); Sharing (import caps of 500 steps).
+- **Change**: Stop validates and writes the guide inside the same queued task and clears the recording only after the write succeeds. A recording takes at most 500 steps (more are refused), and duplicate step ids are refused. `startUrl` is the origin plus the path up to its first key-like segment (`/orders/123/edit?email=…#token=…` becomes `/orders`), at most 1000 characters; `matchUrls` keeps the full pattern (`/orders/:id/edit`). While recording, each tab's last URL is kept with its query and fragment hashed.
+- **Why**: a start URL over 2000 characters or a 501st step made the save throw after the recording had already been cleared, losing it. Raw start URLs put emails and tokens into storage and into exported packs.
+
+### D34. Navigation start also comes from the new page's `performance.timeOrigin`
+- **Spec**: Recorder, "Navigation" (refines D21).
+- **Change**: the load report carries the new document's `performance.timeOrigin`. The service worker takes the earlier of it and the "leaving" mark, and a load belongs to the action when that time is within 1.5 s of the action either way (the service worker logs the action a few milliseconds after the click, so the navigation can appear to start first).
+- **Why**: the "leaving" report can be lost while a page unloads; the time origin cannot.
+
+### D35. Recorder: shadow-DOM selects and forms; re-clicking a typed field; what a page may send
+- **Spec**: Recorder, "Event capture", "Merge rules", "Frames and shadow DOM"; Security.
+- **Change**:
+  - Native selects are recorded from the `input` event, which is composed and so also arrives from inside open shadow roots; `change` and `submit` are not composed, so the recorder also listens on every open shadow root it sees on an event path.
+  - Clicking back into a field that was already typed into adds no step.
+  - `rec.step` keeps only what the recorder produces: kinds click, input, select, check and submit; id, title, URL rule, target and flags. A page cannot inject notes, voice text, placement or "optional", and the advance mode is always `action`.
+  - `rec.step` is refused from a frame whose origin is no longer granted. When site access is revoked, recording stops in those tabs and runs on those pages end.
+  - Page titles are escaped before they go into navigate step titles, so `[Pay](https://x)` stays text.

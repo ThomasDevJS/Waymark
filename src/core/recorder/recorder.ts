@@ -115,6 +115,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   const onPointerDown = (e: Event) => {
     if (!trusted(e)) return;
     const path = e.composedPath();
+    watchRoots(path);
     const t = resolveTargetFromPath(path);
     if (!t || t.lowConfidence) {
       pending = null;
@@ -132,6 +133,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!trusted(e)) return;
     if ((e as MouseEvent).detail > 1) return; // a double-click is one click step
     const path = e.composedPath();
+    watchRoots(path);
     const t = resolveTargetFromPath(path);
     if (!t) return;
     const el = t.element;
@@ -149,6 +151,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
     if (isTextField(el) || isNativeSelect(el)) {
       flushFieldClick(el);
+      // Clicking back into a field already typed into is not a new action.
+      if (last && last.kind === 'input' && last.el === el) return;
       if (!fieldClick || fieldClick.el !== el) fieldClick = { el, fp, time: now(), path };
       return;
     }
@@ -175,37 +179,57 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const onInput = (e: Event) => {
     if (!trusted(e)) return;
+    watchRoots(e.composedPath());
     const t = resolveTargetFromPath(e.composedPath());
     if (!t) return;
     const el = t.element;
-    if (!isTextField(el)) return; // selects and checkboxes are handled by change/click
-    if (last && last.kind === 'input' && last.el === el) return; // many input events, one step
+    // Native selects: `input` is composed, so it also arrives from inside open shadow roots
+    // (`change` does not). See D35.
+    if (isNativeSelect(el)) return recordSelect(el);
+    if (!isTextField(el)) return; // checkboxes and radios are handled by click/change
+    if (last && last.kind === 'input' && last.el === el) {
+      if (fieldClick?.el === el) fieldClick = null;
+      return; // many input events, one step
+    }
     flushFieldClick(el);
     const fp = fieldClick && fieldClick.el === el ? fieldClick.fp : fpOf(el);
     fieldClick = null;
     add('input', el, fp, stepTitle('input', { name: nameFor(el, fp), sensitive: isSensitiveField(el) }, lang));
   };
 
+  const recordSelect = (el: Element) => {
+    const select = el as HTMLSelectElement;
+    const option = safeLabel(select.selectedOptions[0]?.textContent);
+    const fp = fieldClick && fieldClick.el === el ? fieldClick.fp : last?.el === el ? last.fp : fpOf(el);
+    if (fieldClick?.el === el) fieldClick = null;
+    flushFieldClick();
+    const title = stepTitle('select', { name: nameFor(el, fp), ...(option ? { option } : {}) }, lang);
+    if (last && last.kind === 'select' && last.el === el) {
+      // Changing the same select again (arrow keys) updates the step.
+      const step = makeStep('select', el, fp, title);
+      step.id = last.id;
+      last.time = now();
+      opts.emit({ op: 'replace', stepId: last.id, step });
+    } else add('select', el, fp, title);
+  };
+
+  // change and submit are not composed: listen on each open shadow root seen on an event path.
+  const shadowRoots = new Set<ShadowRoot>();
+  const watchRoots = (path: EventTarget[]) => {
+    for (const n of path) {
+      if (n instanceof ShadowRoot && !shadowRoots.has(n)) {
+        shadowRoots.add(n);
+        n.addEventListener('change', onChange, { capture: true });
+        n.addEventListener('submit', onSubmit, { capture: true });
+      }
+    }
+  };
+
   const onChange = (e: Event) => {
     if (!trusted(e)) return;
     const el = e.composedPath()[0];
     if (!(el instanceof Element)) return;
-    if (isNativeSelect(el)) {
-      const select = el as HTMLSelectElement;
-      const option = safeLabel(select.selectedOptions[0]?.textContent);
-      const fp = fieldClick && fieldClick.el === el ? fieldClick.fp : last?.el === el ? last.fp : fpOf(el);
-      if (fieldClick?.el === el) fieldClick = null;
-      flushFieldClick();
-      const title = stepTitle('select', { name: nameFor(el, fp), ...(option ? { option } : {}) }, lang);
-      if (last && last.kind === 'select' && last.el === el) {
-        // Changing the same select again (arrow keys) updates the step.
-        const step = makeStep('select', el, fp, title);
-        step.id = last.id;
-        last.time = now();
-        opts.emit({ op: 'replace', stepId: last.id, step });
-      } else add('select', el, fp, title);
-      return;
-    }
+    if (isNativeSelect(el)) return; // recorded from the input event
     if (isNativeCheck(el)) {
       if (sameTask.has(el)) return;
       markSameTask(el);
@@ -216,6 +240,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const onKeyDown = (e: Event) => {
     if (!trusted(e)) return;
+    watchRoots(e.composedPath());
     const k = e as KeyboardEvent;
     if (k.key !== 'Enter') return;
     const t = resolveTargetFromPath(e.composedPath());
@@ -256,6 +281,11 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   return {
     stop() {
       for (const [type, fn] of listeners) doc.removeEventListener(type, fn, { capture: true });
+      for (const r of shadowRoots) {
+        r.removeEventListener('change', onChange, { capture: true });
+        r.removeEventListener('submit', onSubmit, { capture: true });
+      }
+      shadowRoots.clear();
       timers.forEach(clearTimeout);
       timers.clear();
     },

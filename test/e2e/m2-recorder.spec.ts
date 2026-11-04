@@ -235,3 +235,38 @@ test('a slow full page load started by a click belongs to that click (no extra n
     .poll(async () => (await recordedSteps(ext)).steps.map((s) => `${s.kind}: ${s.title}`))
     .toEqual(['click: Click **Invoices (slow)**', 'click: Click **Import**']);
 });
+
+test('a recording started on a very long URL is saved, without its query or fragment', async ({ context, ext, site }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  const secret = 'jane@example.com';
+  await app.goto(`${site.main}/app/orders/123?static&email=${secret}&pad=${'x'.repeat(2500)}#access_token=tok123`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  const panel = await startRecording(ext, tabId, 'Long URL');
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await app.getByRole('button', { name: 'Import' }).click();
+  await expect.poll(async () => (await recordedSteps(ext)).steps.length).toBe(1);
+  const reply = await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'rec.stop', payload: {} }));
+  expect(reply.ok).toBe(true);
+  const dump = JSON.stringify(await (await ext.sw()).evaluate(() => chrome.storage.local.get(null)));
+  expect(dump).toContain(`"startUrl":"${site.main}/app/orders"`);
+  for (const s of [secret, 'tok123', 'xxxxxxxxxx']) expect(dump).not.toContain(s);
+});
+
+test('revoking site access stops recording in that tab', async ({ context, ext, site }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/?static`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await startRecording(ext, tabId, 'Revoke');
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await ext.revoke('http://127.0.0.1/*');
+  await expect.poll(() => marker(app, 'recording')).toBe('off');
+  await app.getByRole('button', { name: 'Import' }).click();
+  await app.waitForTimeout(500);
+  const rec = await recordedSteps(ext);
+  expect(rec.steps).toEqual([]);
+  expect(rec.tabIds).not.toContain(tabId);
+});
