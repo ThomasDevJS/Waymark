@@ -185,3 +185,24 @@ Each entry: date, spec section, what changed, why.
   - `rec.step` keeps only what the recorder produces: kinds click, input, select, check and submit; id, title, URL rule, target and flags. A page cannot inject notes, voice text, placement or "optional", and the advance mode is always `action`.
   - `rec.step` is refused from a frame whose origin is no longer granted. When site access is revoked, recording stops in those tabs and runs on those pages end.
   - Page titles are escaped before they go into navigate step titles, so `[Pay](https://x)` stays text.
+
+## 2026-11-04 — Player fixes from the independent M3 review
+
+### D36. Player robustness and privacy fixes
+- **Spec**: Player and overlay; Element targeting, playback steps 6 and 8; Sharing ("Report broken step").
+- **Changes**, each with a regression test that fails on the previous code:
+  - **Frame reports are kept per frame, not per document.** A reloaded iframe replaces its own old report, so it can no longer tie with itself (nothing drawn) or leave a dead document as the winner (no tooltip and no card). Reports from documents that are not `active` (being unloaded or in the back/forward cache) are ignored.
+  - **Run views are ordered.** The service worker reads the view inside its write queue, so views go out in the order of the changes, and each run carries a revision that content scripts use to drop an older view that arrives late.
+  - **Shadow DOM.** Select, check and submit steps inside open shadow roots advance: `change` and `submit` are also watched on the target's shadow root, as the recorder already did (D35).
+  - **Submit steps.** The "navigates away within 1.5 s" fallback counts only a cross-document navigation (`pagehide`, or a Navigation API `navigate` that is not same-document), not `pushState`, hash changes or a cancelled `beforeunload`.
+  - **Cards.** The top frame's not-found or off-track card goes away when another frame finds the target, so two frames never draw at once. Cards and note tooltips mount inside an open modal `<dialog>`, where they stay clickable.
+  - **Back** onto a navigate step whose page is already open no longer bounces forward.
+  - **Route changes** re-run a search that already gave up (spec playback step 6). The previous match's advance listener is removed while searching again.
+  - **New tabs** (refines D29): a new tab takes the run only if it opened on the page of the run's current step, not any same-origin tab. When that tab closes, the paused run in the opener resumes at the step the closed tab had reached.
+  - **Problem reports** keep the origin and normalized path only, never the query or fragment (as for start URLs, D33).
+  - **Start page**: when the guide's first page needs an id the stored start URL does not have (D33), the panel says which page to open instead of offering a button that would land the learner off track.
+- **Also**: ESLint now forbids bare `origin`, `name`, `status`, `event`, `length` and `closed`, after a refactor briefly let the global `origin` stand in for a missing variable.
+
+### D37. Known limitation: outside-click isolation
+- **Spec**: Player, Overlay ("The host stops pointer, mouse and click events from reaching the app").
+- **Finding**: the overlay host stops these events in the bubble phase. App listeners in the capture phase on `window` or `document`, and the browser's light dismiss of `popover="auto"` elements, still see clicks on the tooltip, so some app menus may close when the learner presses Next. Stopping them in the capture phase at `window` would also stop the event before it reaches the tooltip's own buttons inside the shadow root. Left as is for v1; revisit if pilots hit it.

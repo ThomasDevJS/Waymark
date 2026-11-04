@@ -10,7 +10,7 @@ import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
-import { carryRunToNewTab, dropRun, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
+import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
 
@@ -112,6 +112,6 @@ export default defineBackground(() => {
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), `test:route:${tabId}`]);
     void onTabRemoved(tabId);
-    void dropRun(tabId);
+    void resumeRunsMovedTo(tabId).then(() => dropRun(tabId));
   });
 });

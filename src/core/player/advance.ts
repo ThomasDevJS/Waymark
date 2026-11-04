@@ -61,15 +61,17 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       if (trusted(e) && hits(e.composedPath(), w.targets)) advance();
     });
   }
-  if (kind === 'select' || kind === 'check') {
-    on(doc, 'change', (e) => {
-      if (trusted(e) && hits(e.composedPath(), w.targets)) advance();
-    });
+  // change and submit are not composed: also listen on the open shadow roots the targets live in.
+  const roots: EventTarget[] = [doc];
+  for (const t of w.targets) {
+    const r = t.getRootNode();
+    if (r instanceof ShadowRoot && !roots.includes(r)) roots.push(r);
   }
+  const onChange = (e: Event) => {
+    if (trusted(e) && hits(e.composedPath(), w.targets)) advance();
+  };
+  if (kind === 'select' || kind === 'check' || kind === 'input') for (const r of roots) on(r, 'change', onChange);
   if (kind === 'input') {
-    on(doc, 'change', (e) => {
-      if (trusted(e) && hits(e.composedPath(), w.targets)) advance();
-    });
     on(doc, 'focusout', (e) => {
       const t = hits(e.composedPath(), w.targets);
       if (trusted(e) && t && hasValue(t)) advance();
@@ -86,18 +88,25 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       if (f) forms.add(f);
       if (tagOf(t) === 'form') forms.add(t as HTMLFormElement);
     }
-    on(doc, 'submit', (e) => {
-      if (e.isTrusted && forms.has(e.composedPath()[0] as HTMLFormElement)) advance();
-    });
+    for (const r of roots) {
+      on(r, 'submit', (e) => {
+        if (e.isTrusted && forms.has(e.composedPath()[0] as HTMLFormElement)) advance();
+      });
+    }
+    // "The page navigates away within 1.5 s of the click": only a real cross-document
+    // navigation counts (not pushState or a hash change, and not a cancelled beforeunload).
     const leaving = () => {
       if (now() - clickedAt <= SUBMIT_NAV_MS) advance();
     };
     const win = doc.defaultView;
     if (win) {
-      on(win, 'beforeunload', leaving);
       on(win, 'pagehide', leaving);
       const nav = (win as Window & { navigation?: EventTarget }).navigation;
-      if (nav) on(nav, 'navigate', leaving);
+      if (nav)
+        on(nav, 'navigate', (e) => {
+          const dest = (e as Event & { destination?: { sameDocument?: boolean } }).destination;
+          if (dest && dest.sameDocument === false) leaving();
+        });
     }
   }
   return () => {

@@ -192,7 +192,8 @@ test('not found within 8 seconds shows Retry, Skip, Exit and Report broken step;
   await card.locator('[data-action="report"]').click();
   await expect(card).toContainText('Problems list');
   const problems = await msg<{ problems: { stepTitle: string; url: string }[] }>(ext, 'problems.list', {});
-  expect(problems.problems).toEqual([expect.objectContaining({ stepTitle: 'Click **Orders**', url: expect.stringContaining('/?static') })]);
+  // origin and normalized path only: no query or fragment (D36)
+  expect(problems.problems).toEqual([expect.objectContaining({ stepTitle: 'Click **Orders**', url: `${site.main}/` })]);
   await card.locator('[data-action="skip"]').click();
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toMatch(/:(1)$/);
 });
@@ -239,4 +240,37 @@ test('a link that opens a new tab carries the run there and pauses the old tab',
   await expect.poll(() => marker(app, 'player')).toBe('paused');
   await popup.getByRole('button', { name: 'Export', exact: true }).click();
   await expect.poll(() => marker(popup, 'player')).toBe('done');
+});
+
+test('closing the tab a run moved to resumes it in the opener; an unrelated new tab does not take it', async ({ context, ext, site }) => {
+  test.setTimeout(90_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/?static`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await tabIdOf(ext);
+  await msg(ext, 'rec.start', { tabId, title: 'Reports' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  const [rec] = await Promise.all([context.waitForEvent('page'), app.click('#new-tab-link')]);
+  await expect.poll(() => marker(rec, 'recording')).toBe('on');
+  await rec.getByRole('button', { name: 'Export', exact: true }).click();
+  await expect.poll(async () => (await msg<{ steps: unknown[] } | null>(ext, 'rec.state', {}))?.steps.length).toBe(2);
+  const { guideId } = await msg<{ guideId: string }>(ext, 'rec.stop', {});
+  await rec.close();
+
+  await msg(ext, 'run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  // An unrelated same-origin tab opened from the app does not take the run.
+  const [other] = await Promise.all([context.waitForEvent('page'), app.evaluate(() => void window.open('/page3.html'))]);
+  await other.waitForLoadState();
+  await app.waitForTimeout(800);
+  expect(await marker(app, 'player')).toBe('drawn:0');
+  await other.close();
+
+  const [popup] = await Promise.all([context.waitForEvent('page'), app.click('#new-tab-link')]);
+  await expect.poll(() => marker(popup, 'player'), { timeout: 10_000 }).toBe('drawn:1');
+  await expect.poll(() => marker(app, 'player')).toBe('paused');
+  await popup.close();
+  // The opener resumes at the step the closed tab had reached.
+  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:1');
 });

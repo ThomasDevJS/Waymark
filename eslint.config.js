@@ -20,6 +20,11 @@ export default tseslint.config(
         { property: 'outerHTML', message: 'User strings never reach outerHTML (SPEC: Security).' },
         { property: 'insertAdjacentHTML', message: 'Use DOM APIs (SPEC: Security).' },
       ],
+      // Bare browser globals that silently stand in for a missing local variable.
+      'no-restricted-globals': [
+        'error',
+        ...['origin', 'name', 'status', 'event', 'length', 'closed'].map((n) => ({ name: n, message: `Use window.${n} explicitly if you mean the global.` })),
+      ],
       'no-eval': 'error',
       'no-new-func': 'error',
     },

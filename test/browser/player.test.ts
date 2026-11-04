@@ -195,3 +195,70 @@ describe('overlay drawing', () => {
     expect(r.status === 'found' && r.tied.length).toBe(5);
   });
 });
+
+describe('review regressions (M3)', () => {
+  function shadowForm() {
+    const host = document.createElement('fx-shadow-player');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const form = document.createElement('form');
+    form.addEventListener('submit', (e) => e.preventDefault());
+    const select = document.createElement('select');
+    for (const t of ['Small', 'Large']) select.append(Object.assign(document.createElement('option'), { textContent: t }));
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    const send = document.createElement('button');
+    send.textContent = 'Send';
+    form.append(select, box, send);
+    root.append(form);
+    return { host, select, box, send };
+  }
+
+  it('select, check and submit steps inside an open shadow root advance', async () => {
+    const { host, select, box, send } = shadowForm();
+    watch('select', [select]);
+    select.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(advanced).toBe(1);
+    stop?.();
+    watch('check', [box]);
+    await userEvent.click(box);
+    expect(advanced).toBe(2);
+    stop?.();
+    watch('submit', [send]);
+    await userEvent.click(send);
+    expect(advanced).toBe(3);
+    host.remove();
+  });
+
+  it('a submit step does not advance on an in-app route change after its click', async () => {
+    const b = document.createElement('button');
+    b.type = 'button'; // the app validates and does not submit
+    b.textContent = 'Pay';
+    b.addEventListener('click', () => history.replaceState(history.state, '', location.href.split('#')[0] + '#paid'));
+    document.body.append(b);
+    watch('submit', [b]);
+    await userEvent.click(b);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(advanced).toBe(0);
+    b.remove();
+    history.replaceState(history.state, '', location.href.split('#')[0]);
+  });
+
+  it('cards and note tooltips mount inside an open modal dialog, where they stay clickable', async () => {
+    const dialog = document.createElement('dialog');
+    dialog.append(Object.assign(document.createElement('p'), { textContent: 'Modal' }));
+    document.body.append(dialog);
+    dialog.showModal();
+    let skipped = 0;
+    const ui = new PlayerUI({ ...{ next() {}, back() {}, exit() {}, retry() {}, report() {}, goBack() {} }, skip: () => skipped++ });
+    const step: Step = { id: 's', kind: 'click', title: 'Click **X**', url: { kind: 'pattern', value: '/' }, advance: 'action' };
+    ui.showCard('not-found', { ...NO_RUN, active: true, status: 'running', step, stepIndex: 0, total: 2 });
+    expect(overlayHost()!.parentElement).toBe(dialog);
+    await userEvent.click(overlayHost()!.shadowRoot!.querySelector('[data-action="skip"]') as HTMLElement);
+    expect(skipped).toBe(1);
+    ui.clear();
+    dialog.close();
+    dialog.remove();
+  });
+});

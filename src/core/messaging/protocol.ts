@@ -83,7 +83,7 @@ export interface ResponseMap {
   'rec.state': RecordingState | null;
   'guide.list': { guides: GuideIndexEntry[] };
   'route.report': { ok: true; recording: RecordingView; run: RunView };
-  'run.start': { status: 'started' } | { status: 'needs-start'; startUrl: string };
+  'run.start': { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string };
   'run.stop': { ok: boolean };
   'run.state': RunView;
   'run.match': { ok: boolean };

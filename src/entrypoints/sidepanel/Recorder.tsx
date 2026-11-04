@@ -14,7 +14,7 @@ const noteTitle = signal('');
 const noteOpen = signal(false);
 const error = signal<string | null>(null);
 const run = signal<RunView | null>(null);
-const needsStart = signal<{ guideId: string; startUrl: string } | null>(null);
+const needsStart = signal<{ guideId: string; startUrl: string; reachable: boolean; pattern: string } | null>(null);
 
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   try {
@@ -35,7 +35,7 @@ async function refresh(tabId?: number | null) {
 async function startGuide(tabId: number, guideId: string, openStart = false) {
   const res = await attempt(() => send('run.start', { tabId, guideId, openStart }));
   if (!res) return;
-  if (res.status === 'needs-start') needsStart.value = { guideId, startUrl: res.startUrl };
+  if (res.status === 'needs-start') needsStart.value = { guideId, startUrl: res.startUrl, reachable: res.reachable, pattern: res.pattern };
   else {
     needsStart.value = null;
     await refresh(tabId);
@@ -101,10 +101,18 @@ export function Recorder({ tabId }: { tabId: number | null }) {
         )}
         {needsStart.value && tabId !== null && (
           <div class="row" role="status">
-            <span class="grow">This guide starts on another page.</span>
-            <button type="button" class="primary" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true)}>
-              Open start page
-            </button>
+            {needsStart.value.reachable ? (
+              <>
+                <span class="grow">This guide starts on another page.</span>
+                <button type="button" class="primary" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true)}>
+                  Open start page
+                </button>
+              </>
+            ) : (
+              <span class="grow" data-testid="start-hint">
+                This guide starts on a page like <code>{needsStart.value.pattern}</code>. Open that page, then press Start.
+              </span>
+            )}
           </div>
         )}
         {guides.value.length > 0 && (

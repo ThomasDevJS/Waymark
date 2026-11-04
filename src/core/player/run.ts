@@ -14,6 +14,10 @@ export type StepCause = 'start' | 'action' | 'next' | 'back' | 'skip' | 'resume'
 export interface Run extends RunState {
   /** Changes every time the step changes, so stale reports can be told apart. */
   stepToken: string;
+  /** Increases with every change to the run; content scripts ignore older views. */
+  rev: number;
+  /** Set on a paused run: the tab the run moved to (D36). */
+  movedTo?: number;
   cause: StepCause;
 }
 
@@ -25,6 +29,7 @@ export function startRun(guide: Guide, now = Date.now(), startIndex = 0): Run {
     startedAt: new Date(now).toISOString(),
     stepToken: token(),
     cause: 'start',
+    rev: 1,
   };
 }
 
@@ -58,6 +63,7 @@ export function applyRunOp(run: Run, op: Exclude<RunOp, 'exit'>, stepId: string)
     run.cause = op === 'done' ? 'action' : op;
   }
   run.stepToken = token();
+  run.rev = (run.rev ?? 0) + 1;
   return true;
 }
 
@@ -98,6 +104,9 @@ export interface RunView {
   step: Step | null;
   stepToken: string | null;
   cause: StepCause | null;
+  /** Run identity (start time) and revision, so a content script can drop out-of-order views. */
+  runId: string | null;
+  rev: number;
   /** Frame token chosen to draw the current step, or null while searching. */
   winner: string | null;
   /** 'not-found' once the top frame gave up and no frame found the target. */
@@ -115,6 +124,8 @@ export const NO_RUN: RunView = {
   step: null,
   stepToken: null,
   cause: null,
+  runId: null,
+  rev: 0,
   winner: null,
   phase: 'searching',
 };
@@ -134,6 +145,8 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
     step,
     stepToken: run.stepToken,
     cause: run.cause,
+    runId: run.startedAt,
+    rev: run.rev ?? 0,
     winner: board?.winner ?? null,
     phase: board?.winner ? 'found' : board?.topGaveUp ? 'not-found' : 'searching',
   };
@@ -142,7 +155,8 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
 /** Per-step match reports from every frame (SPEC: Element targeting, playback step 8). */
 export interface MatchBoard {
   stepToken: string;
-  reports: Record<string, { frameId: number; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean }>;
+  /** Keyed by frameId. */
+  reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean }>;
   winner: string | null;
   topGaveUp: boolean;
 }
@@ -159,4 +173,13 @@ export function shouldCatchUp(run: Run, url: string): boolean {
   if (!step || !next || (step.kind !== 'click' && step.kind !== 'submit')) return false;
   const origins = run.guideSnapshot.appOrigins;
   return !urlMatches(step.url, url, origins) && urlMatches(next.url, url, origins);
+}
+
+/**
+ * A new tab takes the run only when it opened on the page of the run's current step (the
+ * click on the link has already advanced the run), not for any same-origin tab (D36).
+ */
+export function newTabContinuesRun(run: Run, url: string): boolean {
+  const step = currentStep(run);
+  return run.status === 'running' && !!step && urlMatches(step.url, url, run.guideSnapshot.appOrigins);
 }

@@ -7,11 +7,11 @@ import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { GuideSchema, type Guide } from '../core/model/schema';
 import { recordReport } from '../core/player/board';
-import { applyRunOp, currentStep, NO_RUN, onStartPage, runView, shouldCatchUp, startRun, type MatchBoard, type Run, type RunOp, type RunView } from '../core/player/run';
+import { applyRunOp, currentStep, newTabContinuesRun, NO_RUN, onStartPage, runView, shouldCatchUp, startRun, type MatchBoard, type Run, type RunOp, type RunView } from '../core/player/run';
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
-import { originToMatchPattern } from '../core/url/url';
+import { normalizePath, originToMatchPattern } from '../core/url/url';
 
 const runKey = (tabId: number) => `run:${tabId}`;
 const boardKey = (tabId: number) => `match:${tabId}`;
@@ -41,20 +41,26 @@ export async function viewFor(tabId: number | undefined, topUrl?: string): Promi
   const run = await getRun(tabId);
   if (!run) return NO_RUN;
   const url = topUrl ?? (await tabUrl(tabId));
-  let origin: string | null = null;
+  let pageOrigin: string | null = null;
   try {
-    origin = url ? new URL(url).origin : null;
+    pageOrigin = url ? new URL(url).origin : null;
   } catch {
-    origin = null;
+    pageOrigin = null;
   }
   const view = runView(run, await getBoard(tabId));
-  if (!origin || !run.guideSnapshot.appOrigins.includes(origin)) return { ...view, step: null, winner: null };
+  if (!pageOrigin || !run.guideSnapshot.appOrigins.includes(pageOrigin)) return { ...view, step: null, winner: null };
   return view;
 }
 
-async function broadcast(tabId: number): Promise<void> {
-  const msg: ContentPush = { type: 'run.changed', payload: await viewFor(tabId) };
-  chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
+/**
+ * Sends the tab its current view. The read happens inside the write queue, so views go out in
+ * the same order as the changes they describe (an older view can never overtake a newer one).
+ */
+function broadcast(tabId: number): Promise<void> {
+  return enqueue(async () => {
+    const msg: ContentPush = { type: 'run.changed', payload: await viewFor(tabId) };
+    chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
+  });
 }
 
 /** Read-modify-write of one tab's run, serialized through the write queue. */
@@ -94,6 +100,16 @@ export async function runOp(tabId: number, op: RunOp, stepId: string): Promise<b
   return true;
 }
 
+/** Problem reports keep the origin and normalized path only, never the query or fragment (D36). */
+function problemUrl(url: string | undefined): string {
+  try {
+    const u = new URL(url ?? '');
+    return u.origin + normalizePath(u.pathname);
+  } catch {
+    return '';
+  }
+}
+
 export const runHandlers: Handlers = {
   'run.start': async ({ tabId, guideId, openStart }) => {
     const guide = await loadGuide(guideId);
@@ -101,7 +117,10 @@ export const runHandlers: Handlers = {
     const origin = new URL(guide.startUrl).origin;
     if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) throw new Error('Allow Waymark on this site first.');
     if (!url || !onStartPage(guide, url)) {
-      if (!openStart) return { status: 'needs-start' as const, startUrl: guide.startUrl };
+      // The stored start URL has no ids (D33); when the first page needs one, the learner has
+      // to open it themselves (D36).
+      const reachable = onStartPage(guide, guide.startUrl);
+      if (!openStart || !reachable) return { status: 'needs-start' as const, startUrl: guide.startUrl, reachable, pattern: guide.steps[0]?.url.value ?? '/' };
       await chrome.tabs.update(tabId, { url: guide.startUrl });
     }
     const run = startRun(guide);
@@ -127,6 +146,9 @@ export const runHandlers: Handlers = {
   'run.match': async (r, ctx: HandlerContext) => {
     const tabId = ctx.tabId;
     if (tabId === undefined || ctx.frameId === undefined) return { ok: false };
+    // A report from a document that is going away (bfcache, unload) must not decide the winner.
+    const lifecycle = (ctx.sender as { documentLifecycle?: string }).documentLifecycle;
+    if (lifecycle && lifecycle !== 'active') return { ok: false };
     const frameId = ctx.frameId;
     const changed = await enqueue(async () => {
       const run = await getRun(tabId);
@@ -151,7 +173,7 @@ export const runHandlers: Handlers = {
       stepId,
       stepTitle: step.title,
       stepIndex: run.stepIndex,
-      url: ctx.sender.tab?.url ?? '',
+      url: problemUrl(ctx.sender.tab?.url),
       at: new Date().toISOString(),
     });
     return { ok: true };
@@ -168,8 +190,8 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   // The click that opened the tab also reports "step done" from the opener; let that land first
   // (the same 300 ms the player waits after any action), so the run moves on the right step.
   await new Promise((r) => setTimeout(r, CARRY_DELAY_MS));
-  // Only a tab opened on one of the guide's origins takes the run (not, say, a docs page or a
-  // new blank tab). Its URL is readable because the guide's site is granted.
+  // Only a tab opened on the page of the run's current step takes the run (not a docs page, a
+  // blank tab or an unrelated same-origin link). Its URL is readable because the site is granted.
   let url = tab.pendingUrl ?? tab.url;
   try {
     const t = await chrome.tabs.get(newId);
@@ -177,18 +199,13 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   } catch {
     return;
   }
-  let origin: string | null = null;
-  try {
-    origin = url ? new URL(url).origin : null;
-  } catch {
-    origin = null;
-  }
   const moved = await enqueue(async () => {
     const run = await getRun(opener);
-    if (!run || run.status !== 'running' || (await getRun(newId))) return false;
-    if (!origin || !run.guideSnapshot.appOrigins.includes(origin)) return false;
-    const carried: Run = { ...run, cause: 'resume' };
+    if (!run || (await getRun(newId)) || !url || !newTabContinuesRun(run, url)) return false;
+    const carried: Run = { ...run, cause: 'resume', rev: run.rev + 1 };
     run.status = 'paused';
+    run.movedTo = newId;
+    run.rev += 1;
     await chrome.storage.session.set({ [runKey(newId)]: carried, [runKey(opener)]: run });
     await chrome.storage.session.remove(boardKey(opener));
     return true;
@@ -199,10 +216,32 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   }
 }
 
-/**
- * A new document in the top frame: the frames that reported for the current step are gone, and
- * a link or submit step whose report was lost on the way out is caught up (D32).
- */
+/** When the tab a run moved to closes, the paused run in its opener resumes where it got to. */
+export async function resumeRunsMovedTo(closedTabId: number): Promise<void> {
+  const all = await chrome.storage.session.get(null);
+  const closed = all[runKey(closedTabId)] as Run | undefined;
+  for (const [key, value] of Object.entries(all)) {
+    const run = value as Run;
+    if (!key.startsWith('run:') || run?.status !== 'paused' || run.movedTo !== closedTabId) continue;
+    const tabId = Number(key.slice(4));
+    await enqueue(async () => {
+      const r = await getRun(tabId);
+      if (!r || r.movedTo !== closedTabId) return;
+      if (closed && closed.startedAt === r.startedAt) {
+        r.stepIndex = closed.stepIndex;
+        r.stepToken = closed.stepToken;
+        if (closed.status === 'finished') r.status = 'finished';
+      }
+      if (r.status === 'paused') r.status = 'running';
+      delete r.movedTo;
+      r.cause = 'resume';
+      r.rev = Math.max(r.rev, closed?.rev ?? 0) + 1;
+      await chrome.storage.session.set({ [runKey(tabId)]: r });
+    });
+    await broadcast(tabId);
+  }
+}
+
 export async function onTopFrameLoad(tabId: number, url: string): Promise<void> {
   await enqueue(async () => {
     await chrome.storage.session.remove(boardKey(tabId));

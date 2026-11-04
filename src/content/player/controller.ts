@@ -110,6 +110,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     const step = v.step;
     if (!step) return;
     abort?.abort();
+    stopAdvance?.(); // the previous match's elements no longer count while searching again
+    stopAdvance = null;
     ui.clear();
     drawnFor = null;
     searchDone = false;
@@ -117,7 +119,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     if (!step.target) {
       // note and navigate steps have no element; the top frame shows a centered tooltip
       if (isTop) {
-        if (step.kind === 'navigate' && onStartPageUrl(v)) return op('done');
+        // Back onto a navigate step whose page we are already on must not bounce forward again.
+        if (step.kind === 'navigate' && v.cause !== 'back' && onStartPageUrl(v)) return op('done');
         ui.showStep(v, null);
         drawnFor = v.stepToken;
         testMark('player', `note:${v.stepIndex}`);
@@ -166,6 +169,11 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       testMark('player', `drawn:${v.stepIndex}`);
       return;
     }
+    // Another frame found the target: the top frame's off-track or not-found card goes away.
+    if (!mine && v.winner && (ui.card === 'off-track' || ui.card === 'not-found')) {
+      ui.clear();
+      testMark('player', `elsewhere:${v.stepIndex}`);
+    }
     if (!mine && drawnFor === v.stepToken && v.step.target) {
       ui.clear();
       stopAdvance?.();
@@ -180,6 +188,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   }
 
   const apply = (next: RunView) => {
+    // Views can arrive out of order (a reply to a page-load report vs. a push): keep the newest.
+    if (view && next.runId && view.runId === next.runId && next.rev < view.rev) return;
     view = next;
     if (!next.active || next.status === 'none' || next.status === 'paused') {
       clearStep();
@@ -220,7 +230,14 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     /** Navigate steps advance when the URL matches the step's URL rule. */
     onRoute(url: string) {
       const v = view;
-      if (!isTop || !v?.step || v.status !== 'running') return;
+      if (!v?.step || v.status !== 'running') return;
+      // A route change re-runs a search that already gave up (SPEC: playback step 6); a search
+      // still running listens to route changes itself.
+      if (v.step.target && searchDone && drawnFor !== v.stepToken) {
+        startSearch(v);
+        return;
+      }
+      if (!isTop) return;
       if (v.step.kind === 'navigate' && urlMatches(v.step.url, url, v.appOrigins)) op('done');
     },
     dispose() {

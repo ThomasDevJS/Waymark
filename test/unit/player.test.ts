@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRunOp, currentStep, onStartPage, runView, shouldCatchUp, startRun, stepForUrl } from '../../src/core/player/run';
+import { applyRunOp, currentStep, newTabContinuesRun, onStartPage, runView, shouldCatchUp, startRun, stepForUrl } from '../../src/core/player/run';
 import { emptyBoard, recordReport } from '../../src/core/player/board';
 import { spotlightPanels } from '../../src/core/player/spotlight';
 import type { Guide, Step } from '../../src/core/model/schema';
@@ -110,5 +110,33 @@ describe('catching up a lost link-click report', () => {
     expect(shouldCatchUp(r, 'https://evil.test/orders/12')).toBe(false);
     applyRunOp(r, 'done', 'a');
     expect(shouldCatchUp(r, 'https://app.test/orders/12')).toBe(false); // step b: same page as c
+  });
+});
+
+describe('review regressions (M3)', () => {
+  const rep = (frameToken: string, frameId: number, found: boolean, score: number) => ({ frameToken, frameId, stepToken: 's', found, score, margin: 20, instance: 'unique' as const, pathMatches: true });
+  it('a reloaded iframe replaces its own old report (no tie with itself, no dead winner)', () => {
+    let b = recordReport(undefined, rep('old', 5, true, 90));
+    b = recordReport(b, rep('new', 5, true, 90));
+    expect(b.winner).toBe('new');
+    b = recordReport(b, rep('newer', 5, false, 20));
+    expect(b.winner).toBeNull();
+    expect(Object.keys(b.reports)).toEqual(['5']);
+  });
+
+  it('runs carry a revision that grows with every step change', () => {
+    const r = startRun(guide);
+    const v1 = runView(r).rev;
+    applyRunOp(r, 'done', 'a');
+    expect(runView(r).rev).toBeGreaterThan(v1);
+    expect(runView(r).runId).toBe(r.startedAt);
+  });
+
+  it('a new tab continues the run only on the page of the current step', () => {
+    const r = startRun(guide);
+    applyRunOp(r, 'done', 'a'); // the link click moved the run to step b (/orders/:id)
+    expect(newTabContinuesRun(r, 'https://app.test/orders/9')).toBe(true);
+    expect(newTabContinuesRun(r, 'https://app.test/help')).toBe(false); // unrelated same-origin tab
+    expect(newTabContinuesRun(r, 'https://docs.test/orders/9')).toBe(false);
   });
 });

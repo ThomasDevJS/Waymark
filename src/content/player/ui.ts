@@ -54,6 +54,19 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
+/** The topmost open modal <dialog> in the document, if any: everything outside it is inert. */
+export function openModalDialog(doc: Document = document): Element | null {
+  let found: Element | null = null;
+  for (const d of Array.from(doc.querySelectorAll('dialog[open]'))) {
+    try {
+      if (d.matches(':modal')) found = d;
+    } catch {
+      // :modal unsupported: ignore
+    }
+  }
+  return found;
+}
+
 /** The open modal <dialog> containing an element, if any (crossing shadow roots). */
 export function modalDialogOf(target: Element): Element | null {
   for (let n: Element | null = target; n; n = composedParent(n)) {
@@ -91,7 +104,8 @@ export class PlayerUI {
   showStep(view: RunView, target: Element | null, onLost?: () => void): void {
     this.clear();
     this.ensureStyle();
-    mountOverlayIn(target ? modalDialogOf(target) : null);
+    // Inside an open modal dialog the tooltip must live in the dialog, or it would be inert.
+    mountOverlayIn(target ? (modalDialogOf(target) ?? openModalDialog()) : openModalDialog());
     const layer = overlayLayer();
     const step = view.step;
     if (!step) return;
@@ -148,7 +162,7 @@ export class PlayerUI {
   showCard(kind: Card, view: RunView): void {
     this.clear();
     this.ensureStyle();
-    mountOverlayIn(null);
+    mountOverlayIn(openModalDialog());
     const tip = this.tooltipShell(view);
     tip.classList.add('centered');
     tip.dataset.card = kind;
@@ -199,6 +213,11 @@ export class PlayerUI {
 
   get drawn(): boolean {
     return !!this.tip;
+  }
+
+  /** The card currently shown, if any. */
+  get card(): Card | null {
+    return (this.tip?.dataset.card as Card | undefined) ?? null;
   }
 
   private tooltipShell(view: RunView): HTMLElement {
