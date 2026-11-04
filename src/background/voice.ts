@@ -28,6 +28,11 @@ export function ttsAvailable(): boolean {
   return typeof chrome.tts?.speak === 'function';
 }
 
+/** The browser's UI language (e.g. "en-GB"): picks the region when a guide gives none. */
+function uiLang(): string | undefined {
+  return typeof navigator === 'undefined' ? undefined : navigator.language;
+}
+
 export function getVoices(): Promise<chrome.tts.TtsVoice[]> {
   if (!ttsAvailable()) return Promise.resolve([]);
   return new Promise((resolve) => chrome.tts.getVoices((v) => resolve(v ?? [])));
@@ -74,7 +79,7 @@ async function speak(tabId: number, text: string, lang: string, settings: VoiceS
     chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }).catch(() => undefined);
     return;
   }
-  const voice = pickVoice(await getVoices(), lang, settings);
+  const voice = pickVoice(await getVoices(), lang, settings, uiLang());
   if (!voice) return; // no usable on-device voice: stay silent rather than send text to a server
   chrome.tts.speak(text, { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
 }
@@ -96,7 +101,7 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
 export async function speakSample(lang = 'en'): Promise<boolean> {
   const settings = await getVoiceSettings();
   if (!ttsAvailable()) return false;
-  const voice = pickVoice(await getVoices(), lang, settings);
+  const voice = pickVoice(await getVoices(), lang, settings, uiLang());
   if (!voice) return false;
   chrome.tts.stop();
   chrome.tts.speak('This is how Waymark will read your guides.', { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });

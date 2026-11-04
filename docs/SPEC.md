@@ -341,6 +341,7 @@ Voice and step text are free: the browser's on-device voices read each step, and
 - Use the `chrome.tts` extension API from the service worker; Chrome and Edge support it. M4 checks Brave, Opera and Vivaldi, and whether speech stops when the service worker is stopped.
 - On-device voices only by default. Voices marked `remote: true`, such as Chrome's "Google …" voices, send the text to a server, so they stay hidden unless the user turns on Allow online voices.
 - Settings: voice picker filtered by the guide's `lang`, speed, and auto-play on or off.
+- Automatic voice (D46): unless the user picked one, use the best usable voice for the `lang`: names with Natural, Neural, Enhanced or Premium first (remote ones among them first, when online voices are allowed), then on-device over remote, then the guide's region (else the browser's), then the browser's list order. The `speechSynthesis` fallback ranks the same way, without the user's choice (settings never reach content scripts). Settings shows the voice in use and how to install better voices on the user's OS.
 - Speech stops on step change, Back, Exit, or mute (`chrome.tts.stop`).
 - Fallback where `chrome.tts` is missing: `speechSynthesis` in the content script, unlocked by the learner's Start click.
 
