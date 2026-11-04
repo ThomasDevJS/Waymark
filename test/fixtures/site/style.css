@@ -1,0 +1,11 @@
+body { margin: 0; font: 14px/1.4 system-ui, sans-serif; }
+.app { padding: 8px; }
+header, nav, [role=toolbar], .cards, .actions, .pickers, .tabs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.card { border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin: 8px; }
+.switch { display: inline-block; width: 32px; height: 16px; background: #ccc; border-radius: 8px; margin: 4px; }
+.switch[aria-checked=true] { background: #2f5fd0; }
+.combo { display: inline-block; padding: 4px 8px; border: 1px solid #999; cursor: pointer; }
+.portal .listbox { position: absolute; top: 40px; right: 16px; background: white; border: 1px solid #999; width: 160px; }
+.option { padding: 2px 8px; cursor: pointer; }
+.modal { position: fixed; inset: 20% 30%; background: white; border: 1px solid #333; padding: 16px; z-index: 1000; }
+.vlist { height: 120px; width: 240px; overflow: auto; border: 1px solid #ccc; }
