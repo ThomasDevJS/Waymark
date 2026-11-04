@@ -4,7 +4,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 
 The spec, which is the source of truth, is [`docs/SPEC.md`](docs/SPEC.md). Deviations and findings are in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
-**Status:** M0 (scaffold) and M1 (fingerprint and matcher) are done. The recorder (M2) is next.
+**Status:** M0 (scaffold), M1 (fingerprint and matcher) and M2 (recorder) are done. The player (M3) is next.
 
 ## Build
 
@@ -23,6 +23,7 @@ pnpm dev            # WXT dev mode with reload
 2. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 3. Click **Load unpacked** and choose `.output/chrome-mv3`.
 4. Open a web app and click the Waymark toolbar icon. The side panel opens; click **Allow on this site** to grant that site only.
+5. Name a new guide and press **Record**, then use the app. Each action appears in the panel and in the on-page pill. Press **Stop** to save the guide.
 
 ## Tests
 

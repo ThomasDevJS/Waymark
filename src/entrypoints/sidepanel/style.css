@@ -25,3 +25,11 @@ h1 { font-size: 16px; margin: 0; }
 button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 @media (prefers-reduced-motion: no-preference) { button { transition: background-color 120ms; } }
+h2 { font-size: 14px; margin: 8px 0 0; }
+.row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; display: grid; gap: 4px; }
+input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.guides { margin: 0; padding-left: 20px; }
+.flag { color: #c77700; }
+button:disabled { opacity: .5; cursor: default; }

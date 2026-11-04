@@ -8,12 +8,14 @@ import { claimNonce, framePathFor, framesKey, issueNonce, type FrameMap } from '
 import { sessionKV } from '../core/storage/session-kv';
 import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
+import { listGuides } from '../core/storage/guides';
+import { onRouteReport, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 
 const sync = () => enqueue(() => syncRegistrations(chrome));
 
-async function tabInfo(windowId?: number) {
+async function tabInfo(windowId?: number, tabId?: number) {
   const query: chrome.tabs.QueryInfo = windowId === undefined ? { active: true, lastFocusedWindow: true } : { active: true, windowId };
-  const [tab] = await chrome.tabs.query(query);
+  const tab = tabId !== undefined ? await chrome.tabs.get(tabId).catch(() => undefined) : (await chrome.tabs.query(query))[0];
   const url = tab?.url ?? null; // readable after the toolbar click (activeTab) or on granted sites
   let origin: string | null = null;
   let grantable = false;
@@ -34,18 +36,20 @@ async function tabInfo(windowId?: number) {
 }
 
 const handlers: Handlers = {
-  'tab.current': ({ windowId }) => tabInfo(windowId),
+  ...recordingHandlers,
+  'guide.list': async () => ({ guides: await listGuides() }),
+  'tab.current': ({ windowId, tabId }) => tabInfo(windowId, tabId),
   'site.list': async () => {
     const { origins = [] } = await chrome.permissions.getAll();
     const regs = await chrome.scripting.getRegisteredContentScripts();
     return { origins: grantedSitePatterns(origins), registered: regs.flatMap((r) => r.matches ?? []) };
   },
   'site.sync': async () => ({ registered: await sync() }),
-  'route.report': async ({ url }, ctx) => {
+  'route.report': async (payload, ctx) => {
     if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0) {
-      await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: url });
+      await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
-    return { ok: true as const };
+    return { ok: true as const, recording: await onRouteReport(payload, ctx) };
   },
   // Guides arrive in M5; content scripts only ever get guides for their own origin.
   'guide.forPage': () => ({ guides: [] }),
@@ -92,7 +96,9 @@ export default defineBackground(() => {
   });
   chrome.permissions.onRemoved.addListener(() => void sync());
 
+  chrome.tabs.onCreated.addListener((tab) => void onTabCreated(tab));
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), `test:route:${tabId}`]);
+    void onTabRemoved(tabId);
   });
 });

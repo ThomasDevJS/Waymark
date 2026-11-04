@@ -27,7 +27,7 @@ export function enhance(doc, opts = {}) {
   routeLabel();
   // History routing: in-app links under /app/ use pushState.
   doc.addEventListener('click', (e) => {
-    const a = /** @type {Element} */ (e.target).closest?.('a[href^="/app/"]');
+    const a = /** @type {Element} */ (e.target).closest?.('a[href^="/app/"]:not([target])');
     if (!a || e.defaultPrevented) return;
     e.preventDefault();
     history.pushState({}, '', /** @type {string} */ (a.getAttribute('href')));
@@ -66,6 +66,7 @@ export function enhance(doc, opts = {}) {
       h('button', { type: 'button', id: 'replace-route', text: 'Replace route' }),
       h('button', { type: 'button', id: 'hash-route', text: 'Hash route' }),
       h('button', { type: 'button', id: 'query-route', text: 'Query only' }),
+      h('a', { href: '/app/reports', target: '_blank', id: 'new-tab-link', text: 'Open reports' }),
     ]),
   );
   doc.getElementById('push-route')?.addEventListener('click', () => (history.pushState({}, '', '/app/orders/77'), routeLabel()));

@@ -26,7 +26,7 @@ function findIframeFor(source: MessageEventSource | null): HTMLIFrameElement | n
   return null;
 }
 
-export function startFrameMapping(): () => void {
+export function startFrameMapping(): { dispose: () => void; framePath: () => string[] } {
   let framePath: string[] | null = window === window.top ? [] : null;
   let claimed = false;
   // A frame answers its children only once its own path is known, so a nested frame never
@@ -79,9 +79,11 @@ export function startFrameMapping(): () => void {
     testMark('frame-path', '[]');
   }
 
-  return () => {
-    window.removeEventListener('message', onMessage);
-    timers.forEach(clearTimeout);
-    void framePath;
+  return {
+    dispose: () => {
+      window.removeEventListener('message', onMessage);
+      timers.forEach(clearTimeout);
+    },
+    framePath: () => framePath ?? [],
   };
 }

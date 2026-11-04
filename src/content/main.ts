@@ -2,6 +2,8 @@
 import { send } from '../core/messaging/client';
 import { contextAlive, watchContext } from './context';
 import { startFrameMapping } from './frames';
+import { startRecordingClient } from './recording';
+import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
 
@@ -30,13 +32,18 @@ export function startContent(): void {
   };
   g[GLOBAL_KEY] = instance;
 
+  const frames = startFrameMapping();
+  disposers.push(frames.dispose);
+  const recording = startRecordingClient(frames.framePath);
+  disposers.push(recording.dispose, destroyOverlay);
   disposers.push(
     watchRoutes((change) => {
       if (!contextAlive()) return;
-      send('route.report', change).catch(() => undefined);
+      send('route.report', { ...change, title: document.title.slice(0, 500) })
+        .then((r) => recording.apply(r.recording))
+        .catch(() => undefined);
     }),
   );
-  disposers.push(startFrameMapping());
   disposers.push(watchContext(() => instance.dispose()));
   testMark('loaded', 'yes');
   testMark('instance', instanceId);

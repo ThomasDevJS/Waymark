@@ -4,27 +4,41 @@
  * pages we do not trust. Each sender type has its own allowlist.
  */
 import { z } from 'zod';
-import type { Guide } from '../model/schema';
+import { StepSchema, type Guide, type Step } from '../model/schema';
+import type { RecordingState, RecordingView } from '../recorder/session';
+import type { GuideIndexEntry } from '../storage/guides';
 
 const url = z.string().max(4096);
 
 export const RequestSchemas = {
   // ---- extension pages (side panel, options) ----
-  'tab.current': z.object({ windowId: z.number().int().optional() }),
+  'tab.current': z.object({ windowId: z.number().int().optional(), tabId: z.number().int().optional() }),
   'site.list': z.object({}),
   'site.sync': z.object({}),
+  'rec.start': z.object({ tabId: z.number().int(), title: z.string().max(500) }),
+  'rec.pause': z.object({}),
+  'rec.resume': z.object({}),
+  'rec.undo': z.object({}),
+  'rec.note': z.object({ title: z.string().max(500), note: z.string().max(5000).optional() }),
+  'rec.stop': z.object({}),
+  'rec.state': z.object({}),
+  'guide.list': z.object({}),
   // ---- content scripts ----
   'route.report': z.object({
     url,
     via: z.enum(['load', 'navigation-api', 'popstate', 'hashchange', 'poll']),
     navigationType: z.string().max(32).optional(),
+    title: z.string().max(500).optional(),
   }),
   'guide.forPage': z.object({ url }),
   'frame.nonce': z.object({ selector: z.string().max(2000) }),
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
   'run.advance': z.object({ stepId: z.string().max(64) }),
-  'rec.step': z.object({ step: z.unknown() }),
+  'rec.step': z.discriminatedUnion('op', [
+    z.object({ op: z.literal('add'), step: StepSchema }),
+    z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
+  ]),
 } as const;
 
 export type MessageType = keyof typeof RequestSchemas;
@@ -43,7 +57,15 @@ export interface ResponseMap {
   'tab.current': TabInfo;
   'site.list': { origins: string[]; registered: string[] };
   'site.sync': { registered: string[] };
-  'route.report': { ok: true };
+  'rec.start': RecordingState;
+  'rec.pause': RecordingState | null;
+  'rec.resume': RecordingState | null;
+  'rec.undo': RecordingState | null;
+  'rec.note': RecordingState | null;
+  'rec.stop': { guideId: string; title: string; steps: Step[] } | null;
+  'rec.state': RecordingState | null;
+  'guide.list': { guides: GuideIndexEntry[] };
+  'route.report': { ok: true; recording: RecordingView };
   'guide.forPage': { guides: Guide[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
@@ -76,7 +98,23 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
 ]);
 
 /** Extension pages may send everything except content-only reports. */
-export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(['tab.current', 'site.list', 'site.sync', 'guide.forPage']);
+export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
+  'tab.current',
+  'site.list',
+  'site.sync',
+  'guide.forPage',
+  'guide.list',
+  'rec.start',
+  'rec.pause',
+  'rec.resume',
+  'rec.undo',
+  'rec.note',
+  'rec.stop',
+  'rec.state',
+]);
+
+/** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
+export type ContentPush = { type: 'rec.changed'; payload: RecordingView };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

@@ -1,0 +1,263 @@
+/**
+ * Recorder (SPEC: Recorder): turns raw browser events into a short list of human-sized steps.
+ * Runs in every granted frame. Never stores what the author types.
+ *
+ * Emits operations rather than final steps, because some merges are only known later:
+ * a click on a submit button becomes a submit step when the form's submit event follows.
+ */
+import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
+import type { ProfileOptions } from '../model/profile';
+import { newId } from '../model/ids';
+import { buildFingerprint } from '../fingerprint/build';
+import { composedParent, isInteractive, resolveTargetFromPath, tagOf } from '../fingerprint/dom';
+import { safeLabel } from '../fingerprint/filters';
+import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
+import { stepUrlRule } from '../url/url';
+import { checkedState, isCheckLike, isCustomOption, isNativeCheck, isNativeSelect, isSensitiveField, isTextField, submitForm } from './classify';
+
+export type RecorderOp = { op: 'add'; step: Step } | { op: 'replace'; stepId: string; step: Step };
+
+export interface RecorderOptions {
+  doc?: Document;
+  emit: (op: RecorderOp) => void;
+  /** True for events inside Waymark's own overlay. */
+  isOwnEvent?: (path: EventTarget[]) => boolean;
+  framePath?: () => string[];
+  profile?: ProfileOptions;
+  lang?: string;
+  now?: () => number;
+  isVisible?: (el: Element) => boolean;
+}
+
+export const PENDING_LINK_MS = 1000;
+export const SUBMIT_MERGE_MS = 1500;
+
+interface Pending {
+  el: Element;
+  fp: ElementFingerprint;
+  time: number;
+  path: EventTarget[];
+}
+
+interface LastStep {
+  id: string;
+  kind: Step['kind'];
+  el: Element;
+  time: number;
+  form: HTMLFormElement | null;
+  fp: ElementFingerprint;
+}
+
+export interface Recorder {
+  stop(): void;
+}
+
+export function createRecorder(opts: RecorderOptions): Recorder {
+  const doc = opts.doc ?? document;
+  const now = opts.now ?? (() => Date.now());
+  const lang = opts.lang ?? 'en';
+  const isOwn = opts.isOwnEvent ?? (() => false);
+
+  let pending: Pending | null = null; // built on pointerdown, before the app can re-render
+  let fieldClick: Pending | null = null; // click into a field or native select, waiting for input/change
+  let last: LastStep | null = null;
+  let enter: { el: Element; time: number } | null = null;
+  // Controls already recorded in the current task: a label click forwards a second click to its
+  // control, and a native checkbox then fires change, all in the same task.
+  const sameTask = new Set<Element>();
+  const markSameTask = (el: Element) => {
+    sameTask.add(el);
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      sameTask.delete(el);
+    }, 0);
+    timers.add(timer);
+  };
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+
+  const fpOf = (el: Element) =>
+    buildFingerprint(el, { profile: opts.profile, framePath: opts.framePath?.() ?? [], ...(opts.isVisible ? { isVisible: opts.isVisible } : {}) });
+
+  const nameFor = (el: Element, fp: ElementFingerprint) =>
+    fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? safeLabel(el.getAttribute('title')) ?? roleWord(fp.role);
+
+  const flagsFor = (el: Element, lowConfidence: boolean): StepFlag[] | undefined => {
+    const flags: StepFlag[] = [];
+    if (lowConfidence) flags.push('low-confidence');
+    if (tagOf(el) === 'canvas') flags.push('canvas');
+    if (tagOf(el).includes('-') && !el.shadowRoot && !isInteractive(el) && el.childElementCount === 0) flags.push('closed-shadow');
+    return flags.length ? flags : undefined;
+  };
+
+  const makeStep = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]): Step => {
+    const step: Step = { id: newId(), kind, title, url: stepUrlRule(doc.URL, opts.profile), target: fp, advance: 'action' };
+    if (flags) step.flags = flags;
+    return step;
+  };
+
+  const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]) => {
+    const step = makeStep(kind, el, fp, title, flags);
+    last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
+    opts.emit({ op: 'add', step });
+    return step;
+  };
+
+  /** A click into a field that was never typed into still counts as a click (date pickers, etc.). */
+  const flushFieldClick = (except?: Element) => {
+    const f = fieldClick;
+    if (!f || f.el === except) return;
+    fieldClick = null;
+    if (isTextField(f.el)) add('click', f.el, f.fp, stepTitle('click', { name: nameFor(f.el, f.fp) }, lang));
+  };
+
+  const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
+
+  const onPointerDown = (e: Event) => {
+    if (!trusted(e)) return;
+    const path = e.composedPath();
+    const t = resolveTargetFromPath(path);
+    if (!t || t.lowConfidence) {
+      pending = null;
+      return;
+    }
+    pending = { el: t.element, fp: fpOf(t.element), time: now(), path };
+  };
+
+  const hasInteractiveAncestor = (el: Element) => {
+    for (let p = composedParent(el); p; p = composedParent(p)) if (isInteractive(p)) return true;
+    return false;
+  };
+
+  const onClick = (e: Event) => {
+    if (!trusted(e)) return;
+    if ((e as MouseEvent).detail > 1) return; // a double-click is one click step
+    const path = e.composedPath();
+    const t = resolveTargetFromPath(path);
+    if (!t) return;
+    const el = t.element;
+    const tag = tagOf(el);
+    if (tag === 'html' || tag === 'body') return;
+    // A click on a non-interactive area is kept only if it has no interactive ancestor.
+    if (t.lowConfidence && hasInteractiveAncestor(el)) return;
+
+    let fp: ElementFingerprint;
+    const p = pending;
+    pending = null;
+    const linked = p && now() - p.time <= PENDING_LINK_MS && (p.el === el || path.includes(p.el) || p.path.includes(el));
+    if (p && linked) fp = p.fp;
+    else fp = fpOf(el);
+
+    if (isTextField(el) || isNativeSelect(el)) {
+      flushFieldClick(el);
+      if (!fieldClick || fieldClick.el !== el) fieldClick = { el, fp, time: now(), path };
+      return;
+    }
+    flushFieldClick();
+
+    if (isCheckLike(el)) {
+      // A label click and the click it forwards to the control are one check step.
+      if (sameTask.has(el)) return;
+      markSameTask(el);
+      // Read the state after the app's own handlers ran (ARIA switches toggle in a click handler).
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        add('check', el, fp, stepTitle('check', { name: nameFor(el, fp), checked: checkedState(el) }, lang));
+      }, 0);
+      timers.add(timer);
+      return;
+    }
+    if (isCustomOption(el)) {
+      add('select', el, fp, chooseOptionTitle(fp.text ?? fp.accessibleName ?? 'the option'));
+      return;
+    }
+    add('click', el, fp, stepTitle('click', { name: nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
+  };
+
+  const onInput = (e: Event) => {
+    if (!trusted(e)) return;
+    const t = resolveTargetFromPath(e.composedPath());
+    if (!t) return;
+    const el = t.element;
+    if (!isTextField(el)) return; // selects and checkboxes are handled by change/click
+    if (last && last.kind === 'input' && last.el === el) return; // many input events, one step
+    flushFieldClick(el);
+    const fp = fieldClick && fieldClick.el === el ? fieldClick.fp : fpOf(el);
+    fieldClick = null;
+    add('input', el, fp, stepTitle('input', { name: nameFor(el, fp), sensitive: isSensitiveField(el) }, lang));
+  };
+
+  const onChange = (e: Event) => {
+    if (!trusted(e)) return;
+    const el = e.composedPath()[0];
+    if (!(el instanceof Element)) return;
+    if (isNativeSelect(el)) {
+      const select = el as HTMLSelectElement;
+      const option = safeLabel(select.selectedOptions[0]?.textContent);
+      const fp = fieldClick && fieldClick.el === el ? fieldClick.fp : last?.el === el ? last.fp : fpOf(el);
+      if (fieldClick?.el === el) fieldClick = null;
+      flushFieldClick();
+      const title = stepTitle('select', { name: nameFor(el, fp), ...(option ? { option } : {}) }, lang);
+      if (last && last.kind === 'select' && last.el === el) {
+        // Changing the same select again (arrow keys) updates the step.
+        const step = makeStep('select', el, fp, title);
+        step.id = last.id;
+        last.time = now();
+        opts.emit({ op: 'replace', stepId: last.id, step });
+      } else add('select', el, fp, title);
+      return;
+    }
+    if (isNativeCheck(el)) {
+      if (sameTask.has(el)) return;
+      markSameTask(el);
+      const fp = fpOf(el);
+      add('check', el, fp, stepTitle('check', { name: nameFor(el, fp), checked: checkedState(el) }, lang));
+    }
+  };
+
+  const onKeyDown = (e: Event) => {
+    if (!trusted(e)) return;
+    const k = e as KeyboardEvent;
+    if (k.key !== 'Enter') return;
+    const t = resolveTargetFromPath(e.composedPath());
+    if (t && isTextField(t.element)) enter = { el: t.element, time: now() };
+  };
+
+  const onSubmit = (e: Event) => {
+    if (!trusted(e)) return;
+    const form = e.composedPath()[0];
+    if (!(form instanceof HTMLFormElement)) return;
+    const title = stepTitle('submit', {}, lang);
+    if (last && last.kind === 'click' && last.form === form && now() - last.time <= SUBMIT_MERGE_MS) {
+      // A click on a submit button followed by submit is one submit step.
+      const step = makeStep('submit', last.el, last.fp, title);
+      step.id = last.id;
+      last.kind = 'submit';
+      opts.emit({ op: 'replace', stepId: last.id, step });
+      return;
+    }
+    if (enter && now() - enter.time <= SUBMIT_MERGE_MS && (enter.el as HTMLInputElement).form === form) {
+      const button = form.querySelector('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
+      const target = button ?? enter.el;
+      add('submit', target, fpOf(target), title);
+      enter = null;
+    }
+  };
+
+  const listeners: [string, (e: Event) => void][] = [
+    ['pointerdown', onPointerDown],
+    ['click', onClick],
+    ['input', onInput],
+    ['change', onChange],
+    ['keydown', onKeyDown],
+    ['submit', onSubmit],
+  ];
+  for (const [type, fn] of listeners) doc.addEventListener(type, fn, { capture: true });
+
+  return {
+    stop() {
+      for (const [type, fn] of listeners) doc.removeEventListener(type, fn, { capture: true });
+      timers.forEach(clearTimeout);
+      timers.clear();
+    },
+  };
+}

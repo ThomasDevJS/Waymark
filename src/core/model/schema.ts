@@ -60,6 +60,9 @@ export type ElementFingerprint = z.infer<typeof ElementFingerprintSchema>;
 export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note']);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
+export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas']);
+export type StepFlag = z.infer<typeof StepFlagSchema>;
+
 export const StepSchema = z.object({
   id: shortStr(64),
   kind: StepKindSchema,
@@ -71,6 +74,8 @@ export const StepSchema = z.object({
   advance: z.enum(['action', 'next']),
   optional: z.boolean().optional(),
   placement: z.enum(['auto', 'top', 'bottom', 'left', 'right']).optional(),
+  /** Recorder warnings shown in the editor (see docs/DECISIONS.md D15). */
+  flags: z.array(StepFlagSchema).max(5).optional(),
 });
 export type Step = z.infer<typeof StepSchema>;
 

@@ -70,3 +70,37 @@ Each entry: date, spec section, what changed, why.
 - Class tokens that describe UI state (`active`, `is-open`, `selected`, …) are dropped like generated ones.
 - Tool versions are pinned to stable majors: TypeScript 5.9, Vitest 4, Preact 10, ESLint 9, WXT 0.21.4, and Playwright 1.63.0 to match the Chromium build pre-installed in the dev environment.
 - Test builds (`pnpm build:test`, output `.output-test/chrome-mv3-test`) set `__WAYMARK_TEST__`, which enables `data-waymark-test-*` markers on `<html>` (and, later, open overlay shadow roots). Production builds compile them out.
+
+## 2026-11-04 — M2
+
+### D14. The service worker pushes the recording state to content scripts
+- **Spec**: Permissions, privacy and security (content allowlist); Recorder, "State".
+- **Change**: a content script learns whether its tab is recording from the reply to its route report (sent on every page load) and from a `rec.changed` push (`chrome.tabs.sendMessage`) when recording starts, pauses, resumes, stops or gets a step. The content script accepts the push only from its own extension's service worker (no `sender.tab`). The view holds `active`, `paused`, `count` and the last step title, never the steps.
+- **Why**: this keeps the content allowlist as the spec wrote it (no extra "status" request), and recording still survives page loads and service worker restarts.
+
+### D15. Steps carry an optional `flags` field
+- **Spec**: Data model (`Step`); Recorder ("flagged low-confidence in the editor", "records the host element and flags the step"); Risks (canvas).
+- **Change**: `Step.flags?: ('low-confidence' | 'closed-shadow' | 'canvas')[]`.
+- **Why**: the spec asks the recorder to flag steps but the data model had no place for the flag.
+
+### D16. Check step titles say Check or Uncheck
+- **Spec**: Template step text (`Check (or uncheck) **{name}**`).
+- **Change**: the title uses the state after the action: "Check **X**" or "Uncheck **X**". The literal "Check (or uncheck)" is used only when the state cannot be read. For ARIA switches the state is read after the app's own click handler has run.
+
+### D17. Field clicks, html/body clicks, and non-interactive clicks
+- **Spec**: Recorder, "Merge rules".
+- **Change**: a click into a text field that is never typed into becomes a click step once the author moves on (it can open a date picker, for example). A click on a native select with no `change` records nothing. Clicks whose only target is `<html>` or `<body>` are ignored. A non-interactive click that has an interactive ancestor more than 5 levels up is dropped, as the spec says; the navigation it causes, if any, is recorded by the navigation rule.
+
+### D18. Same-task de-duplication for check steps
+- **Spec**: Recorder, "Merge rules" (checkbox, radio or switch: a direct click or a label click becomes one check step).
+- **Change**: a label click, the click the browser forwards to its control, and the control's `change` all happen in one task. The recorder records the control once per task instead of using a time window.
+- **Why**: a time window also swallowed a quick second toggle of the same switch, which is a real second step.
+
+### D19. Navigation rule details
+- **Spec**: Recorder, "Navigation".
+- **Change**: "within 1.5 s of a recorded click" counts any recorded action step (click, input, select, check, submit), so an Enter-key submission that navigates belongs to its submit step. Steps recorded inside a frame get the top page's URL rule (set by the service worker from `sender.tab.url`); the frame chain is in `target.framePath`. A full page load is reported at `document_start`, when `document.title` is usually still empty, so its navigate step reads "Go to /orders/:id" (the routed path) unless a title is known.
+
+### D20. Smaller M2 notes
+- `autocomplete="current-password"` and `"new-password"` are also treated as sensitive fields.
+- `tab.current` accepts an optional `tabId`. The test build's side panel accepts `?tab=<id>`, so e2e tests can drive the real panel UI opened as a tab.
+- The on-page pill and the REC badge are driven by the same recording view. The pill lives in the overlay host (a manual popover with a closed shadow root, open in test builds) and is not clickable.
