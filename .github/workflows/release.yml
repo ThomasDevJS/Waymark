@@ -1,0 +1,89 @@
+name: Release
+
+# A pushed tag `vX.Y.Z` builds the production zip and publishes a GitHub Release with the zip,
+# its SHA-256 checksum, and the notes for that version from CHANGELOG.md (D56).
+# Release pages and their files cost no Actions storage and give a stable download link.
+#
+# To cut a release: bump `version` in package.json, add its `## [X.Y.Z]` section to
+# CHANGELOG.md, merge to main, then tag the merge commit and push the tag:
+#   git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release and upload its files; this job only
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # to check that the tag is on main
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: The tag matches package.json and points at a commit on main
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version (expected v$version)."
+            exit 1
+          fi
+          commit=$(git rev-parse HEAD) # the commit the tag points at, also for annotated tags
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::$TAG points at $commit, which is not on main. Tag a commit on main."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/changelog-notes.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Build (production and test builds; the manifest guard checks both)
+        run: pnpm build && pnpm build:test
+      - name: Manifest guard (no content_scripts, no host_permissions, no CDN code)
+        run: pnpm check:manifest
+      - run: pnpm test:unit
+      - name: Package the production build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          pnpm zip
+          mkdir -p dist-release
+          cp ".output/waymark-$VERSION-chrome.zip" dist-release/
+          (cd dist-release && sha256sum "waymark-$VERSION-chrome.zip" > "waymark-$VERSION-chrome.zip.sha256")
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        # A version with a pre-release part (0.4.0-rc.1) is marked as a pre-release. Re-running
+        # the job for an existing release replaces its files and notes instead of failing.
+        run: |
+          files=("dist-release/waymark-$VERSION-chrome.zip" "dist-release/waymark-$VERSION-chrome.zip.sha256")
+          pre=()
+          case "$VERSION" in *-*) pre=(--prerelease) ;; esac
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "${files[@]}" --verify-tag --title "Waymark $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" "${pre[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
