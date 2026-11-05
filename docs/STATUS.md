@@ -20,6 +20,9 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Icons: Lucide, bundled (`src/ui/icons.ts` for the pages, one-by-one imports in the content script). The Waymark mark is in `assets/brand/`; `node scripts/icons.mjs` renders `public/icon/{16,32,48,128}.png`.
 - `pnpm screens` shoots every screen and state (light, dark, dark browser on a light page, 200% zoom, phone) to compare before and after a UI change.
 
+## Conveniences (D100–D103)
+- Undo for deleted guides (a trash in `storage.local`, `src/core/storage/trash.ts`) and steps; one toast component (`sidepanel/Toast.tsx`). Completed badge, Restart and Start from step N (`run.start` `stepIndex`). Tag chips and the editor's Tags field (`src/core/discovery/tags.ts`). Duplicate guide and step. E2E: `test/e2e/q1-library-editor.spec.ts`.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

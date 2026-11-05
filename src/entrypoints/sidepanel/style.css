@@ -332,16 +332,50 @@ button.record .rec-dot {
   gap: 2px;
 }
 .guide-item {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: var(--wm-space-2);
   padding: 6px var(--wm-space-2);
   border-radius: var(--wm-radius-md);
   min-width: 0;
 }
+.guide-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  min-width: 0;
+}
 .guide-item:hover,
-.guide-item:focus-within {
+.guide-item:focus-within,
+.guide-item.open {
   background: var(--wm-surface-2);
+}
+/* "More": Start from step, Duplicate, Delete (D100, D101). */
+.guide-more {
+  display: grid;
+  gap: var(--wm-space-2);
+  padding: var(--wm-space-2) 0 var(--wm-space-1) 26px;
+  border-top: 1px solid var(--wm-border);
+}
+.guide-more select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
+}
+.guide-more .inline-field {
+  min-width: 0;
+}
+/* The library's Undo toast stays in view while the list scrolls. */
+.toast-slot.library {
+  position: sticky;
+  bottom: var(--wm-space-2);
+  z-index: 2;
+}
+.toast-slot:empty {
+  /* An empty live region stays in the page (so screen readers hear the toast) but takes no room. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 .guide-main {
   flex: 1;
@@ -360,8 +394,12 @@ button.record .rec-dot {
   font-size: var(--wm-text-xs);
   color: var(--wm-fg-muted);
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 2px 6px;
   align-items: center;
+}
+.guide-meta > .count {
+  white-space: nowrap;
 }
 .guide-actions {
   display: flex;

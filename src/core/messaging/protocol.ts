@@ -4,7 +4,8 @@
  * pages we do not trust. Each sender type has its own allowlist.
  */
 import { z } from 'zod';
-import { ElementFingerprintSchema, GuideSchema, StepSchema, type Guide, type Step } from '../model/schema';
+import { ElementFingerprintSchema, GuideSchema, MAX_STEPS_PER_GUIDE, StepSchema, type Guide, type Step } from '../model/schema';
+import type { TrashItem } from '../storage/trash';
 import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
@@ -35,7 +36,8 @@ export const RequestSchemas = {
   'rec.stop': z.object({}),
   'rec.state': z.object({}),
   'guide.list': z.object({}),
-  'run.start': z.object({ tabId: z.number().int(), guideId: z.string().max(64), openStart: z.boolean().optional() }),
+  // stepIndex: "Start from step N" (D101); omitted means the first step.
+  'run.start': z.object({ tabId: z.number().int(), guideId: z.string().max(64), openStart: z.boolean().optional(), stepIndex: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE - 1).optional() }),
   'run.stop': z.object({ tabId: z.number().int() }),
   'run.state': z.object({ tabId: z.number().int() }),
   'problems.list': z.object({}),
@@ -44,6 +46,11 @@ export const RequestSchemas = {
   'guide.many': z.object({ ids: z.array(z.string().max(64)).max(1000) }),
   'guide.delete': z.object({ id: z.string().max(64) }),
   'guide.duplicate': z.object({ id: z.string().max(64) }),
+  // Undo for a deleted guide (D100): restores the copy kept in the trash during the undo window.
+  'guide.restore': z.object({ id: z.string().max(64) }),
+  'trash.list': z.object({}),
+  // The library's completed checkmark (D101).
+  'completions.list': z.object({}),
   'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
   'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: boundedRecord(z.string().max(64), z.enum(['keep', 'replace', 'both']), 10_000) }),
   'allow.pending': z.object({}),
@@ -167,8 +174,11 @@ export interface ResponseMap {
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
   'guide.many': { guides: Guide[] };
-  'guide.delete': { ok: boolean };
+  'guide.delete': { ok: boolean; undoUntil: number | null };
   'guide.duplicate': Guide;
+  'guide.restore': { ok: boolean; error?: string };
+  'trash.list': { items: TrashItem[] };
+  'completions.list': { completed: Record<string, string> };
   'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[] };
   'pack.import': { imported: number; skipped: number };
   'allow.pending': { origins: string[] };
@@ -227,6 +237,9 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'guide.many',
   'guide.delete',
   'guide.duplicate',
+  'guide.restore',
+  'trash.list',
+  'completions.list',
   'pack.check',
   'pack.import',
   'allow.pending',

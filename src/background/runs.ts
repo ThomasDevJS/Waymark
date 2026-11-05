@@ -11,7 +11,7 @@ import { applyRunOp, currentStep, newTabContinuesRun, NO_RUN, onStartPage, runVi
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
-import { normalizePath } from '../core/url/url';
+import { normalizePath, urlMatches } from '../core/url/url';
 import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from './voice';
 import { siteAllowed } from './site-access';
 
@@ -133,14 +133,38 @@ function problemUrl(url: string | undefined): string {
   }
 }
 
-export type StartResult = { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string };
+export type StartResult = { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string; stepIndex?: number };
 
-/** Starts a guide in a tab (side panel Start, on-page launcher, deep link). */
-export async function startRunInTab(tabId: number, guideId: string, openStart: boolean): Promise<StartResult> {
+/** True when the URL is on the page of step `index` (step 0: the start page). */
+function onStepPage(guide: Guide, index: number, url: string): boolean {
+  if (index === 0) return onStartPage(guide, url);
+  const step = guide.steps[index];
+  return !!step && urlMatches(step.url, url, guide.appOrigins);
+}
+
+/**
+ * Starts a guide in a tab (side panel Start, Restart, on-page launcher, deep link). With
+ * `stepIndex`, the run starts at that step ("Start from step N", D101); the learner must be on
+ * that step's page, because only the start page can be opened for them.
+ */
+export async function startRunInTab(tabId: number, guideId: string, openStart: boolean, stepIndex = 0): Promise<StartResult> {
   const guide = await loadGuide(guideId);
   const url = await tabUrl(tabId);
   const origin = new URL(guide.startUrl).origin;
   if (!(await siteAllowed(origin))) throw new Error('Allow Waymark on this site first.');
+  if (stepIndex > 0) {
+    const step = guide.steps[stepIndex];
+    if (!step) throw new Error(`This guide has no step ${stepIndex + 1}.`);
+    if (!url || !onStepPage(guide, stepIndex, url)) return { status: 'needs-start', startUrl: guide.startUrl, reachable: false, pattern: step.url.value, stepIndex };
+    const run = startRun(guide, Date.now(), stepIndex);
+    await enqueue(async () => {
+      await chrome.storage.session.remove(boardKey(tabId));
+      await chrome.storage.session.set({ [runKey(tabId)]: run });
+    });
+    await broadcast(tabId);
+    await voiceSync(tabId);
+    return { status: 'started' };
+  }
   if (!url || !onStartPage(guide, url)) {
     // The stored start URL has no ids (D33); when the first page needs one, the learner has
     // to open it themselves (D36).
@@ -160,7 +184,7 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
 }
 
 export const runHandlers: Handlers = {
-  'run.start': ({ tabId, guideId, openStart }) => startRunInTab(tabId, guideId, !!openStart),
+  'run.start': ({ tabId, guideId, openStart, stepIndex }) => startRunInTab(tabId, guideId, !!openStart, stepIndex ?? 0),
   'run.mute': async ({ muted }) => {
     await setVoiceSettings({ muted });
     if (muted) stopSpeech();

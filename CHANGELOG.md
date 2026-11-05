@@ -10,6 +10,10 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - Each version is published on the repository's Releases page, with the extension zip, its SHA-256 checksum and the notes from this file (D56).
 - A privacy policy ([docs/PRIVACY.md](docs/PRIVACY.md)) that says exactly what Waymark stores and what can leave your device, and a draft Chrome Web Store listing ([docs/STORE.md](docs/STORE.md)) (D57).
 - A new README: what Waymark is, how to install it from a release, and a quick start.
+- Undo for deleting a guide or a step: a message with Undo shows for 8 seconds. A deleted guide can still be restored from a side panel opened again in that time (D100).
+- A **Completed** badge on guides you have finished, **Restart** (in the list and while a guide plays), and **Start from step N** in a guide's More menu (D101).
+- Tag chips under the search box filter the library; the editor has a Tags field (D102).
+- Duplicate for your own guides (More menu) and for steps in the editor (D103).
 
 ### For developers
 - CI runs once per change instead of twice, cancels superseded pull request runs and skips docs-only changes, to stay within the Free plan's Actions minutes (D54).

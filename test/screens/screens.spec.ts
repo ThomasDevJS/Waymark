@@ -276,6 +276,30 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await panelShot(panel, 'panel-10-picking');
   await app.keyboard.press('Escape');
 
+  // 7b. Library and editor conveniences (D100–D102): tags, a finished guide, More, the Undo toasts.
+  const tagged = await msg<{ revisionId: string } & Record<string, unknown>>(ext, 'guide.get', { id: guideId });
+  await msg(ext, 'guide.save', { guide: { ...tagged, tags: ['billing', 'onboarding'] }, baseRevisionId: tagged.revisionId });
+  await app.bringToFront();
+  await app.goto(`${DEMO}/index.html`);
+  await panel.goto(`${base}/sidepanel.html?tab=${tabId}`);
+  await expect(panel.getByTestId(`completed-${one.id}`)).toBeVisible();
+  await panelShot(panel, 'panel-11-library-tags');
+  await panel.getByTestId('tag-billing').click();
+  await panel.getByTestId(`more-${guideId}`).click();
+  await panelShot(panel, 'panel-12-library-more');
+  await panel.getByTestId('clear-tags').click();
+  await panel.getByTestId(`more-${one.id}`).click();
+  await panel.getByTestId(`delete-${one.id}`).click();
+  await expect(panel.getByTestId('guide-undo-toast')).toBeVisible();
+  await panelShot(panel, 'panel-13-undo-toast', false);
+  await panel.getByTestId('toast-undo').click();
+  await expect(panel.getByTestId(`guide-${one.id}`)).toBeVisible();
+  await panel.goto(`${base}/sidepanel.html?tab=${tabId}&edit=${guideId}`);
+  await panel.getByTestId('step-1-delete').click();
+  await expect(panel.getByTestId('step-undo-toast')).toBeVisible();
+  await panelShot(panel, 'panel-14-editor-undo', false);
+  await panel.getByTestId('toast-undo').click();
+
   // 8. Settings.
   const opts = await context.newPage();
   await opts.setViewportSize({ width: 900, height: 900 });

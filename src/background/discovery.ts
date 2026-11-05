@@ -8,6 +8,8 @@ import { badgeText, guideMatchesUrl, guidesForUrl } from '../core/discovery/matc
 import { duplicateGuide, findConflicts, packOrigins, parsePack, planImport, type Choice } from '../core/sharing/pack';
 import { getGuides, guideKey, listGuides, writeGuides, type GuideIndexEntry } from '../core/storage/guides';
 import { enqueue } from '../core/storage/queue';
+import { addToTrash, liveTrash, TRASH_KEY, trashIsStale, trashItems, UNDO_MS } from '../core/storage/trash';
+import { lastCompletions } from '../core/storage/problems';
 import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
@@ -62,6 +64,24 @@ export async function updateAllBadges(): Promise<void> {
   } catch {
     // Badges are best effort: a failed pass never fails the write that triggered it.
   }
+}
+
+// ---------- trash (D100) ----------
+
+/**
+ * Drops trash entries whose undo window is over, so a deleted guide does not stay on disk. Runs
+ * when the panel asks (trash.list), at browser start and install, and on every delete or restore.
+ */
+export function purgeTrash(now = Date.now()) {
+  return enqueue(async () => {
+    const raw = (await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY];
+    const live = liveTrash(raw, now);
+    if (trashIsStale(raw, now)) {
+      if (live.length) await chrome.storage.local.set({ [TRASH_KEY]: live });
+      else await chrome.storage.local.remove(TRASH_KEY);
+    }
+    return live;
+  });
 }
 
 // ---------- settings: launcher per site, pending Allow, library ----------
@@ -257,11 +277,42 @@ async function guideForSender(id: string, ctx: HandlerContext): Promise<Guide | 
 export const discoveryHandlers: Handlers = {
   // ---- extension pages ----
   'guide.many': async ({ ids }) => ({ guides: await getGuides(ids) }),
+  // The deleted guide goes to the trash in the same write, so Undo can bring it back (D100).
   'guide.delete': async ({ id }) => {
-    await enqueue(() => writeGuides([], [id]));
+    const undoUntil = await enqueue(async () => {
+      const [g] = await getGuides([id]);
+      const now = Date.now();
+      if (g) {
+        const trash = addToTrash(liveTrash((await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY], now), [g], now);
+        await chrome.storage.local.set({ [TRASH_KEY]: trash });
+      }
+      await writeGuides([], [id]);
+      return g ? now + UNDO_MS : null;
+    });
     await updateAllBadges();
-    return { ok: true };
+    return { ok: true, undoUntil };
   },
+  'guide.restore': async ({ id }) => {
+    const out = await enqueue(async () => {
+      const entries = liveTrash((await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY], Date.now());
+      const entry = entries.find((e) => e.guide.id === id);
+      const rest = entries.filter((e) => e !== entry);
+      await chrome.storage.local.set({ [TRASH_KEY]: rest });
+      if (!entry) return { ok: false, error: 'It is too late to undo this delete.' };
+      // A guide with the same id came back meanwhile (an import, a library refresh): keep it.
+      if ((await listGuides()).some((g) => g.id === id)) return { ok: false, error: 'This guide is already back in the list.' };
+      await writeGuides([entry.guide], []);
+      return { ok: true };
+    });
+    if (out.ok) await updateAllBadges();
+    return out;
+  },
+  'trash.list': async () => {
+    const now = Date.now();
+    const entries = await purgeTrash(now);
+    return { items: trashItems(entries).filter((i) => i.undoUntil > now) };
+  },
+  'completions.list': async () => ({ completed: await lastCompletions() }),
   'guide.duplicate': async ({ id }) => {
     const g = await loadGuide(id);
     if (!g) throw new Error('Guide not found.');

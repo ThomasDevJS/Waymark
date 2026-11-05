@@ -87,6 +87,15 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] Put an exported pack at a fixed HTTPS address (for example a raw file in a GitHub repository).
 - [ ] In **Settings**, under **Team library**, paste the address and press **Subscribe**. Its guides appear with a **Team** badge and are read-only. **Duplicate** gives you an editable copy.
 
+### H. Library and editor conveniences
+- [ ] Open a guide in the editor and type two **Tags**, separated by a comma (for example `billing, onboarding`). Press **Save**. In the list, the tags appear as chips under the search box. Click one: only guides with that tag are listed. Click **Clear**.
+- [ ] In the editor, click **Duplicate** on a step. A copy appears right after it. Delete a step with the bin button: a message at the bottom says "Deleted step N." with **Undo**. Press **Undo** within 8 seconds: the step is back in its place.
+- [ ] In the list, open a guide's **⋯** (More) menu and click **Duplicate**. A copy named "… (copy)" appears.
+- [ ] In the **⋯** menu, click **Delete**. The guide disappears and "Deleted …" shows with **Undo**. Close the side panel and open it again within a few seconds: the message is still there, and **Undo** brings the guide back. Wait 8 seconds after another delete: the message goes, and the guide is gone for good.
+- [ ] Play a guide to the end. In the list it now has a green **Completed** badge, and its button reads **Restart**.
+- [ ] While a guide plays, press **Restart** in the panel's playing card: the guide starts again at step 1.
+- [ ] Open the **⋯** menu of a guide with several steps, pick a step under **Start from**, go to that step's page and press **Start from step N**. The guide starts at that step. On another page the panel tells you which page to open.
+
 ## 3. What the warnings mean
 
 | You see | It means | What to do |

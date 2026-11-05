@@ -11,7 +11,7 @@ import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 import { editorHandlers, endPick } from '../background/editor';
-import { discoveryHandlers, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
+import { discoveryHandlers, purgeTrash, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site-access';
 import { isSiteOrigin } from '../core/model/schema';
 import { rebuildIndex } from '../core/storage/guides';
@@ -133,6 +133,7 @@ export default defineBackground(() => {
 
   chrome.runtime.onInstalled.addListener(async (details) => {
     await rebuildIndex();
+    await purgeTrash();
     // Subscribed before fetch-only marks existed: mark the library site now (D80).
     if (details.reason === 'update') await migrateLibraryFetchOnly();
     await onBrowserStartLibrary();
@@ -142,6 +143,7 @@ export default defineBackground(() => {
   });
   chrome.runtime.onStartup.addListener(() => {
     void sync();
+    void purgeTrash();
     void onBrowserStartLibrary();
   });
   chrome.alarms.onAlarm.addListener((alarm) => {

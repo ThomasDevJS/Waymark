@@ -51,7 +51,8 @@ export function indexEntry(g: Guide): GuideIndexEntry {
     source: g.source,
     steps: g.steps.length,
     // Each title is cut, not the joined text, so a long guide keeps every step searchable.
-    stepTitles: g.steps.map((s) => toPlainText(s.title).slice(0, MAX_STEP_TITLE)).join('\n').slice(0, MAX_STEP_TITLES),
+    // One line per step: a title typed with line breaks must not shift the lines after it (D101).
+    stepTitles: g.steps.map((s) => toPlainText(s.title).replace(/\s+/g, ' ').trim().slice(0, MAX_STEP_TITLE)).join('\n').slice(0, MAX_STEP_TITLES),
   };
   if (g.forkedFrom) e.forkedFrom = g.forkedFrom;
   if (g.description) e.description = g.description.slice(0, MAX_INDEX_DESCRIPTION);
