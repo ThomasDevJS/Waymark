@@ -550,16 +550,17 @@ export function itemName(item: Element, owner?: Element): string | undefined {
 
 /**
  * Raw item label of a nameless control (D65): its item's label or heading, e.g. "Walk the dog"
- * for a TodoMVC toggle. None when another control in the item has a name (the row is named by
- * that control, and what is left is status), and never inside an editable region (typed text).
+ * for a TodoMVC toggle. None when a link in the item has a name (the row is named by that link,
+ * and what is left is status), and never inside an editable region (typed text).
  */
 export function rawItemLabel(el: Element): string | undefined {
   const item = itemOf(el);
   if (!item) return undefined;
   if ((item as HTMLElement).isContentEditable || (el as HTMLElement).isContentEditable) return undefined;
-  for (const c of Array.from(item.querySelectorAll('*'))) {
-    if (c === el || !isInteractive(c) || c.contains(el)) continue;
-    if (rawAccessibleName(c) || rawOwnText(c)) return undefined;
+  // A named link names the row (an issue list), and what is left is status. A named button is
+  // an action ("Delete todo") and says nothing about which row it is.
+  for (const c of Array.from(item.querySelectorAll('a[href]'))) {
+    if (c !== el && !c.contains(el) && (rawAccessibleName(c) || rawOwnText(c))) return undefined;
   }
   return itemName(item, el);
 }

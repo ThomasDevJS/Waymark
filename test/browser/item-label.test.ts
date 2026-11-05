@@ -63,6 +63,12 @@ describe('item label: review of D65', () => {
     expect(matchOnce(document, fp).status).toBe('not-found');
   });
 
+  it('a named action button in the row does not stop the label (React and Angular TodoMVC)', () => {
+    const ul = list(['<li><div class="view"><input class="toggle" type="checkbox"><label>Walk the dog</label><button class="destroy" aria-label="Delete todo"></button></div></li>']);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBe('Walk the dog');
+  });
+
   it('plain status text in a row is not an item label; only a label or heading is', () => {
     const ul = list(['<li><input type="checkbox"><span>Open</span></li>', '<li><input type="checkbox"><span>Closed</span></li>']);
     ul.className = 'review';
