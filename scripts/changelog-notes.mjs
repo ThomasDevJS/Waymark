@@ -12,15 +12,27 @@ const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** The body of the `## [version]` section, trimmed, or null when it is missing or empty. */
 export function extractNotes(changelog, version) {
   const lines = changelog.replace(/\r\n/g, '\n').split('\n');
-  const heading = new RegExp(`^## \\[?v?${escape(version)}\\]?(\\s|$)`);
+  // `## [1.2.3] - date`, `## 1.2.3`, `## v1.2.3`, `## [1.2.3](compare-link) (date)`.
+  const heading = new RegExp(`^##\\s+\\[?v?${escape(version)}(\\]\\([^)]*\\)|\\])?(\\s|$)`);
   const start = lines.findIndex((l) => heading.test(l));
   if (start < 0) return null;
   const body = [];
+  let fence = null;
   for (const line of lines.slice(start + 1)) {
-    // The next version, or the link definitions at the end of the file.
-    if (/^## /.test(line) || /^\[[^\]]+\]:\s/.test(line)) break;
+    const f = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (f?.[1]) {
+      if (fence === null) fence = f[1][0];
+      else if (f[1][0] === fence) fence = null;
+    } else if (fence === null) {
+      // The next version, or a top-level heading. Fenced code blocks may contain either.
+      if (/^#{1,2}\s/.test(line)) break;
+    }
     body.push(line);
   }
+  // Link definitions at the end of the last section belong to the whole file. Ones inside a
+  // section, followed by more notes, are kept.
+  const isTrailing = (l) => l.trim() === '' || /^\[[^\]]+\]:\s/.test(l);
+  while (fence === null && body.length > 0 && isTrailing(body[body.length - 1])) body.pop();
   const text = body.join('\n').trim();
   return text === '' ? null : text;
 }
@@ -31,7 +43,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error('usage: changelog-notes.mjs <version> [CHANGELOG.md]');
     process.exit(2);
   }
-  const notes = extractNotes(readFileSync(file, 'utf8'), version.replace(/^v/, ''));
+  let text;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    console.error(`${file} not found. Release notes come from it.`);
+    process.exit(1);
+  }
+  const notes = extractNotes(text, version.replace(/^v/, ''));
   if (notes === null) {
     console.error(`${file} has no notes for ${version}. Add a "## [${version.replace(/^v/, '')}]" section first.`);
     process.exit(1);

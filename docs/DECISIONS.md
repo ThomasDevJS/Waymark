@@ -502,13 +502,18 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 
 ### D56. Tagged versions become GitHub Releases
 - **Spec**: Distribution and cost (downloadable builds; $0).
-- **Change**: `.github/workflows/release.yml` runs when a tag `v*` is pushed. It:
-  - checks that the tag is `v` plus the `package.json` version and points at a commit on `main`;
-  - takes that version's notes from `CHANGELOG.md` (`scripts/changelog-notes.mjs`, unit-tested), and fails if there are none;
-  - runs typecheck, lint, both builds, the manifest and CDN guards and the unit tests (the commit already passed the full CI on `main`);
-  - builds the production zip and publishes a GitHub Release titled "Waymark X.Y.Z" with the zip and its SHA-256 file. A version like `0.4.0-rc.1` is marked as a pre-release. Re-running the job for an existing release replaces its files and notes.
-- **Permissions**: the workflow has none by default (`permissions: {}`); only the release job gets `contents: write`, through the default `GITHUB_TOKEN`. No other token or secret.
-- **Cost**: one job of about 2 minutes per release. Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54).
+- **Change**: `.github/workflows/release.yml` runs when a tag `v*` is pushed.
+  - A **build** job (read-only) checks that:
+    - the tag is `v` plus the `package.json` version;
+    - it points at a commit on `main`;
+    - `CHANGELOG.md` has notes for that version (`scripts/changelog-notes.mjs`, unit-tested);
+    - the commit's CI run on `main` passed: the `check`, `e2e (1)` and `e2e (2)` check runs, latest attempt of each. It waits up to 12 minutes for a run still in progress.
+
+    It then runs typecheck, lint, the manifest and CDN guards (on the build that `pnpm zip` packs) and the unit tests, and uploads the zip, its SHA-256 file and the notes as a one-day artifact.
+  - A **publish** job, with no checkout and no install, downloads them and creates the GitHub Release "Waymark X.Y.Z". A version like `0.4.0-rc.1` is marked as a pre-release. Re-running it for an existing release replaces the files, title, notes and flags. GitHub marks the newest release as Latest; a patch to an older line would need `--latest=false`.
+- **Permissions**: none by default (`permissions: {}`). The build job has `contents: read` and `checks: read`. Only the publish job gets `contents: write`, through the default `GITHUB_TOKEN`, and it runs no project code. No other token or secret.
+- **Cost**: about 3 minutes per release (two jobs). Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54). A docs-only commit has no CI run to check, so tag the version bump's merge commit, which always has one.
+- **Review** (independent): CHANGELOG.md did not exist yet (added here, with every version so far); the guard checked a build that `pnpm zip` then rebuilt; CI on the tagged commit was assumed, not checked; the write job ran install scripts; re-runs kept a stale title and flags; the notes parser cut at `## ` inside code blocks and missed linked headings. All fixed, with tests for the parser.
 - **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
 - **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
   1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.

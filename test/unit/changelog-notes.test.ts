@@ -44,7 +44,21 @@ describe('release notes from the changelog (D56)', () => {
     expect(extractNotes(CHANGELOG, '0.4.0')).toBeNull();
     expect(extractNotes(CHANGELOG, '0.2.4')).toBeNull();
     expect(extractNotes(CHANGELOG, '0.3')).toBeNull();
-    expect(extractNotes(CHANGELOG, '0.3.1'.replace('.', '-'))).toBeNull();
+  });
+
+  it('matches the usual heading styles, but never another version', () => {
+    for (const h of ['## [0.4.0] - 2026-12-01', '## 0.4.0', '## v0.4.0', '## [v0.4.0]', '## [0.4.0](https://example.com/compare) (2026-12-01)', '##  [0.4.0]\t']) {
+      expect(extractNotes(`# Changelog\n\n${h}\n- Notes.\n`, '0.4.0'), h).toBe('- Notes.');
+    }
+    const rc = '## [0.4.0-rc.1]\n- Candidate.\n\n## [10.4.0]\n- Ten.\n';
+    expect(extractNotes(rc, '0.4.0')).toBeNull();
+    expect(extractNotes(rc, '0.4.0-rc.1')).toBe('- Candidate.');
+    expect(extractNotes('## [0.4.0]\n- Final.\n', '0.4.0-rc.1')).toBeNull();
+  });
+
+  it('keeps code blocks and inline link definitions, and stops at a top-level heading', () => {
+    const md = '## [0.4.0]\n- Run:\n\n```sh\n## not a heading\n[x]: not-a-link\n```\n\n[docs]: https://example.com/docs\n- More, see [docs].\n\n# Appendix\n- Not notes.\n';
+    expect(extractNotes(md, '0.4.0')).toBe('- Run:\n\n```sh\n## not a heading\n[x]: not-a-link\n```\n\n[docs]: https://example.com/docs\n- More, see [docs].');
   });
 
   it('handles Windows line endings', () => {
