@@ -675,6 +675,26 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Finding** (issue #32): after a click loaded a slow, nested frame, the next step was read while the frame was still loading, before anything was highlighted.
 - **Change**: `voiceSync` reads a step that has a target only when the frame board has a winner for it. Every winner report (`run.match`) calls it again. That is idempotent through `spokenToken`, so it also covers a service worker restart between the board write and the read. **Repeat step / Replay voice** still reads on request, found or not. Note and navigate steps are read at once, as before. A step that is never found is not read; the not-found card shows instead.
 
+### D84. A frame that is gone never blocks the frame that replaced it
+*5 Nov 2026 · SPEC: Element targeting, playback step 8 (frame winner); issue #38*
+
+- **Finding** (Thomas's debug log, a real dashboard):
+  - A screen opened from the top nav is rebuilt in **new iframe elements** (new frameIds), while the old frames live on for about 0.5 s.
+  - The old inner frame found the element first, then the new one did. Two found, on-path reports tie, so there is no winner and nothing is drawn.
+  - The old frame never reports again, so its entry stays. D45's "one entry per frame" covers a frame that reloads (same frameId), not a frame element that is replaced.
+- **Change**:
+  - Each board entry keeps the reporter's `sender.documentId`.
+  - When found reports tie (no winner, two or more found), the service worker asks those documents `frame.alive` (`tabs.sendMessage` with `{ documentId }`). A gone document fails at once, while a live one answers `true`. An answer slower than 500 ms counts as alive, so a live frame is never dropped.
+  - Gone documents' entries are removed, but only if the entry is still that document. The winner is then recomputed, and the change is broadcast and read aloud (D83).
+- **Independent review**: no wrong-winner path was found, but three gaps were. Each is now covered:
+  - **The old frame is removed only after the new one has found the element**, so both answer "alive". Two measures cover this:
+    - The content script sends `run.leave` on `pagehide`, and the service worker drops that document's own entries, whatever its lifecycle (it can only remove its own entries).
+    - While two or more found frames remain, they are asked again after 1.2, 2.5 and 5 s, guarded by the step token.
+    Before this, the board only recovered when another report happened to come in, typically 8 s later when the top frame gave up (e2e `?keep=2500` checks it now draws within 7 s).
+  - **A gone frame that wins outright**: in an `instance: 'any'` tie the lower frameId wins, or a gone frame can lead by the margin. Documents are now asked whenever two or more frames found the element, not only when no frame won.
+  - **Repeated asking**: each document is asked at most once a second (`checked` times on the board), and the 500 ms timer is cleared.
+- **Matcher**: unchanged. A real tie between two live frames still draws nothing.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

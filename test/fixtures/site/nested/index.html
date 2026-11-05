@@ -10,7 +10,30 @@
   </ul></nav>
   <iframe id="action_frame" src="home.html"></iframe>
   <script>
-    for (const a of document.querySelectorAll('[data-screen]')) a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('action_frame').src = a.dataset.screen; });
+    // Like the real dashboard (#32 follow-up): a screen is shown in a brand-new frame element (a new
+    // frameId), swapped in after the app has fetched it (?swap=<ms>), so the old frames live on briefly.
+    const swapMs = Number(new URLSearchParams(location.search).get('swap') ?? 0);
+    for (const a of document.querySelectorAll('[data-screen]')) a.addEventListener('click', (e) => {
+      e.preventDefault();
+      setTimeout(() => {
+        const old = document.querySelectorAll('#action_frame')[0];
+        const f = document.createElement('iframe');
+        f.src = a.dataset.screen;
+        // ?keep=<ms>: the new frame loads next to the old one, which is removed only that long after.
+        const keepMs = new URLSearchParams(location.search).get('keep');
+        if (keepMs === null) {
+          f.id = 'action_frame';
+          old.replaceWith(f);
+          return;
+        }
+        // Same id as the old one, as apps do: both frames match the recorded frame path for a while.
+        f.id = 'action_frame';
+        f.style.position = 'absolute';
+        f.style.top = '50px';
+        old.after(f);
+        f.addEventListener('load', () => setTimeout(() => { old.remove(); f.style.position = ''; }, Number(keepMs)), { once: true });
+      }, swapMs);
+    });
     document.documentElement.setAttribute('data-waymark-test-loaded', 'yes');
   </script>
 </body>

@@ -333,14 +333,22 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     render();
   };
 
-  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender) => {
+  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender, sendResponse: (r: unknown) => void) => {
     if (sender.id !== chrome.runtime.id || sender.tab) return;
     const m = msg as ContentPush;
+    if (m?.type === 'frame.alive') return void sendResponse(true);
     if (m?.type === 'run.changed' && m.payload && typeof m.payload.active === 'boolean') apply(m.payload);
     else if (m?.type === 'tts.content' && isTop) speakFallback(m.payload);
     else if (m?.type === 'tts.stop' && isTop) window.speechSynthesis?.cancel();
   };
   chrome.runtime.onMessage.addListener(onMessage);
+
+  // This document is going away (its iframe removed, or a navigation): its match reports must not
+  // block the frame that replaces it (D84). Only after this frame has reported for the step.
+  const onHide = () => {
+    if (searchDone) send('run.leave', {}).catch(() => undefined);
+  };
+  addEventListener('pagehide', onHide);
 
   // A Test step highlight took the overlay for a moment: draw the current step again.
   const offReleased = onOverlayReleased(ui, () => {
@@ -373,6 +381,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     dispose() {
       offReleased();
       clearStep();
+      removeEventListener('pagehide', onHide);
       try {
         chrome.runtime.onMessage.removeListener(onMessage);
       } catch {

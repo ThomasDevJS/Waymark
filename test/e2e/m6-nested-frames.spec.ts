@@ -73,3 +73,40 @@ test('a late, 3-deep nested frame: voice waits for the element; a click on the c
   await activity(app)!.locator('.detail.open').getByRole('button', { name: '24 Months' }).click();
   await expect.poll(() => marker(app, 'player')).toBe('done');
 });
+
+// Two orderings from real apps (D84): the old frame is replaced at once, or the new one loads
+// next to it and the old one is removed only after the new one found the element.
+for (const [name, query] of [['replaced at once', 'swap=600'], ['removed after the new one found the element', 'swap=600&keep=2500']] as const)
+test(`a screen reopened in new frames (${name}): the old frame never blocks the new one (#38)`, async ({ context, ext, site }) => {
+  test.setTimeout(120_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  const url = `${site.main}/nested/index.html?${query}`;
+  await app.goto(url);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+
+  await ext.message('rec.start', { tabId, title: 'Reopen' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await app.bringToFront();
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null), { timeout: 10_000 }).toBe('ready');
+  await expect.poll(async () => marker(activity(app)!, 'recording')).toBe('on');
+  await activity(app)!.locator('.cards .title', { hasText: 'Unsafe Driving' }).click();
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string; steps: { title: string }[] }>('rec.stop', {});
+  expect(rec.steps.map((s) => s.title)).toEqual(['Click **Safety**', 'Click **Unsafe Driving**']);
+
+  // The Safety screen is still open when the run starts: the old frames find the card at once,
+  // then the app swaps in new frames that find it again. The new frame must win and draw.
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null)).toBe('ready');
+  await ext.message('run.start', { tabId, guideId: rec.guideId });
+  await app.bringToFront();
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  const oldFrame = activity(app)!;
+  await app.getByRole('link', { name: 'Safety' }).click();
+  // Promptly: not only once the top frame gives up after 8 s and its report happens to recheck.
+  await expect.poll(async () => (activity(app) && activity(app) !== oldFrame ? marker(activity(app)!, 'player') : null), { timeout: 7_000 }).toBe('drawn:1');
+  await activity(app)!.locator('#unsafe_driving-basic-cat-info-toggle .count').click();
+  await expect.poll(() => marker(app, 'player')).toBe('done');
+});

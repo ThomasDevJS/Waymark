@@ -162,9 +162,11 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
 export interface MatchBoard {
   stepToken: string;
   /** Keyed by frameId. */
-  reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean }>;
+  reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean; /** The reporting document (sender.documentId), to tell a frame that is gone (D84). */ doc?: string }>;
   winner: string | null;
   topGaveUp: boolean;
+  /** When each reporting document was last asked whether it still exists (D84). */
+  checked?: Record<string, number>;
 }
 
 /**

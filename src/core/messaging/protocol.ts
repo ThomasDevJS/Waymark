@@ -110,6 +110,7 @@ export const RequestSchemas = {
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
   'run.advance': z.object({ stepId: z.string().max(64), op: z.enum(['done', 'next', 'back', 'skip', 'exit']) }),
+  'run.leave': z.object({}),
   'run.match': z.object({
     stepToken: z.string().max(64),
     frameToken: z.string().max(64),
@@ -165,6 +166,7 @@ export interface ResponseMap {
   'run.stop': { ok: boolean };
   'run.state': RunView;
   'run.match': { ok: boolean };
+  'run.leave': { ok: boolean };
   'run.problem': { ok: boolean };
   'problems.list': { problems: Problem[] };
   'problems.clear': { ok: boolean };
@@ -242,6 +244,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.advance',
   // Frame winner reports and Report broken step (see docs/DECISIONS.md D26).
   'run.match',
+  'run.leave', // a frame's document is going away: drop its own reports (D84)
   'run.problem',
   'run.mute', // the tooltip's mute toggle (D38)
   'run.replay', // the tooltip's Replay voice and Repeat step: the sender tab's current step only (D106)
@@ -327,7 +330,9 @@ export type ContentPush =
   | { type: 'pick.start' }
   | { type: 'pick.stop' }
   // the debug log switch changed (D110)
-  | { type: 'debug.changed'; payload: { on: boolean } };
+  | { type: 'debug.changed'; payload: { on: boolean } }
+  // "are you still there?" when frames tie on a step's element (D84); answered with true
+  | { type: 'frame.alive' };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,
