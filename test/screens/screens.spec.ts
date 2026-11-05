@@ -99,6 +99,13 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   const first = await context.newPage();
   await first.setViewportSize(PANEL);
   await first.goto(`${base}/sidepanel.html?tab=${tabId}`);
+  await expect(first.getByTestId('welcome')).toBeVisible();
+  await panelShot(first, 'panel-00-welcome-1');
+  await first.getByTestId('welcome-next').click();
+  await first.getByTestId('welcome-next').click();
+  await panelShot(first, 'panel-00-welcome-3');
+  await first.getByTestId('welcome-next').click();
+  await expect(first.getByTestId('welcome')).toHaveCount(0);
   await panelShot(first, 'panel-00-no-site');
   await first.addInitScript((origin) => {
     const real = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<{ ok: boolean; data: Record<string, unknown> }>;
