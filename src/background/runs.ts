@@ -246,17 +246,18 @@ export const runHandlers: Handlers = {
     const frameId = ctx.frameId;
     const changed = await enqueue(async () => {
       const run = await getRun(tabId);
-      if (!run || run.status !== 'running' || run.stepToken !== r.stepToken) return false;
+      if (!run || run.status !== 'running' || run.stepToken !== r.stepToken) return null;
       const before = await getBoard(tabId);
       const prev = before && before.stepToken === r.stepToken ? { winner: before.winner, gave: before.topGaveUp } : null;
       const board = recordReport(before, { ...r, frameId });
       await chrome.storage.session.set({ [boardKey(tabId)]: board });
-      return !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp;
+      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner };
     });
-    if (changed) {
-      await broadcast(tabId);
-      await voiceSync(tabId); // the step's element was just found: read it now (#32)
-    }
+    if (!changed) return { ok: true };
+    if (changed.changed) await broadcast(tabId);
+    // Found: read the step now (D83). Idempotent (spokenToken), so a report after a service worker
+    // restart that interrupted the first read still gets it read.
+    if (changed.found) await voiceSync(tabId);
     return { ok: true };
   },
   'run.problem': async ({ stepId }, ctx: HandlerContext) => {

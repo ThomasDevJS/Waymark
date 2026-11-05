@@ -306,15 +306,21 @@ describe('clickable regions (D82, #32)', () => {
 
   it('records a card with an id and a pointer cursor, named by the text clicked, not flagged', async () => {
     setup();
+    // As in #32: a titled card among other cards, its title and count with their own classes.
     const t = title('Unsafe Driving');
-    const c = card({ id: 'unsafe_driving-toggle' }, t, title('3'));
-    document.body.append(c);
+    t.className = 'title text-primary';
+    const n = title('3');
+    n.className = 'count';
+    const c = card({ id: 'unsafe_driving-toggle', class: 'card' }, t, n);
+    const other = card({ id: 'crash-toggle', class: 'card' }, title('Crash'));
+    document.body.append(c, other);
     await userEvent.click(t);
     await settle();
     expect(titles()).toEqual(['click: Click **Unsafe Driving**']);
     expect(steps()[0]!.target?.id).toBe('unsafe_driving-toggle');
     expect(steps()[0]!.flags ?? []).not.toContain('low-confidence');
     c.remove();
+    other.remove();
   });
 
   it('keeps the old behavior when the card has nothing to find it by, holds a real control, or is huge', async () => {
@@ -336,5 +342,84 @@ describe('clickable regions (D82, #32)', () => {
     c1.remove();
     c2.remove();
     c3.remove();
+  });
+});
+
+describe('clickable regions: review fixes (D82)', () => {
+  const setup = () => {
+    rec?.stop();
+    rec = createRecorder({ emit: (op) => ops.push(op) });
+  };
+  const LONG = 'A long description of this category that runs well past the eighty character limit for labels.';
+
+  it('a pointer-cursor list or table is never recorded as a whole: the item stays the target', async () => {
+    setup();
+    const ul = document.createElement('ul');
+    ul.id = 'filters';
+    ul.style.cursor = 'pointer';
+    for (const t of ['Open', 'Closed', 'All']) ul.append(Object.assign(document.createElement('li'), { textContent: t }));
+    const table = document.createElement('table');
+    table.id = 'tbl';
+    table.style.cursor = 'pointer';
+    for (const n of ['Ann', 'Bob']) {
+      const tr = table.insertRow();
+      tr.insertCell().textContent = n;
+    }
+    document.body.append(ul, table);
+    await userEvent.click(ul.children[1] as HTMLElement);
+    await userEvent.click(table.rows[1]!.cells[0]!);
+    await settle();
+    expect(steps().map((s) => s.target?.tag)).toEqual(['li', 'td']);
+    expect(steps().map((s) => s.target?.id ?? null)).toEqual([null, null]);
+    ul.remove();
+    table.remove();
+  });
+
+  it('repeated cards that share a test id keep the clicked text as the target', async () => {
+    setup();
+    const wrap = document.createElement('div');
+    for (const n of ['Alice', 'Bob', 'Carol']) {
+      const c = document.createElement('div');
+      c.setAttribute('data-testid', 'cat-card');
+      c.style.cssText = 'cursor:pointer;width:120px;display:inline-block';
+      c.append(Object.assign(document.createElement('div'), { textContent: n }), Object.assign(document.createElement('div'), { textContent: LONG }));
+      wrap.append(c);
+    }
+    document.body.append(wrap);
+    await userEvent.click(wrap.children[1]!.firstElementChild as HTMLElement);
+    await settle();
+    expect(steps()[0]!.target?.testId).toBeUndefined();
+    expect(steps()[0]!.target?.text).toBe('Bob');
+    wrap.remove();
+  });
+
+  it('a region whose open shadow root holds a control is not promoted', async () => {
+    setup();
+    const host = document.createElement('div');
+    host.id = 'todo-1x';
+    host.style.cssText = 'cursor:pointer;display:inline-block;width:160px';
+    const sr = host.attachShadow({ mode: 'open' });
+    const span = Object.assign(document.createElement('span'), { textContent: 'Buy milk' });
+    sr.append(span, Object.assign(document.createElement('button'), { textContent: 'Delete' }));
+    document.body.append(host);
+    await userEvent.click(span);
+    await settle();
+    expect(steps()[0]!.target?.id).toBeUndefined();
+    host.remove();
+  });
+
+  it('the title never comes from hidden text', async () => {
+    setup();
+    const tile = document.createElement('div');
+    tile.id = 'tile-x';
+    tile.style.cssText = 'cursor:pointer;display:inline-block;width:60px;height:40px';
+    const icon = document.createElement('i');
+    icon.style.cssText = 'display:inline-block;width:20px;height:20px';
+    tile.append(icon, Object.assign(document.createElement('span'), { hidden: true, textContent: 'Secret note' }));
+    document.body.append(tile);
+    await userEvent.click(icon);
+    await settle();
+    expect(steps()[0]!.title).not.toContain('Secret');
+    tile.remove();
   });
 });

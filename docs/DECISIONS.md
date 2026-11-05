@@ -659,12 +659,21 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
     - a strong signal **other than its text** (id, test id, role + name, name, link). A card's text spans titles and live counts, so it is not used to decide.
   - **Result:** the step targets the card, without the low-confidence flag, and is titled by the text clicked ("Click **Unsafe Driving**", not "… 3"). A click anywhere on the card advances.
   - Otherwise nothing changes: the content stays the target, low-confidence (and D47 still drops it when it has no strong signal).
+- **Never more than one item** (independent review):
+  - **Climbing stops at the first repeated item**: a list or table item (`li`, `tr`, `td`, row, option, tab and similar roles), or an element with an alike sibling (same tag, sharing a class, or neither has a class). A card among cards is the region, but a pointer-cursor `ul`, `table` or sidebar is never recorded as a whole. If the item itself has nothing reliable to find it by, the click stays low-confidence.
+  - **Repeated regions are rejected**: a region that matches more than one element (cards sharing a test id: `instance: 'any'` or `matchCount > 1`) is not promoted. Otherwise the step would play on the first card.
+  - **Controls inside web components count**: controls inside open shadow roots (the region's own and nested ones) count as "a control inside", within the 200-node limit.
+  - **Titles**: the title is the visible text clicked, or the region's own visible text, never hidden text.
+  - **One shared helper**: the recorder and Re-pick use the same helper (`promoteToRegion`, `src/core/recorder/region.ts`), and Re-pick's hover outline shows what a click would pick. The press reuses the region's fingerprint at the click.
+- **Limit**:
+  - A pointer cursor on something that does nothing (with an id) is recorded without the ⚠ it used to get. It is still exactly the element under the click, so it is not a wrong match.
+  - A lone card whose inner title and count are alike class-less elements stays low-confidence, the conservative side.
 - **Matcher**: unchanged. The card is found by its id, and a count that changes between recording and playback does not break the step (e2e).
 
 ### D83. A step on an element is read aloud once it is found
 - **Spec**: Voiceover, "read each step once".
 - **Finding** (issue #32): after a click loaded a slow, nested frame, the next step was read while the frame was still loading, before anything was highlighted.
-- **Change**: `voiceSync` reads a step that has a target only when the frame board has a winner for it. A winner report (`run.match`) calls it again. Note and navigate steps are read at once, as before. A step that is never found is not read; the not-found card shows instead.
+- **Change**: `voiceSync` reads a step that has a target only when the frame board has a winner for it. Every winner report (`run.match`) calls it again. That is idempotent through `spokenToken`, so it also covers a service worker restart between the board write and the read. **Repeat step / Replay voice** still reads on request, found or not. Note and navigate steps are read at once, as before. A step that is never found is not read; the not-found card shows instead.
 
 ## 2026-11-05 — Design
 

@@ -10,7 +10,8 @@ import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
 import { buildFingerprint } from '../fingerprint/build';
 import { hasStrongSignal } from '../matcher/signals';
-import { clickableRegion, composedParent, isInteractive, ownText, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
+import { isInteractive, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
+import { hasInteractiveAncestor, promoteToRegion } from './region';
 import { safeLabel } from '../fingerprint/filters';
 import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
 import { stepUrlRule } from '../url/url';
@@ -51,6 +52,8 @@ interface Pending {
   y?: number;
   /** Name for the step title when the target is a clickable region (D82): the text clicked. */
   name?: string;
+  /** The press resolved to a clickable region (D82). */
+  promoted?: boolean;
 }
 
 interface LastStep {
@@ -105,13 +108,11 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   const resolveTarget = (path: EventTarget[]): (ResolvedTarget & { fp?: ElementFingerprint; name?: string }) | null => {
     const t = resolveTargetFromPath(path);
     if (!t || !t.lowConfidence) return t;
-    const region = clickableRegion(t.element);
-    if (!region || hasInteractiveAncestor(region)) return t;
-    const fp = fpOf(region);
-    // Its own text spans the whole card (titles, counts, live data): it must be findable without it.
-    if (!hasStrongSignal({ ...fp, text: undefined })) return t;
-    const name = safeLabel(ownText(t.element)) ?? safeLabel(region.textContent?.replace(/\s+/g, ' ').trim() ?? null);
-    return { element: region, lowConfidence: false, fp, ...(name ? { name } : {}) };
+    // The press already promoted this click's region: reuse it rather than fingerprint it again.
+    const p = pending;
+    if (p?.promoted && now() - p.time <= PENDING_LINK_MS && path.includes(p.el)) return { element: p.el, lowConfidence: false, fp: p.fp, ...(p.name ? { name: p.name } : {}) };
+    const up = promoteToRegion(t, fpOf);
+    return up ? { element: up.element, lowConfidence: false, fp: up.fp, ...(up.name ? { name: up.name } : {}) } : t;
   };
 
   const flagsFor = (el: Element, lowConfidence: boolean): StepFlag[] | undefined => {
@@ -163,13 +164,9 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       return;
     }
     const m = e as PointerEvent;
-    pending = { el: t.element, fp: t.fp ?? fpOf(t.element), time: now(), path, x: m.clientX, y: m.clientY, ...(t.name ? { name: t.name } : {}) };
+    pending = { el: t.element, fp: t.fp ?? fpOf(t.element), time: now(), path, x: m.clientX, y: m.clientY, ...(t.fp ? { promoted: true } : {}), ...(t.name ? { name: t.name } : {}) };
   };
 
-  const hasInteractiveAncestor = (el: Element) => {
-    for (let p = composedParent(el); p; p = composedParent(p)) if (isInteractive(p)) return true;
-    return false;
-  };
 
   const onClick = (e: Event) => {
     if (!trusted(e)) return;

@@ -67,8 +67,8 @@ test('a late, 3-deep nested frame: voice waits for the element; a click on the c
   await expect.poll(async () => (await log()).filter((x) => x.includes('Unsafe Driving')).length).toBe(1);
   expect(await activity(app)!.locator('.cards .count').first().textContent()).toBe('7');
 
-  // A click on the highlighted card advances.
-  await activity(app)!.locator('.cards .title', { hasText: 'Unsafe Driving' }).click();
+  // A click anywhere on the highlighted card advances: here on its count, not its title (#32).
+  await activity(app)!.locator('#unsafe_driving-basic-cat-info-toggle .count').click();
   await expect.poll(async () => marker(activity(app)!, 'player'), { timeout: 10_000 }).toBe('drawn:2');
   await activity(app)!.locator('.detail.open').getByRole('button', { name: '24 Months' }).click();
   await expect.poll(() => marker(app, 'player')).toBe('done');
