@@ -489,6 +489,37 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Limits**: GitHub's `paths` filter looks at the first 300 files of a push only, so a huge docs-first push to `main` could skip CI; pull requests always go through the `changes` job. The `changes` job runs the PR's own copy of `scripts/ci-changes.mjs`, so a PR could declare itself docs-only, but a PR can already edit the workflow, and the token is read-only.
 - **Review** (independent): the gate failed open when the script crashed (no `pipefail` in the default shell) and `CI result` could miss a timed-out job; both fixed as above. The test now also checks that the `paths` list in ci.yml matches the script.
 
+### D55. GitHub Actions on their current Node 24 majors
+- **Spec**: Tech stack, testing (CI). Left open in D52's review.
+- **Change**: `actions/checkout` v4 → **v7**, `actions/setup-node` v4 → **v7**, `actions/cache` v4 → **v6** (in `.github/actions/playwright-browser`), `actions/upload-artifact` v4 → **v7**, `pnpm/action-setup` v4 → **v6**. Node 20 actions are deprecated on GitHub's runners; every one of these runs on `node24`.
+- **Verified** on 5 Nov 2026 in each action's own repository: the major tag exists (latest releases checkout v7.0.1, setup-node v7.1.0, cache v6.1.0, upload-artifact v7.0.2, action-setup v6.1.1), and its `action.yml` at that tag says `using: node24`.
+- **Breaking changes checked against this workflow**, none of which apply:
+  - checkout v6 keeps credentials in a separate file under `$RUNNER_TEMP`; v7 refuses fork code under `pull_request_target`/`workflow_run`, which we don't use.
+  - setup-node v6 caches pnpm only when asked (we set `cache: pnpm`); v7 drops the dummy `NODE_AUTH_TOKEN` (we set no `registry-url`).
+  - cache v5/v6 and upload-artifact v5–v7: Node 24 and ESM only; the inputs we use are unchanged.
+  - action-setup v5/v6 bootstraps pnpm with npm and then switches to the version pinned in `packageManager` (pnpm 10.28.0 here).
+- The project's own Node stays 22 (`node-version: 22`).
+
+### D56. Tagged versions become GitHub Releases
+- **Spec**: Distribution and cost (downloadable builds; $0).
+- **Change**: `.github/workflows/release.yml` runs when a tag `v*` is pushed.
+  - A **build** job (read-only) checks that:
+    - the tag is `v` plus the `package.json` version;
+    - it points at a commit on `main`;
+    - `CHANGELOG.md` has notes for that version (`scripts/changelog-notes.mjs`, unit-tested);
+    - the commit's CI run on `main` passed: the `check`, `e2e (1)` and `e2e (2)` check runs, latest attempt of each. It waits up to 12 minutes for a run still in progress.
+
+    It then runs typecheck, lint, the manifest and CDN guards (on the build that `pnpm zip` packs) and the unit tests, and uploads the zip, its SHA-256 file and the notes as a one-day artifact.
+  - A **publish** job, with no checkout and no install, downloads them and creates the GitHub Release "Waymark X.Y.Z". A version like `0.4.0-rc.1` is marked as a pre-release. Re-running it for an existing release replaces the files, title, notes and flags. GitHub marks the newest release as Latest; a patch to an older line would need `--latest=false`.
+- **Permissions**: none by default (`permissions: {}`). The build job has `contents: read` and `checks: read`. Only the publish job gets `contents: write`, through the default `GITHUB_TOKEN`, and it runs no project code. No other token or secret.
+- **Cost**: about 3 minutes per release (two jobs). Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54). A docs-only commit has no CI run to check, so tag the version bump's merge commit, which always has one.
+- **Review** (independent): CHANGELOG.md did not exist yet (added here, with every version so far); the guard checked a build that `pnpm zip` then rebuilt; CI on the tagged commit was assumed, not checked; the write job ran install scripts; re-runs kept a stale title and flags; the notes parser cut at `## ` inside code blocks and missed linked headings. All fixed, with tests for the parser.
+- **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
+- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
+  1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
+  2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
+  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).

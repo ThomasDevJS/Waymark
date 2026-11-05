@@ -1,0 +1,137 @@
+name: Release
+
+# A pushed tag `vX.Y.Z` publishes a GitHub Release with the production zip, its SHA-256 checksum,
+# and the notes for that version from CHANGELOG.md (D56). Release pages and their files cost no
+# Actions storage and give a stable download link.
+#
+# To cut a release: `pnpm release X.Y.Z`, merge that PR, then tag the merge commit:
+#   git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Read-only: checks the tag, builds and packages. Only `publish` can write.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      checks: read # the tagged commit's CI results
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # to check that the tag is on main
+          persist-credentials: false
+      - name: The tag matches package.json and points at a commit on main
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version (expected v$version)."
+            exit 1
+          fi
+          commit=$(git rev-parse HEAD) # the commit the tag points at, also for annotated tags
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::$TAG points at $commit, which is not on main. Tag a commit on main."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist-release
+          node scripts/changelog-notes.mjs "$VERSION" > dist-release/notes.md
+      - name: The commit passed the full CI on main
+        # The jobs of .github/workflows/ci.yml; the e2e shards and browser tests don't run again
+        # here. Waits up to 12 minutes for a run that is still going (a tag pushed right after the
+        # merge). A docs-only commit has no CI run, so tag the version bump's merge commit.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          filter='[.check_runs[] | select(.name == "check" or .name == "e2e (1)" or .name == "e2e (2)")]
+            | group_by(.name) | map(max_by(.started_at)) | map("\(.name)=\(.conclusion // .status)") | .[]'
+          for attempt in $(seq 1 36); do
+            states=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/check-runs?per_page=100" --jq "$filter")
+            echo "attempt $attempt: ${states//$'\n'/, }"
+            if [ "$(grep -c '=success$' <<< "$states")" = 3 ]; then exit 0; fi
+            if [ -n "$states" ] && grep -vqE '=(success|queued|in_progress|waiting|pending|requested)$' <<< "$states"; then
+              echo "::error::CI did not pass for $COMMIT: ${states//$'\n'/, }"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "::error::No green CI run for $COMMIT after 12 minutes (found: ${states:+${states//$'\n'/, }}${states:-none}). Check that CI ran on this commit, then re-run this job."
+          exit 1
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Build (the production build comes from `pnpm zip`, so the guard checks the zipped build)
+        run: pnpm zip && pnpm build:test
+      - name: Manifest guard (no content_scripts, no host_permissions, no CDN code)
+        run: pnpm check:manifest
+      - run: pnpm test:unit
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cp ".output/waymark-$VERSION-chrome.zip" dist-release/
+          (cd dist-release && sha256sum "waymark-$VERSION-chrome.zip" > "waymark-$VERSION-chrome.zip.sha256")
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: dist-release/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    # The only job with write access: no checkout, no install, no project code.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the release and upload its files
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-files
+          path: dist-release
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        # A version with a pre-release part (0.4.0-rc.1) is marked as a pre-release. Re-running
+        # the job for an existing release replaces its files, title, notes and flags. GitHub marks
+        # the newest release as Latest; a patch to an older line would need `--latest=false`.
+        run: |
+          files=("dist-release/waymark-$VERSION-chrome.zip" "dist-release/waymark-$VERSION-chrome.zip.sha256")
+          prerelease=false
+          case "$VERSION" in *-*) prerelease=true ;; esac
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --title "Waymark $VERSION" --notes-file dist-release/notes.md \
+              --draft=false --prerelease="$prerelease" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "${files[@]}" --verify-tag --title "Waymark $VERSION" \
+              --notes-file dist-release/notes.md --prerelease="$prerelease" --repo "$GITHUB_REPOSITORY"
+          fi
