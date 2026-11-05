@@ -390,33 +390,106 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Fix**: one shared `ExtensionHelper.message()` in `test/e2e/fixtures.ts` polls the page until it is the extension page and `document.readyState` is `complete`. No retries, skips or longer timeouts.
 - **After**: under load 99/99 (3 runs). CI keeps `retries: 1`. Its logs show no test marked flaky in the runs checked.
 
+## 2026-11-05 — HD voice (issue #4, part 2)
+
+### D51. Optional on-device HD voice: Kokoro-82M, without GPL code
+- **Spec**: Voiceover and AI text; Permissions, privacy and security; Distribution and cost.
+- **Change**: a new opt-in **HD voice** in Settings. It is the Kokoro-82M neural voice (Apache-2.0), run by transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. Before, voices came only from the browser.
+- **Why Kokoro**: a spike in Chromium compared Kokoro and Piper ([results on #4](https://github.com/ThomasDevJS/Waymark/issues/4#issuecomment-6645098454)).
+  - Kokoro sounds far more natural. Its weights and voices are Apache-2.0.
+  - Piper is about 7× faster, but its good English voices are often non-commercial.
+- **License decision (provisional; Thomas may reverse it)**: both engines phonemize with eSpeak NG, which is GPL-3.0. That includes the npm `phonemizer` package that kokoro-js uses. To ship no GPL code, Waymark has its own English G2P (`src/core/voice/g2p/`). It reads words from the misaki lexicon (Apache-2.0; the dictionaries Kokoro was trained with), downloaded as data with the model. For unknown words it tries, in order:
+  1. word forms (-s, -es, -ed, -ing);
+  2. CamelCase and two-word compounds ("dropdown", "Gmail", "QuickBooks");
+  3. spelled acronyms ("CSV", "PDFs");
+  4. numbers, money, times, emails and web addresses as words;
+  5. rough letter-to-sound rules ("Jira", "Okta").
+
+  The phonemizer sits behind one function type (`Phonemizer` in `src/offscreen/kokoro.ts`), so a GPL engine could be swapped in if Thomas accepts GPL-3. Consequence: the HD voice is English only. Other languages keep the system voice.
+- **Model size**: fp16 (163 MB), not q8 (92 MB). On the spike machine (4 vCPU, no GPU), q8 ran at about 1.9× real time with 4 threads, over the 1.5× limit. fp16 ran at about 0.8–0.95×. Listening samples of both are in the PR.
+- **Download**:
+  - The opt-in click requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*`. Both serve CORS, but the permission makes the consent explicit and keeps the download working if that changes.
+  - The offscreen document fetches seven files at pinned revisions: Kokoro `1939ad2a…`, misaki `fba12365…`. It checks each file's size and SHA-256 and stores them in Cache Storage (`waymark-hd-v1`).
+  - When the download ends (ready, too slow or failed), the service worker removes the host permissions it added. A host the user had already granted is left alone.
+  - `grantedSitePatterns` never treats these two hosts as guide sites, so the content script is not registered there, even during the download. The cost: guides can't run on huggingface.co or raw.githubusercontent.com.
+- **Loading**: transformers.js reads only Cache Storage. Remote models are off, and its local path doesn't exist, so a missing file fails instead of fetching. ORT's `.wasm` ships in the extension (`/ort/`) and `wasmPaths` points there. The `onnxruntime-web` import is aliased to its WebAssembly-only bundle (no WebGPU), which adds about 11 MB unpacked (about 3 MB zipped).
+- **Manifest**:
+  - `extension_pages` CSP is `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`; without it, compiling the WebAssembly fails. The manifest guard now requires exactly this CSP.
+  - COEP `require-corp` and COOP `same-origin` make extension pages cross-origin isolated, so ORT can use up to 4 threads; one thread was about 3× slower than real time. The full e2e suite (side panel, options, library subscribe and refresh) passes with them.
+  - New permission `offscreen`, which shows no install warning. Still no `host_permissions` and no `content_scripts`.
+- **Offscreen document**: reasons `AUDIO_PLAYBACK` and `WORKERS`. It closes 3 minutes after the last HD speech or the speed check (see the review fixes below). With `AUDIO_PLAYBACK` alone, Chrome closes the document 30 s after audio stops, which killed long generations in the spike. The service worker creates it on demand and closes it after 3 idle minutes (`hd-idle` alarm), because the model takes about 800 MB. The document acts only on messages from the service worker, by sender URL, with a Zod schema. Content scripts can send runtime messages that extension pages receive, so this check matters.
+- **Playback**:
+  - Each step sends its text plus the next step's text, which is generated while the current one plays. The player keeps 4 clips and runs one inference at a time.
+  - A step waits at most `HD_WAIT_MS` (4 s) for HD audio. After that, or on any engine error, it sends a cancel and the system voice reads the step.
+  - Speak and stop carry a timestamp, so a stop sent before a speak but delivered after it cannot cancel the new step.
+  - After the download, one sample sentence measures speed. If it takes more than 1.5× real time, the status is "too slow" and the system voice is used.
+  - fp16 inference can output NaN samples, which play as silence.
+- **Remove HD voice** deletes the cache, closes the document and releases any hosts still held. **Cancel** during a download does the same. A download whose document disappeared (browser closed) shows as failed, with **Try again**.
+- **Tests**:
+  - unit: the G2P, numbers and letter rules; the player (cache, prefetch, one inference at a time, cancellation, stale stops, speed check); the service worker (HD vs system voice, timeout and failure fallback, host release, remove); the offscreen sender check.
+  - e2e: a stub engine, only in test builds, so CI never downloads the model.
+- **Licenses**: `THIRD_PARTY_NOTICES.md` (also shipped in the extension) covers everything bundled or downloaded. Version 0.3.0.
+- **Fixes from the independent review** (each with a regression test that fails on the first version):
+  - **Fallback races.** A replaced HD speak (`cancelled`) now says nothing. A failed one falls back to the system voice only while it is still the newest speech (`speechAt` in session storage) and the learner hasn't muted. Before, a slow step 1 could be read aloud after the learner moved to step 2, or after Mute or Exit. The cancel a failed speak sends carries that speak's own time, so it can't cut off a newer step.
+  - **Memory.** When the speed check ends, a "ready" result arms the 3-minute idle close. "Too slow" or a failure closes the document at once. Before, the ~800 MB model stayed loaded.
+  - **Host release.** The hosts to release live in `storage.local`, so a browser restart in the middle of a download no longer leaves them granted. The document is created before the status says "downloading", so Settings can't mistake a starting download for a lost one. Only one download runs at a time.
+  - **Speed check.** One untimed warm-up inference runs first. "Too slow" offers **Check again**, which reuses the cached files.
+  - **G2P.** Numbers it can't parse ("10:30:45", "1.2.3") are read digit by digit instead of dropped. Accented letters are read as their base letters. Huge ordinals no longer throw. Text with no readable words gives "no audio", so the system voice reads it instead of silence.
+  - **Content script size.** `VoiceSettingsSchema` moved from `core/voice/voice.ts` to `core/voice/settings.ts`. The content script imports `bestSpeechVoice` from voice.ts, which pulled Zod into every frame. Content script: 165,232 → 76,169 bytes (51.9 → 26.8 KB gzipped).
+  - **No CDN in the bundle.** At build time, transformers.js's default CDN path for the WebAssembly is replaced with `/ort/`. A new guard (`scripts/check-no-cdn.mjs`, part of `pnpm check`) fails the build if any script names a code CDN. The unused `hd.prefetch` message is removed.
+
+## 2026-11-05 — CI speed
+
+### D52. CI: fast checks and two e2e shards in parallel; cached Playwright browser
+- **Spec**: Tech stack, testing; Distribution (CI artifact).
+- **Before**: one job, about 4.5 minutes on a good day: setup and install 15 s, checks and builds 30 s, browser install 18 s (6 minutes once, when apt was slow), unit and browser tests 20 s, e2e 3.5 minutes.
+- **Change**:
+  - The **check** job runs typecheck, lint, both builds, the manifest guard, the zip artifact, and the unit and browser tests.
+  - Two **e2e** jobs each build the test extension and run half of the suite (`--shard=N/2`), in parallel with the check job. A failing shard uploads its own `test-results-N`.
+  - The Playwright browser is cached per Playwright version (`.github/actions/playwright-browser`); on a cache hit only its system packages are installed. The pnpm store was already cached by `setup-node`.
+- **Test-level sharding**: `fullyParallel: true` with one worker, so tests still run one at a time in file order, locally and in CI. Each shard was run on its own locally: shard 1 had 17 tests in 83 s, shard 2 had 16 in 115 s, both green. So no test depends on one that runs before it in another shard.
+- **Review** (independent; nothing blocking):
+  - The cache key now covers both `@playwright/test` and `playwright` (Vitest), and a failed version lookup fails the step instead of writing an empty key.
+  - In CI, the e2e fixtures throw when there is no display, so a shard can never pass with every test skipped.
+  - `apt-get update` runs before the Xvfb install again.
+  - Moving the actions to their Node 24 majors is left for a separate change; it was already pending on main.
+- **Measured on GitHub** (first run, cold browser cache): 2 min 39 s, down from about 4.5 minutes. The check job took 1 min 20 s. Shard 1 took 2 min 30 s (tests 1 min 46 s) and shard 2 took 2 min 35 s (tests 2 min 1 s). The browser step took 20–25 s cold.
+
+## 2026-11-05 — Code health
+
+### D53. Records sent by extension pages have entry limits
+- **Spec**: Permissions, privacy and security ("validate everything"); deferred Low from the security audit (D48).
+- **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
+- **Version** 0.3.1.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
 
-### D51. An input step also advances on Enter in a non-empty one-line field
+### D60. An input step also advances on Enter in a non-empty one-line field
 - **Spec**: Player, "Advancing" (input: `change`, or blur with a non-empty value, or Next).
 - **Finding**: TodoMVC (React, Vue, Angular) takes the typed text on Enter and clears the field. No `change` fires and focus stays, so the run never left "Enter New Todo Input" until the learner pressed Next.
 - **Change**: a trusted Enter keydown (not with Shift, Ctrl, Alt or Meta, not while composing) on the target `input`, checked before the app clears it, advances when the field has a value. A `textarea` or rich editor gets a new line and does not advance. The value is only checked for emptiness, never read or stored.
 
-### D52. A press on the target that the app turns into a click on an ancestor still counts
+### D61. A press on the target that the app turns into a click on an ancestor still counts
 - **Spec**: Recorder, "Event capture" (use the pending fingerprint when the click target is that node or linked in `composedPath()`); Player, "Advancing" (click: a trusted click lands on the target).
 - **Finding**: MUI's Select opens on `mousedown` and puts a full-page backdrop under the pointer. The `mouseup` lands on the backdrop, so the browser sends `click` to the common ancestor of the two, `<body>`. The recorder dropped the "open the select" step (the guide had only "Choose **Twenty**", which can never be shown with the menu closed), and the player would never advance on it.
 - **Change**: when a click's own target is non-interactive, is an ancestor of the element a trusted `pointerdown` resolved to, comes within 1 s, **and is released within 4 px of the press**, the recorder records the pressed element and the player's click rule advances. A click whose own target is interactive (a card link around the button) is unaffected.
 - **Drag-off cancels** (independent review): pressing a button, sliding off and releasing elsewhere is how people cancel a click, and the browser also sends that click to the common ancestor. The 4 px rule keeps it from counting. The recorder's older "click on an ancestor of the pressed node" link (for a node the app re-rendered) has the same 4 px rule now; before, such a drag recorded a click on the button.
 
-### D53. A click inside an `<svg>` with no interactive ancestor resolves to the element around the svg
+### D62. A click inside an `<svg>` with no interactive ancestor resolves to the element around the svg
 - **Spec**: Element targeting, record step 1 (nearest interactive element within 5 levels; otherwise the click is kept as low-confidence).
 - **Finding**: demoqa's row actions are `<span id="edit-record-2" title="Edit"><svg><path/></svg></span>` with a click handler. A click lands on the `<path>`, which has no id, name or text, so the step was "Click **the element**" with no strong signal (since D47 it is not recorded at all), while the span has a stable id and a title.
 - **Change**: for a low-confidence click inside an icon-sized `<svg>` (48 px or less on both sides), the target climbs out of SVG-namespace elements to the first HTML element around it. It stays low-confidence (flagged), and D47 still skips it when the wrapper has no strong signal either. A click in a larger svg (a chart or diagram) keeps its own target: the wrapper would be the whole chart. An svg inside a button or link already resolved to the button or link.
 
-### D54. Ids that component libraries number per page load are generated
+### D63. Ids that component libraries number per page load are generated
 - **Spec**: Element targeting, record step 2 (drop ids that look generated: `ember123`, long digit runs, …).
 - **Finding**: Angular Material's select was recorded with `id="mat-select-10"` and its option with `mat-option-51`. These counters change between page loads, so on replay the id and the CSS path built from it both failed. A perfect role + name match then scored 45 of 80 points (56, under the 60 threshold), and the step was not found on an unchanged page.
 - **Change**: ids, test ids and classes of the form `<library>-[words-]<number>[-…]` are generated, for the prefixes `mat`, `mdc`, `cdk`, `headlessui`, `downshift`, `react-select`, `react-aria`, `rc`, `mui`, `chakra` and `reach` (`mat-select-10`, `cdk-overlay-3`, `headlessui-menu-button-3`, `downshift-0-input`, `rc-tabs-0-tab-1`). Other `word-number` ids (`edit-record-2`, `step-1`) and Material's typography classes (`mat-display-1`, `mat-headline-2`) are kept.
 
-### D55. A unique match must beat every look-alike seen at record time
+### D64. A unique match must beat every look-alike seen at record time
 - **Spec**: Element targeting, playback step 4 (score ≥ 60, a strong signal, a 15-point lead); Data model (new optional `ElementFingerprint.lookalikes`).
 - **Finding** (an intermittent wrong match on ant.design): about 3 s after load the docs site remounts the page. For about 1.5 s the "Select date" field of the Basic demo is gone while the same field of another demo, far down the page, is there. That field matched role + name, placeholder and landmarks (69 points). With no runner-up it passed every rule, and the step was drawn on the wrong field. At record time five fields shared that name, and only the CSS path told the target apart.
-- **Change**: at record time, for every other element that would be accepted on its own if the target were missing (a strong signal and 60 points or more), the fingerprint stores the non-positional signals it matched (at most 5 distinct sets). At playback, a unique match whose non-positional matched signals are all in one of those sets is refused with reason `lookalike`, and the wait loop keeps looking. The real target, once there, matches more (here the CSS path) and is found.
-- **Cost**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Fingerprints recorded before 0.2.6, or without look-alikes, behave as before. Robustness set A: 519/520 found (the one miss is an existing ambiguity), 0 wrong. The new fixture pair `date-basic` / `date-other` reproduces the Ant case.
+- **Change**: at record time, for every other element with a strong signal, the fingerprint stores the non-positional signals it matched. Only maximal sets are kept (at most 5, most weight first). At playback, a unique match whose non-positional matched signals are all in one of those sets is refused with reason `lookalike`, and the wait loop keeps looking. The real target, once there, matches more (here the CSS path) and is found.
+- **Independent review**: look-alikes are stored **whatever their score, visibility or enabled state**. A look-alike under 60 at record time can pass 60 at playback on position and XPath once the target is gone. A look-alike in a hidden tab or collapsed demo can be shown later. Both were wrong matches in the first version and have regression tests (`test/browser/lookalikes.test.ts`). Record time scores the page once for both `matchCount` and the look-alikes.
+- **Cost and limits**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Look-alikes that are not in the DOM at record time (lazy or virtualised content) cannot be known, so the rule narrows the risk but does not close it. Fingerprints recorded before 0.3.3 behave as before. Robustness set A: 519/520 found, 0 wrong. The one miss is the new fixture pair `date-basic` / `date-other` under `wrap` (ambiguous), which reproduces the Ant case.

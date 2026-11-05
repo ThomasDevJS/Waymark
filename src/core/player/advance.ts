@@ -14,7 +14,7 @@ import { isNativeCheck, isNativeSelect } from '../recorder/classify';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 
 export const SUBMIT_NAV_MS = 1500;
-/** A press on the target and a click on its ancestor within this time are one click (D52). */
+/** A press on the target and a click on its ancestor within this time are one click (D61). */
 export const PRESS_LINK_MS = 1000;
 /** ...and the release is at most this far from the press. */
 export const PRESS_SLOP_PX = 4;
@@ -62,7 +62,7 @@ export function watchAdvance(w: AdvanceWatch): () => void {
 
   if (kind === 'click' || (kind === 'select' && primary && !isNativeSelect(primary)) || (kind === 'check' && primary && !isNativeCheck(primary))) {
     // A control that opens something over itself on mousedown (MUI's select and its backdrop)
-    // gets no click: the click goes to the common ancestor of the press and the release (D52).
+    // gets no click: the click goes to the common ancestor of the press and the release (D61).
     // Only a release at the press point counts: dragging off a button is how people cancel a
     // click, and a release on another control (a card link around the button) is that control's.
     let pressed: { path: EventTarget[]; at: number; x: number; y: number } | null = null;
@@ -103,7 +103,7 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       const t = hits(e.composedPath(), w.targets);
       if (trusted(e) && t && hasValue(t)) advance();
     });
-    // Apps like TodoMVC take the value on Enter and clear the field: no change, no blur (D51).
+    // Apps like TodoMVC take the value on Enter and clear the field: no change, no blur (D60).
     // Checked at keydown, before the app clears it. A textarea or rich editor gets a new line.
     on(doc, 'keydown', (e) => {
       const k = e as KeyboardEvent;

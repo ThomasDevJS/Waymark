@@ -48,7 +48,7 @@ describe('schemas', () => {
     expect(GuideSchema.safeParse({ ...guide(), schemaVersion: 2 }).success).toBe(false);
     expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 2, exportedAt: '', guides: [] }).success).toBe(false);
   });
-  it('keeps look-alike profiles (D55) and caps their size', () => {
+  it('keeps look-alike profiles (D64) and caps their size', () => {
     const g = guide();
     const t = g.steps[0]!.target as Record<string, unknown>;
     t.lookalikes = [['ancestors', 'placeholder', 'roleName']];
