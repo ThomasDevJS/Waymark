@@ -11,7 +11,9 @@ import { useHd } from '../../core/voice/hd';
 import { HdVoice, hdStatus } from './HdVoice';
 import type { ComponentChildren } from 'preact';
 import { grantedSitePatterns } from '../../core/permissions/registration';
+import { fetchOnlyPatterns } from '../../background/site-access';
 import { Icon } from '../../ui/Icon';
+import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
 
 const library = signal<LibraryState | null>(null);
@@ -39,7 +41,7 @@ async function subscribe() {
     return;
   }
   if (!libraryUrlAllowed(url.href)) {
-    libraryError.value = 'The library URL must start with https://';
+    libraryError.value = 'The pack address must start with https://';
     return;
   }
   libraryBusy.value = true;
@@ -115,7 +117,8 @@ const sitesError = signal<string | null>(null);
 const shortcuts = signal<Record<string, string>>({});
 async function loadSites() {
   const { origins = [] } = await chrome.permissions.getAll();
-  sites.value = grantedSitePatterns(origins);
+  // A library site granted only to fetch the pack is not a guide site (D80): leave it out.
+  sites.value = grantedSitePatterns(origins, await fetchOnlyPatterns());
 }
 
 async function removeSite(pattern: string) {
@@ -195,7 +198,7 @@ export function Options() {
     <>
       <header class="app-header">
         <h1 class="brand">
-          <Icon name="pin" size={18} />
+          <Mark />
           Waymark settings
         </h1>
       </header>
@@ -369,7 +372,7 @@ export function Options() {
               Subscribe to a pack file your team publishes at a fixed HTTPS address. Waymark reads it now and every 6 hours and shows its guides as read-only team guides. Anyone with the address can read the pack.
             </p>
             <label class="field">
-              <span class="label">Library URL</span>
+              <span class="label">Pack address</span>
               <input data-testid="library-url" type="url" placeholder="https://example.com/guides.waymark.json" value={libraryUrl.value} onInput={(e) => (libraryUrl.value = (e.target as HTMLInputElement).value)} />
             </label>
             <div class="row">

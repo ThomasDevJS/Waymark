@@ -156,7 +156,7 @@ describe('overlay drawing', () => {
   const handlers = { next() {}, back() {}, skip() {}, exit() {}, retry() {}, report() {}, goBack() {}, mute() {} };
   const view = (step: Step, extra: Partial<RunView> = {}): RunView => ({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Demo', stepIndex: 1, total: 4, step, stepToken: 't', ...extra });
 
-  it('draws four panels and a ring around the target, and a tooltip next to it in the top layer', async () => {
+  it('draws a spotlight and a ring around the target, and a tooltip next to it in the top layer', async () => {
     const target = q('tb-new');
     const ui = new PlayerUI(handlers);
     ui.showStep(view({ ...stepFor('click', target), title: 'Click **New order**' }), target);
@@ -168,7 +168,10 @@ describe('overlay drawing', () => {
     expect(Math.round(ring.left)).toBe(Math.round(Math.max(0, box.left - 6)));
     expect(Math.round(ring.right)).toBe(Math.round(box.right + 6));
     expect(Math.round(ring.top)).toBe(Math.round(Math.max(0, box.top - 6)));
-    expect(root.querySelectorAll('.panel')).toHaveLength(4);
+    // One element dims everything around the hole with its shadow (D93); same box as the ring.
+    const spot = root.querySelector('.spot')!.getBoundingClientRect();
+    expect([spot.left, spot.top, spot.width, spot.height]).toEqual([ring.left, ring.top, ring.width, ring.height]);
+    expect(getComputedStyle(root.querySelector('.spot')!).pointerEvents).toBe('none');
     const tip = root.querySelector('.tip') as HTMLElement;
     expect(tip.getAttribute('role')).toBe('dialog');
     expect(tip.textContent).toContain('Step 2 of 4');
@@ -177,6 +180,42 @@ describe('overlay drawing', () => {
     expect(t.top).toBeGreaterThanOrEqual(box.bottom); // placed below the target
     // the target stays clickable through the gap: the panels do not take pointer events
     expect(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)).toBe(target);
+    ui.clear();
+  });
+
+  it('announces each step from one live region that stays, and points an arrow at the target (D93)', async () => {
+    const target = q('tb-new');
+    const ui = new PlayerUI(handlers);
+    ui.showStep(view({ ...stepFor('click', target), title: 'Click **New order**' }), target);
+    await new Promise((r) => setTimeout(r, 50));
+    const root = overlayHost()!.shadowRoot!;
+    const live = root.querySelector('[role="status"][aria-live="polite"]')!;
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(live.textContent).toBe('Step 2 of 4: Click New order');
+    expect(root.querySelector('.tip')!.hasAttribute('aria-live')).toBe(false);
+    const arrow = root.querySelector('.tip .arrow') as HTMLElement;
+    expect(arrow.dataset.side).toBe('top'); // the tooltip is below, so the arrow is on its top edge
+    ui.showStep(view({ ...stepFor('click', target), title: 'Click *Import*' }, { stepIndex: 2 }), target);
+    expect(root.querySelector('[role="status"][aria-live="polite"]')).toBe(live); // the same element
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(live.textContent).toBe('Step 3 of 4: Click Import');
+    ui.showCard('done', view(stepFor('click', target)));
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(live.textContent).toContain('Done!');
+    ui.clear();
+  });
+
+  it('keeps a long tooltip inside a small viewport: its body scrolls (D93 review)', async () => {
+    const target = q('tb-new');
+    const ui = new PlayerUI(handlers);
+    const long = 'A long note. '.repeat(600);
+    ui.showStep(view({ ...stepFor('click', target), title: 'Click **New order**', note: long, advance: 'next' }), target);
+    await new Promise((r) => setTimeout(r, 80));
+    const tip = overlayHost()!.shadowRoot!.querySelector('.tip')!.getBoundingClientRect();
+    expect(tip.top).toBeGreaterThanOrEqual(0);
+    expect(tip.bottom).toBeLessThanOrEqual(window.innerHeight);
+    const body = overlayHost()!.shadowRoot!.querySelector('.tip-body') as HTMLElement;
+    expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
     ui.clear();
   });
 

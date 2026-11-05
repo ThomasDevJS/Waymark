@@ -7,19 +7,43 @@
 import { send } from '../core/messaging/client';
 import { overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
+import { CircleQuestionMark, MapPin, Play } from 'lucide';
+import { buildSvg } from '../ui/svg';
 
 const CSS = `
-.wm-launch { position: fixed; right: 16px; bottom: 16px; width: 36px; height: 36px; border-radius: 50%; border: 0; background: #2f5fd0; color: #fff;
-  font: 600 18px/36px system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.3); padding: 0; }
-.wm-menu, .wm-offer { position: fixed; right: 16px; bottom: 60px; min-width: 220px; max-width: min(340px, calc(100vw - 32px)); background: #fff; color: #1d1f23;
-  border: 1px solid #d9dde3; border-radius: 10px; padding: 8px; pointer-events: auto; box-shadow: 0 6px 24px rgba(0,0,0,.25); font: 14px/1.4 system-ui, sans-serif; }
-.wm-offer { bottom: 16px; }
-.wm-menu h2, .wm-offer h2 { font-size: 12px; font-weight: 600; color: #5f6672; margin: 2px 4px 6px; }
-.wm-menu button, .wm-offer button { display: block; width: 100%; text-align: left; font: inherit; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
-.wm-menu button:hover, .wm-offer button:hover, .wm-menu button:focus-visible { background: #eef2fb; outline: none; }
-.wm-row { display: flex; gap: 6px; } .wm-row button { width: auto; } .wm-primary { background: #2f5fd0 !important; color: #fff !important; }
-.wm-note { font-size: 12px; color: #5f6672; margin: 4px; }
-@media (prefers-color-scheme: dark) { .wm-menu, .wm-offer { background: #23262c; color: #e8eaed; border-color: #3a3e45; } .wm-menu button:hover { background: #2f3440; } }
+.wm-launch { position: fixed; right: 16px; bottom: 16px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--wm-surface);
+  background: var(--wm-accent); color: var(--wm-accent-fg); display: grid; place-items: center; padding: 0; margin: 0; pointer-events: auto; cursor: pointer;
+  box-shadow: var(--wm-shadow-2); box-sizing: border-box; }
+.wm-launch:hover { background: var(--wm-accent-hover); }
+.wm-launch svg { width: 22px; height: 22px; }
+.wm-launch[aria-expanded='true'] { background: var(--wm-surface); color: var(--wm-fg); border-color: var(--wm-border); }
+.wm-launch:focus-visible, .wm-card button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
+.wm-card { position: fixed; right: 16px; bottom: 72px; width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 96px); overflow: auto;
+  box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
+  padding: 8px; pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.4 var(--wm-font); text-align: left; }
+.wm-offer { bottom: 16px; padding: 14px 16px 12px; }
+.wm-card h2 { font: 600 12px/1.4 var(--wm-font); letter-spacing: .04em; text-transform: uppercase; color: var(--wm-fg-muted); margin: 4px 8px 6px; }
+.wm-offer h2 { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+.wm-offer h2 svg { width: 14px; height: 14px; color: var(--wm-accent-text); }
+.wm-card button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font: inherit; font-size: 14px; line-height: 20px; min-height: 36px;
+  padding: 7px 10px; margin: 0; border: 0; border-radius: var(--wm-radius-sm); background: transparent; color: inherit; cursor: pointer; box-shadow: none; text-transform: none; }
+.wm-card button:hover { background: var(--wm-surface-hover); }
+.wm-card button svg { width: 16px; height: 16px; flex: none; color: var(--wm-accent-text); }
+.wm-row { display: flex; gap: 6px; margin-top: 12px; justify-content: flex-end; }
+.wm-row button { width: auto; padding: 5px 12px; min-height: 32px; font-size: 13px; font-weight: 500; }
+.wm-card .wm-primary { background: var(--wm-accent); color: var(--wm-accent-fg); width: auto; }
+.wm-card .wm-primary:hover { background: var(--wm-accent-hover); }
+.wm-card .wm-primary svg { color: inherit; }
+.wm-text { margin: 0; overflow-wrap: anywhere; }
+.wm-note { font-size: 13px; color: var(--wm-fg-muted); margin: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .wm-launch { transition: transform 120ms var(--wm-ease), background-color 120ms; animation: wm-pop 200ms var(--wm-ease); }
+  .wm-launch:hover { transform: scale(1.06); }
+  .wm-card { animation: wm-rise 160ms var(--wm-ease); }
+}
+@keyframes wm-pop { from { opacity: 0; scale: .6; } }
+@keyframes wm-rise { from { opacity: 0; translate: 0 6px; } }
+@media (forced-colors: active) { .wm-launch, .wm-card { border: 2px solid CanvasText; } }
 `;
 
 /** Reads and removes `waymark=<id>` from the URL (query or hash), keeping hash routes intact. */
@@ -81,9 +105,18 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     }
   };
 
-  const closeMenu = () => {
+  // Focus goes back to the button when it was inside the menu, so it never drops to <body>.
+  const onOutsidePress = (e: Event) => {
+    const path = e.composedPath();
+    if (menu && !path.includes(menu) && !(button && path.includes(button))) closeMenu(false);
+  };
+  const closeMenu = (refocus = !!menu && menu.contains(overlayRoot().activeElement)) => {
+    document.removeEventListener('pointerdown', onOutsidePress, true);
     menu?.remove();
     menu = null;
+    button?.setAttribute('aria-expanded', 'false');
+    button?.removeAttribute('aria-controls');
+    if (refocus) button?.focus();
   };
 
   const start = async (id: string, openStart = false, into: HTMLElement | null = null) => {
@@ -103,11 +136,11 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
         note.textContent = 'This guide starts on another page.';
         const open = document.createElement('button');
         open.className = 'wm-primary';
-        open.textContent = 'Open start page';
+        open.append(buildSvg(Play), 'Open start page');
         open.addEventListener('click', () => void start(id, true, host));
         host.append(note, open);
       } else {
-        note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then start it.`;
+        note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then press Start.`;
         host.append(note);
       }
     } catch {
@@ -115,24 +148,44 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     }
   };
 
+  // A disclosure: the button shows a small panel of buttons, one per guide. Esc closes it and
+  // returns focus to the button; Tab moves through the guides.
   const openMenu = () => {
-    if (menu) return closeMenu();
+    if (menu) return closeMenu(true);
     ensureStyle();
     menu = document.createElement('div');
-    menu.className = 'wm-menu';
-    menu.setAttribute('role', 'menu');
+    menu.className = 'wm-card wm-menu';
+    menu.id = 'wm-launcher-menu';
+    menu.setAttribute('role', 'group');
+    menu.setAttribute('aria-labelledby', 'wm-launcher-title');
     const h = document.createElement('h2');
+    h.id = 'wm-launcher-title';
     h.textContent = 'Guides for this page';
     menu.append(h);
     for (const g of guides) {
       const b = document.createElement('button');
-      b.setAttribute('role', 'menuitem');
-      b.textContent = g.title;
+      b.type = 'button';
+      b.append(buildSvg(Play), g.title);
       b.dataset.guide = g.id;
       b.addEventListener('click', () => void start(g.id));
       menu.append(b);
     }
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeMenu(true);
+      }
+    });
+    // Close when focus or a press goes elsewhere.
+    menu.addEventListener('focusout', (e) => {
+      const to = e.relatedTarget as Node | null;
+      if (to && !menu?.contains(to) && to !== button) closeMenu(false);
+    });
     overlayLayer().append(menu);
+    button?.setAttribute('aria-expanded', 'true');
+    button?.setAttribute('aria-controls', menu.id);
+    document.addEventListener('pointerdown', onOutsidePress, true);
+    menu.querySelector('button')?.focus();
   };
 
   const render = (show: boolean) => {
@@ -148,9 +201,11 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
       button = document.createElement('button');
       button.className = 'wm-launch';
       button.type = 'button';
-      button.textContent = '?';
+      button.append(buildSvg(CircleQuestionMark));
       button.setAttribute('aria-label', 'Waymark guides for this page');
-      button.addEventListener('click', openMenu);
+      button.title = 'Guides for this page';
+      button.setAttribute('aria-expanded', 'false');
+      button.addEventListener('click', () => openMenu());
       overlayLayer().append(button);
     }
     testMark('launcher', String(guides.length));
@@ -173,18 +228,20 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
         ensureStyle();
         offer?.remove();
         offer = document.createElement('div');
-        offer.className = 'wm-offer';
+        offer.className = 'wm-card wm-offer';
         offer.setAttribute('role', 'dialog');
-        offer.setAttribute('aria-label', 'Start a Waymark guide');
+        offer.setAttribute('aria-labelledby', 'wm-offer-text');
         const h = document.createElement('h2');
-        h.textContent = 'Waymark';
-        const t = document.createElement('div');
+        h.append(buildSvg(MapPin), 'Waymark guide');
+        const t = document.createElement('p');
+        t.className = 'wm-text';
+        t.id = 'wm-offer-text';
         t.textContent = `Start the guide “${r.guide.title}”?`;
         const row = document.createElement('div');
         row.className = 'wm-row';
         const yes = document.createElement('button');
         yes.className = 'wm-primary';
-        yes.textContent = 'Start';
+        yes.append(buildSvg(Play), 'Start');
         yes.dataset.action = 'start';
         yes.addEventListener('click', () => void start(r.guide!.id, false, offer));
         const no = document.createElement('button');
@@ -193,7 +250,7 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
           offer?.remove();
           offer = null;
         });
-        row.append(yes, no);
+        row.append(no, yes);
         offer.append(h, t, row);
         overlayLayer().append(offer);
         testMark('deeplink', r.guide.id);

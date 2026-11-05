@@ -18,9 +18,13 @@ import { testMark } from './test-hooks';
 export const PICK_REJECTED = 'Waymark could not find that again. Click a button, link or field · Esc to cancel';
 
 const PICK_CSS = `
-.pick-box { position: fixed; border: 2px dashed #e8710a; background: rgba(232,113,10,.08); pointer-events: none; border-radius: 4px; box-sizing: border-box; }
-.pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: #1d1f23; color: #fff; padding: 6px 14px; border-radius: 999px;
-  font: 13px/1.4 system-ui, sans-serif; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.pick-box { position: fixed; border: 2px dashed #e8710a; background: rgba(232,113,10,.10); pointer-events: none; border-radius: 6px; box-sizing: border-box;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.8); }
+.pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); box-sizing: border-box;
+  background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); padding: 8px 16px; border-radius: 999px;
+  font: 500 13px/1.4 var(--wm-font); pointer-events: none; box-shadow: var(--wm-shadow-3); text-align: center; }
+.pick-banner::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e8710a; margin-right: 8px; vertical-align: 1px; }
+@media (forced-colors: active) { .pick-box { border-color: Highlight; } .pick-banner { border: 1px solid CanvasText; } }
 `;
 
 const BLOCKED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'];
@@ -119,13 +123,13 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   }
 
   async function testStep(step: Parameters<PlayerUI['showStep']>[0]['step']): Promise<TestResult> {
-    if (!step?.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element.' };
+    if (!step?.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element to find.' };
     const r = await waitForMatch(document, step.target, { timeoutMs: 3000 });
     clearTimeout(testTimer);
     testUi?.clear();
     if (r.status !== 'found') {
       testMark('tested', 'not-found');
-      return { found: false, score: r.bestScore, margin: 0, matched: r.matched, fragile: false, reason: `Not found (${r.reason}).` };
+      return { found: false, score: r.bestScore, margin: 0, matched: r.matched, fragile: false, reason: 'Nothing on this page matches this step. Check that this is the right page, or Re-pick element.' };
     }
     const strong = r.matched.filter((k) => STRONG.has(k));
     testUi = new PlayerUI({
@@ -141,7 +145,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     const target = r.spotlight ?? r.element;
     target.scrollIntoView({ block: 'center', behavior: 'auto' });
     testUi.showStep({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Test step', stepIndex: 0, total: 1, step: { ...step, advance: 'action' }, stepToken: 'test' }, target);
-    testUi.flash(`Matched: ${r.matched.join(', ')} (score ${Math.round(r.score)})`);
+    testUi.flash(strong.length > 1 ? 'Found. The details are in the side panel.' : 'Found, but fragile. The details are in the side panel.');
     testTimer = setTimeout(() => testUi?.clear(), 4000);
     testMark('tested', 'found');
     return { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: strong.length <= 1 };
