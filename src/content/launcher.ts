@@ -5,7 +5,7 @@
  * that guide; it is read at document_start and removed with history.replaceState.
  */
 import { send } from '../core/messaging/client';
-import { overlayHost, overlayLayer, overlayRoot } from './overlay/host';
+import { eventPath, overlayHost, overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
 import { dlog } from './debug';
 import { CircleQuestionMark, MapPin, Play } from 'lucide';
@@ -117,7 +117,7 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
 
   // Focus goes back to the button when it was inside the menu, so it never drops to <body>.
   const onOutsidePress = (e: Event) => {
-    if (menu && !pressInsideLauncher(e.composedPath(), menu, button, overlayHost())) closeMenu(false);
+    if (menu && !pressInsideLauncher(eventPath(e), menu, button, overlayHost())) closeMenu(false);
   };
   const closeMenu = (refocus = !!menu && menu.contains(overlayRoot().activeElement)) => {
     document.removeEventListener('pointerdown', onOutsidePress, true);

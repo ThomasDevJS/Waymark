@@ -66,6 +66,24 @@ export function overlayLayer(): HTMLElement {
   return overlayRoot().querySelector('.layer') as HTMLElement;
 }
 
+/**
+ * The event path as a listener outside the overlay sees it in the store build (D86, #46). There the
+ * overlay's shadow root is closed, so `composedPath()` seen from the page's document stops at the
+ * host. Test builds use an open root so tests can look inside; this hides its insides from the
+ * same listeners, so tests run the production behaviour (#42 hid behind that gap). Listeners
+ * attached inside the overlay keep the full path. Content code calls this, never
+ * `composedPath()` directly (ESLint).
+ */
+export function eventPath(e: Event): EventTarget[] {
+  // eslint-disable-next-line no-restricted-syntax -- the one place that reads it
+  const path = e.composedPath();
+  if (!root || root.mode === 'closed') return path;
+  const at = e.currentTarget;
+  if (at instanceof Node && (at === root || root.contains(at))) return path; // a listener inside
+  const i = path.indexOf(root);
+  return i < 0 ? path : path.slice(i + 1); // drop the nodes inside the root, and the root itself
+}
+
 /** True when an event path goes through Waymark's overlay. */
 export function isOverlayPath(path: EventTarget[]): boolean {
   return !!host && path.includes(host);
