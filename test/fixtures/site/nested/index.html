@@ -10,7 +10,18 @@
   </ul></nav>
   <iframe id="action_frame" src="home.html"></iframe>
   <script>
-    for (const a of document.querySelectorAll('[data-screen]')) a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('action_frame').src = a.dataset.screen; });
+    // Like the real dashboard (#32 follow-up): a screen is shown in a brand-new frame element (a new
+    // frameId), swapped in after the app has fetched it (?swap=<ms>), so the old frames live on briefly.
+    const swapMs = Number(new URLSearchParams(location.search).get('swap') ?? 0);
+    for (const a of document.querySelectorAll('[data-screen]')) a.addEventListener('click', (e) => {
+      e.preventDefault();
+      setTimeout(() => {
+        const f = document.createElement('iframe');
+        f.id = 'action_frame';
+        f.src = a.dataset.screen;
+        document.getElementById('action_frame').replaceWith(f);
+      }, swapMs);
+    });
     document.documentElement.setAttribute('data-waymark-test-loaded', 'yes');
   </script>
 </body>

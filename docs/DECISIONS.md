@@ -675,6 +675,19 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Finding** (issue #32): after a click loaded a slow, nested frame, the next step was read while the frame was still loading, before anything was highlighted.
 - **Change**: `voiceSync` reads a step that has a target only when the frame board has a winner for it. Every winner report (`run.match`) calls it again. That is idempotent through `spokenToken`, so it also covers a service worker restart between the board write and the read. **Repeat step / Replay voice** still reads on request, found or not. Note and navigate steps are read at once, as before. A step that is never found is not read; the not-found card shows instead.
 
+### D84. A frame that is gone never blocks the frame that replaced it
+*5 Nov 2026 · SPEC: Element targeting, playback step 8 (frame winner); issue #38*
+
+- **Finding** (Thomas's debug log, a real dashboard):
+  - A screen opened from the top nav is rebuilt in **new iframe elements** (new frameIds), while the old frames live on for about 0.5 s.
+  - The old inner frame found the element first, then the new one did. Two found, on-path reports tie, so there is no winner and nothing is drawn.
+  - The old frame never reports again, so its entry stays. D45's "one entry per frame" covers a frame that reloads (same frameId), not a frame element that is replaced.
+- **Change**:
+  - Each board entry keeps the reporter's `sender.documentId`.
+  - When found reports tie (no winner, two or more found), the service worker asks those documents `frame.alive` (`tabs.sendMessage` with `{ documentId }`). A gone document fails at once, while a live one answers `true`. An answer slower than 500 ms counts as alive, so a live frame is never dropped.
+  - Gone documents' entries are removed, but only if the entry is still that document. The winner is then recomputed, and the change is broadcast and read aloud (D83).
+- **Matcher**: unchanged. A real tie between two live frames still draws nothing.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

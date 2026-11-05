@@ -6,7 +6,7 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { GuideSchema, type Guide } from '../core/model/schema';
-import { recordReport } from '../core/player/board';
+import { dropGone, recordReport, tiedDocs } from '../core/player/board';
 import { applyRunOp, currentStep, newTabContinuesRun, NO_RUN, onStartPage, runView, shouldCatchUp, startRun, type MatchBoard, type Run, type RunOp, type RunView } from '../core/player/run';
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
@@ -43,6 +43,36 @@ export async function getRun(tabId: number): Promise<Run | null> {
 
 async function getBoard(tabId: number): Promise<MatchBoard | undefined> {
   return (await chrome.storage.session.get(boardKey(tabId)))[boardKey(tabId)] as MatchBoard | undefined;
+}
+
+/** How long a frame has to answer "are you there?" before it counts as alive (D84). */
+export const FRAME_ALIVE_MS = 500;
+
+/**
+ * True unless the document is certainly gone. A removed frame's document cannot receive messages,
+ * so the send fails at once; a slow answer counts as alive, so a live frame is never dropped.
+ */
+export async function frameAlive(tabId: number, documentId: string): Promise<boolean> {
+  const ask = chrome.tabs.sendMessage(tabId, { type: 'frame.alive' } satisfies ContentPush, { documentId }).then(
+    (r) => r === true,
+    () => false,
+  );
+  const slow = new Promise<boolean>((resolve) => setTimeout(() => resolve(true), FRAME_ALIVE_MS));
+  return Promise.race([ask, slow]);
+}
+
+/** Asks the tied frames whether they still exist and drops those that do not (D84). */
+async function pruneGoneFrames(tabId: number, stepToken: string, tied: { key: string; doc: string }[]): Promise<boolean> {
+  const answers = await Promise.all(tied.map(async (t) => ((await frameAlive(tabId, t.doc)) ? null : t)));
+  const gone = answers.filter((x): x is { key: string; doc: string } => x !== null);
+  if (!gone.length) return false;
+  return enqueue(async () => {
+    const b = await getBoard(tabId);
+    if (!b || b.stepToken !== stepToken || !dropGone(b, gone)) return false;
+    await chrome.storage.session.set({ [boardKey(tabId)]: b });
+    dlog('frame', 'frame.gone', { tab: tabId }, () => ({ dropped: gone.map((g) => g.key).join(','), winnerFrame: b.winner === null ? null : (Object.values(b.reports).find((x) => x.token === b.winner)?.frameId ?? null) }));
+    return true;
+  });
 }
 
 async function tabUrl(tabId: number): Promise<string | undefined> {
@@ -294,7 +324,8 @@ export const runHandlers: Handlers = {
       }
       const before = await getBoard(tabId);
       const prev = before && before.stepToken === r.stepToken ? { winner: before.winner, gave: before.topGaveUp } : null;
-      const board = recordReport(before, { ...r, frameId });
+      const doc = (ctx.sender as { documentId?: string }).documentId;
+      const board = recordReport(before, { ...r, frameId, ...(doc ? { doc } : {}) });
       await chrome.storage.session.set({ [boardKey(tabId)]: board });
       dlog('frame', 'frame.report', { tab: tabId, frame: frameId, o: ctx.sender.origin ?? null }, () => ({
         step: run.stepIndex + 1,
@@ -307,9 +338,14 @@ export const runHandlers: Handlers = {
         frames: Object.keys(board.reports).length,
         topGaveUp: board.topGaveUp,
       }));
-      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner };
+      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner, tied: tiedDocs(board) };
     });
     if (!changed) return { ok: true };
+    // Frames tie on the element: drop the reports of frames that no longer exist (D84).
+    if (changed.tied.length && (await pruneGoneFrames(tabId, r.stepToken, changed.tied))) {
+      changed.changed = true;
+      changed.found = !!(await getBoard(tabId))?.winner;
+    }
     if (changed.changed) await broadcast(tabId);
     // Found: read the step now (D83). Idempotent (spokenToken), so a report after a service worker
     // restart that interrupted the first read still gets it read.

@@ -327,7 +327,9 @@ export type ContentPush =
   | { type: 'pick.start' }
   | { type: 'pick.stop' }
   // the debug log switch changed (D110)
-  | { type: 'debug.changed'; payload: { on: boolean } };
+  | { type: 'debug.changed'; payload: { on: boolean } }
+  // "are you still there?" when frames tie on a step's element (D84); answered with true
+  | { type: 'frame.alive' };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

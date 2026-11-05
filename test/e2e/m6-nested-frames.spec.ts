@@ -73,3 +73,36 @@ test('a late, 3-deep nested frame: voice waits for the element; a click on the c
   await activity(app)!.locator('.detail.open').getByRole('button', { name: '24 Months' }).click();
   await expect.poll(() => marker(app, 'player')).toBe('done');
 });
+
+test('a screen reopened in new frames: the old frame that is going away never blocks the new one (debug log of #32)', async ({ context, ext, site }) => {
+  test.setTimeout(120_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  const url = `${site.main}/nested/index.html?swap=600`;
+  await app.goto(url);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+
+  await ext.message('rec.start', { tabId, title: 'Reopen' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await app.bringToFront();
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null), { timeout: 10_000 }).toBe('ready');
+  await expect.poll(async () => marker(activity(app)!, 'recording')).toBe('on');
+  await activity(app)!.locator('.cards .title', { hasText: 'Unsafe Driving' }).click();
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string; steps: { title: string }[] }>('rec.stop', {});
+  expect(rec.steps.map((s) => s.title)).toEqual(['Click **Safety**', 'Click **Unsafe Driving**']);
+
+  // The Safety screen is still open when the run starts: the old frames find the card at once,
+  // then the app swaps in new frames that find it again. The new frame must win and draw.
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null)).toBe('ready');
+  await ext.message('run.start', { tabId, guideId: rec.guideId });
+  await app.bringToFront();
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  const oldFrame = activity(app)!;
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) && activity(app) !== oldFrame ? marker(activity(app)!, 'player') : null), { timeout: 15_000 }).toBe('drawn:1');
+  await activity(app)!.locator('#unsafe_driving-basic-cat-info-toggle .count').click();
+  await expect.poll(() => marker(app, 'player')).toBe('done');
+});

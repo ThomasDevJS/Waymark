@@ -333,9 +333,10 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     render();
   };
 
-  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender) => {
+  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender, sendResponse: (r: unknown) => void) => {
     if (sender.id !== chrome.runtime.id || sender.tab) return;
     const m = msg as ContentPush;
+    if (m?.type === 'frame.alive') return void sendResponse(true);
     if (m?.type === 'run.changed' && m.payload && typeof m.payload.active === 'boolean') apply(m.payload);
     else if (m?.type === 'tts.content' && isTop) speakFallback(m.payload);
     else if (m?.type === 'tts.stop' && isTop) window.speechSynthesis?.cancel();
