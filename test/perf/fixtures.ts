@@ -5,7 +5,7 @@ const pad = (n: number, w = 4) => String(n).padStart(w, '0');
 /** A 26-character id-like string (same shape as a ULID). */
 export const fakeId = (prefix: string, n: number) => (prefix + pad(n, 8)).padEnd(26, '0').slice(0, 26);
 
-export function makeStep(g: number, s: number, origin: string): Step {
+export function makeStep(g: number, s: number): Step {
   return {
     id: fakeId(`S${pad(g)}`, s),
     kind: s % 7 === 0 ? 'input' : 'click',
@@ -52,7 +52,7 @@ export function makeGuides(count: number, steps: number, origins = 20): Guide[] 
       appOrigins: [origin],
       startUrl: `${origin}/app/section-${g % 9}`,
       matchUrls: [{ kind: 'prefix', value: `/app/section-${g % 9}` }],
-      steps: Array.from({ length: steps }, (_, s) => makeStep(g, s, origin)),
+      steps: Array.from({ length: steps }, (_, s) => makeStep(g, s)),
       version: 1,
       source: g % 4 === 0 ? 'library' : 'local',
       updatedAt: '2026-11-04T00:00:00.000Z',
