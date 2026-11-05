@@ -567,7 +567,7 @@ Only the look and the accessibility semantics change; every handler, advance rul
 - **Icons** in the content script are imported one by one from Lucide (`src/ui/svg.ts`), so only the six it uses are bundled. The content script (test build) grew from 80.7 KB to 91.4 KB, mostly CSS.
 - **Test change**: the browser test counted four `.panel` elements. It now checks that the `.spot` box matches the ring and takes no pointer events. A new test checks the persistent announcement and the arrow side.
 - **Fixes from the independent review**:
-  - At 200% zoom and on phones, a long step ran off the bottom of the screen. The tooltip's content is now a scrolling body, sized with Floating UI's `size` middleware and also shifted vertically. The arrow sits outside the body, so it is not clipped, and it hides when the tooltip had to move past the target. A browser test fills a small viewport with a long note.
+  - At 200% zoom and on phones, a long step ran off the bottom of the screen. The tooltip's content is now a scrolling body, sized with Floating UI's `size` middleware to the space beside the target. It is never shifted across the target: an e2e run caught a vertical shift covering a target near the bottom of the page. The arrow sits outside the body, so it is not clipped, and it hides when the tooltip had to move past the target. A browser test fills a small viewport with a long note.
   - The live region now exists before the first step, and its text is set on the next frame after being emptied, so the first step and a repeated step (Retry) are both read.
   - The overlay is `direction: ltr`, so an RTL page no longer mirrors the button rows; step titles and notes are `dir="auto"`.
   - The REC pill stops short of the launcher on narrow screens.
