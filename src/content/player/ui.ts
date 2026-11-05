@@ -248,8 +248,9 @@ export class PlayerUI {
           offset(14),
           flip({ padding: 8 }),
           // Long steps on small or zoomed screens: the body scrolls instead of running off the edge.
-          size({ padding: 8, apply: ({ availableHeight }) => tip.style.setProperty('--wm-tip-max', `${Math.max(120, Math.floor(availableHeight))}px`) }),
-          shift({ padding: 8, crossAxis: true }),
+          // Never shift across the target: the tooltip must not cover the element the learner clicks.
+          size({ padding: 8, apply: ({ availableHeight }) => tip.style.setProperty('--wm-tip-max', `${Math.max(96, Math.floor(availableHeight))}px`) }),
+          shift({ padding: 8 }),
           arrow({ element: arrowEl, padding: 12 }),
         ],
       }).then(({ x, y, placement: final, middlewareData }) => {
