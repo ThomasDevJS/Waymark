@@ -518,7 +518,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
   1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
   2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
-  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
+  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest. Or run the workflow by hand (D160).
 
 ### D57. The privacy policy is not hosted on GitHub Pages; the store listing is a draft
 - **Spec**: Permissions, privacy and security ("A one-page privacy policy (free on GitHub Pages) is required for the store listing"); Distribution and cost.
@@ -548,6 +548,16 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - "Install Xvfb and XTest" skips `apt-get` when `xvfb-run` and `libxtst6` are already installed (they are on the image).
   - The browser step gets `timeout-minutes: 6` and the Xvfb step 4, so a stuck download fails within minutes, not at the job's 15.
 - **Cost**: the optional fonts are not installed. No test compares screenshots or depends on CJK glyphs; `pnpm screens` runs locally, not in CI.
+
+### D160. A release can be started by hand: the workflow creates the tag
+*5 Nov 2026 · D56; release lane decisions are D160–D169*
+
+- **Finding**: the coordinating session works in a cloud container whose git proxy allows branch pushes but refuses tags (HTTP 403 on `git push origin v0.4.0`). Every release needed Thomas to push the tag from his own machine.
+- **Decision** (Thomas asked for the coordinating session to be able to cut releases): `.github/workflows/release.yml` also runs on `workflow_dispatch` with a `version` and an optional full `commit` SHA. Thomas can press **Run workflow** in the Actions tab, and the coordinating session can start it through the Actions API.
+- **Checks** before anything is written (the read-only build job): the run is on `main`; the version looks like `X.Y.Z` (an optional pre-release part); the commit, if given, is a 40-character SHA; the tag doesn't exist yet. Then the same checks as a pushed tag: the version matches `package.json` at that commit, the commit is on `main`, and its CI passed.
+- **Writing**: the `publish` job, still the only one with `contents: write`, creates the annotated tag through the API and then publishes the release as before. A tag made with the workflow's own token starts no second release run.
+- **Pushed tags** keep working unchanged.
+- **Inputs** are read through environment variables, never pasted into the script, and are validated before use.
 
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
