@@ -4,7 +4,7 @@
  * is built with DOM APIs (user strings never reach innerHTML).
  */
 import { arrow, autoUpdate, computePosition, flip, offset, shift, size, type Placement } from '@floating-ui/dom';
-import { ChevronLeft, ChevronRight, CircleCheck, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
+import { ChevronLeft, ChevronRight, CircleCheck, Copy, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
 import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
@@ -43,6 +43,7 @@ const CSS = `
 .title strong { font-weight: 700; }
 .note { margin: 6px 0 0; color: var(--wm-fg-muted); font-size: 13.5px; overflow-wrap: anywhere; }
 .flash { margin: 10px 0 0; padding: 6px 10px; border-radius: var(--wm-radius-sm); background: var(--wm-success-soft); color: var(--wm-success); font-size: 13px; }
+.flash.warn { background: var(--wm-warn-soft); color: var(--wm-warn); }
 .buttons { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
 .buttons .spacer { flex: 1; }
 .buttons .report { border-color: var(--wm-border-input); }
@@ -94,6 +95,9 @@ export interface UiHandlers {
   replayVoice?(): void;
   /** Show the current step again: find, scroll to and highlight the element, and read it (D106). */
   repeat?(): void;
+  /** True while the debug log is on: the not-found card offers Copy log (D111). */
+  debugOn?(): boolean;
+  copyLog?(): void;
 }
 
 export type Card = 'not-found' | 'off-track' | 'done';
@@ -301,8 +305,10 @@ export class PlayerUI {
       icon.append(buildSvg(TriangleAlert));
       title.textContent = 'Waymark can’t find this step on the page.';
       note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
+      buttons.append(this.button('Report broken step', 'report', this.h.report));
+      // A compact icon button, so the card's row still fits on one line (D111).
+      if (this.h.copyLog && this.h.debugOn?.()) buttons.append(this.iconButton(Copy, 'copy-log', 'Copy debug log', this.h.copyLog));
       buttons.append(
-        this.button('Report broken step', 'report', this.h.report),
         el('span', 'spacer'),
         this.button('Skip', 'skip', this.h.skip),
         this.button('Retry', 'retry', this.h.retry, 'primary', undefined, true),
@@ -321,9 +327,10 @@ export class PlayerUI {
   }
 
   /** Small confirmation inside the current tooltip (e.g. after reporting a broken step). */
-  flash(message: string): void {
+  flash(message: string, tone: 'success' | 'warn' = 'success'): void {
     if (!this.tip) return;
-    const note = el('div', 'flash', message);
+    this.tip.querySelector('.flash')?.remove();
+    const note = el('div', tone === 'warn' ? 'flash warn' : 'flash', message);
     const buttons = this.tip.querySelector('.buttons');
     if (buttons) buttons.before(note);
     else this.tip.querySelector('.tip-body')?.append(note);

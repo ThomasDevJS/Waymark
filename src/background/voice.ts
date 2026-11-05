@@ -11,6 +11,7 @@ import { clock } from '../offscreen/protocol';
 import { hdSpeed, useHd } from '../core/voice/hd';
 import { pickVoice, usableVoices, voiceTextFor } from '../core/voice/voice';
 import { DEFAULT_VOICE_SETTINGS, VoiceSettingsSchema, type VoiceSettings } from '../core/voice/settings';
+import { dlog } from './debug';
 
 const SETTINGS_KEY = 'voiceSettings';
 
@@ -59,7 +60,9 @@ const FALLBACK_TAB_KEY = 'ttsFallbackTab';
  */
 const SPEECH_AT_KEY = 'speechAt';
 
-export function stopSpeech(): void {
+/** Stops all speech. `why` goes to the debug log (D110); internal restarts pass none. */
+export function stopSpeech(why?: string): void {
+  if (why) dlog('voice', 'voice.stop', {}, { why });
   if (ttsAvailable()) chrome.tts.stop();
   hdStop();
   void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock() });
@@ -98,12 +101,17 @@ async function speak(tabId: number, text: string, lang: string, settings: VoiceS
   if (!ttsAvailable()) {
     // Fallback: the top frame speaks with speechSynthesis.
     await chrome.storage.session.set({ [FALLBACK_TAB_KEY]: tabId });
+    dlog('voice', 'voice.start', { tab: tabId }, { engine: 'page speechSynthesis', lang });
     const msg: ContentPush = { type: 'tts.content', payload: { text, lang, rate: settings.rate } };
     chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }).catch(() => undefined);
     return;
   }
   const voice = pickVoice(await getVoices(), lang, settings, uiLang());
-  if (!voice) return; // no usable on-device voice: stay silent rather than send text to a server
+  if (!voice) {
+    dlog('voice', 'voice.silent', { tab: tabId }, { why: 'no usable on-device voice for this language', lang });
+    return; // no usable on-device voice: stay silent rather than send text to a server
+  }
+  dlog('voice', 'voice.start', { tab: tabId }, { engine: 'tts', lang, remote: voice.remote === true });
   chrome.tts.speak(text, { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
 }
 
@@ -117,12 +125,16 @@ export async function speakCurrentStep(tabId: number, run: Run | null, explicit 
   const step = currentStep(run);
   if (!step) return;
   const settings = await getVoiceSettings();
-  if ((!settings.autoPlay && !explicit) || settings.muted) return;
+  const silent = (why: string) => dlog('voice', 'voice.silent', { tab: tabId }, { step: run.stepIndex + 1, why });
+  if (settings.muted) return silent('muted');
+  if (!settings.autoPlay && !explicit) return silent('Read each step aloud is off');
   // One voice channel: only the focused tab speaks, and only on the guide's own sites: a
   // step is never read out (or sent to the speechSynthesis fallback) on another site (D48).
   const tab = await focusedTab(tabId);
-  if (!tab || !onGuideSite(tab.url, run.guideSnapshot.appOrigins)) return;
+  if (!tab) return silent('not the active tab of the focused window');
+  if (!onGuideSite(tab.url, run.guideSnapshot.appOrigins)) return silent('the tab is not on one of the guide’s sites');
   const text = voiceTextFor(step);
+  if (!text) return silent('the step has no text to read');
   const lang = run.guideSnapshot.lang;
   if (text && useHd(await getHdStatus(), lang)) {
     // The next step's text is generated while this one plays, so it starts at once.
@@ -130,12 +142,15 @@ export async function speakCurrentStep(tabId: number, run: Run | null, explicit 
     const next = nextStep ? voiceTextFor(nextStep) || null : null;
     const at = clock();
     await chrome.storage.session.set({ [SPEECH_AT_KEY]: at });
+    dlog('voice', 'voice.start', { tab: tabId }, { engine: 'hd', step: run.stepIndex + 1, lang });
     const outcome = await hdSpeak(run.stepToken, text, hdSpeed(settings.rate), next, at);
+    dlog('voice', 'voice.hd', { tab: tabId }, { outcome });
     if (outcome !== 'failed') return;
     // Fall back only if nothing newer happened meanwhile and the learner didn't mute.
     const latest = (await chrome.storage.session.get(SPEECH_AT_KEY))[SPEECH_AT_KEY];
     const now = await getVoiceSettings();
-    if (latest !== at || now.muted || (!now.autoPlay && !explicit)) return;
+    if (latest !== at || now.muted || (!now.autoPlay && !explicit)) return silent('HD voice failed, and a newer step, Mute or Exit came first');
+    dlog('voice', 'voice.fallback', { tab: tabId }, { why: 'HD voice failed: the system voice reads it' });
   }
   await speak(tabId, text, lang, settings);
 }

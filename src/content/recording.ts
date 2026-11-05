@@ -6,6 +6,7 @@ import type { RecordingView } from '../core/recorder/session';
 import { isOverlayPath } from './overlay/host';
 import { flashPill, hidePill, showPill } from './overlay/pill';
 import { testMark } from './test-hooks';
+import { dlog } from './debug';
 
 /** Pill notice for a click the recorder left out (issue #6). */
 export const SKIP_NOTICE = 'Not recorded: Waymark could not find this again. Click a button, link or field.';
@@ -23,6 +24,7 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
         },
         isOwnEvent: isOverlayPath,
         framePath,
+        debug: (ev, data) => dlog('rec', ev, data),
         onSkip: () => {
           skipped++;
           testMark('rec-skipped', String(skipped));

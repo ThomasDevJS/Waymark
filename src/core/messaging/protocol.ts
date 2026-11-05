@@ -16,6 +16,7 @@ import type { TestResult } from '../../background/editor';
 import type { StartResult } from '../../background/runs';
 import type { LibraryState } from '../../background/discovery';
 import type { Conflict } from '../sharing/pack';
+import { ContentEntrySchema, MAX_BATCH } from '../debug/log';
 
 const url = z.string().max(4096);
 
@@ -87,6 +88,11 @@ export const RequestSchemas = {
   'hd.test': z.object({}),
   // From the offscreen document only (checked by URL in the handler).
   'hd.report': z.object({ status: HdStatusSchema.optional(), played: z.string().max(5000).optional() }),
+  // Debug log (D110): the Settings switch, Copy debug log and Clear.
+  'debug.get': z.object({}),
+  'debug.set': z.object({ on: z.boolean() }),
+  'debug.text': z.object({}),
+  'debug.clear': z.object({}),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -118,6 +124,10 @@ export const RequestSchemas = {
   // The tooltip's Replay voice and Repeat step (D106): reads the current step again.
   'run.replay': z.object({ stepId: z.string().max(64) }),
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
+  // Debug log entries from a content script, for its own tab and frame (D110).
+  'debug.log': z.object({ entries: z.array(ContentEntrySchema).min(1).max(MAX_BATCH) }),
+  // The not-found card's Copy log: the sender tab's own entries (D111).
+  'debug.copy': z.object({}),
   'pick.abort': z.object({}),
   'rec.step': z.discriminatedUnion('op', [
     // `at`: when the page saw the action (ms since epoch), for the navigation rule (D67).
@@ -150,7 +160,7 @@ export interface ResponseMap {
   'rec.stop': { guideId: string; title: string; steps: Step[] } | null;
   'rec.state': RecordingState | null;
   'guide.list': { guides: GuideIndexEntry[] };
-  'route.report': { ok: true; recording: RecordingView; run: RunView };
+  'route.report': { ok: true; recording: RecordingView; run: RunView; debug: boolean };
   'run.start': StartResult;
   'run.stop': { ok: boolean };
   'run.state': RunView;
@@ -201,6 +211,18 @@ export interface ResponseMap {
   'frame.path': { framePath: string[] | null };
   'run.advance': { ok: boolean };
   'rec.step': { ok: boolean };
+  'debug.get': DebugStatus;
+  'debug.set': DebugStatus;
+  'debug.text': { text: string };
+  'debug.clear': DebugStatus;
+  'debug.log': { ok: boolean };
+  'debug.copy': { text: string | null };
+}
+
+export interface DebugStatus {
+  on: boolean;
+  since: string | null;
+  count: number;
 }
 
 export type ResponseOf<T extends MessageType> = ResponseMap[T];
@@ -233,6 +255,9 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'frame.nonce',
   'frame.claim',
   'frame.path',
+  // Debug log (D110): only while the switch is on, own tab and frame, rate-limited and capped.
+  'debug.log',
+  'debug.copy', // the sender tab's entries since its run started, on that guide's site only (D111)
 ]);
 
 /** Extension pages may send everything except content-only reports. */
@@ -284,6 +309,10 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'hd.remove',
   'hd.test',
   'hd.report',
+  'debug.get',
+  'debug.set',
+  'debug.text',
+  'debug.clear',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
@@ -296,7 +325,9 @@ export type ContentPush =
   // editor: Test step (answered with a TestResult) and Re-pick element
   | { type: 'test.step'; payload: { step: Step } }
   | { type: 'pick.start' }
-  | { type: 'pick.stop' };
+  | { type: 'pick.stop' }
+  // the debug log switch changed (D110)
+  | { type: 'debug.changed'; payload: { on: boolean } };
 
 export const ALLOWLIST: Readonly<Record<SenderKind, ReadonlySet<MessageType>>> = {
   extension: EXTENSION_ALLOWED,

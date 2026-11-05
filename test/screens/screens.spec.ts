@@ -312,5 +312,23 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await opts.setViewportSize({ width: 400, height: 860 });
   await panelShot(opts, 'settings-02-narrow');
 
+  // 9. Debug log (D110): on, with entries, then the not-found card's Copy log.
+  await opts.setViewportSize({ width: 900, height: 900 });
+  await opts.getByTestId('debug-switch').check();
+  await app.goto(`${DEMO}/index.html`);
+  await expect.poll(() => marker(app, 'debug'), { timeout: 10_000 }).toBe('on');
+  await app.evaluate(() => document.getElementById('chart')?.remove());
+  await msg(ext, 'run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 20_000 }).toMatch(/^not-found/);
+  await pageShot(app, 'page-14-not-found-debug');
+  await app.locator('waymark-overlay [data-action="copy-log"]').click();
+  await expect.poll(() => marker(app, 'debug-copy')).toMatch(/^(copied|blocked)$/);
+  await pageShot(app, 'page-15-not-found-copied');
+  await app.locator('waymark-overlay [data-action="exit"]').click();
+  await opts.bringToFront();
+  await expect(opts.getByTestId('debug-count')).toContainText('entries', { timeout: 10_000 });
+  await opts.locator('#problems').scrollIntoViewIfNeeded();
+  await panelShot(opts, 'settings-03-debug-log', false);
+
   writeFileSync(join(OUT, 'index.txt'), done.join('\n') + '\n');
 });

@@ -9,6 +9,7 @@ import { startLauncher, takeDeepLink } from './launcher';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
+import { setDebug, startDebugClient } from './debug';
 
 interface Instance {
   dispose(): void;
@@ -37,6 +38,7 @@ export function startContent(): void {
 
   // Deep link: read at document_start and removed at once, so hash routers never see it.
   const deepLink = window === window.top ? takeDeepLink() : null;
+  disposers.push(startDebugClient());
   const frames = startFrameMapping();
   disposers.push(frames.dispose);
   const recording = startRecordingClient(frames.framePath);
@@ -56,6 +58,8 @@ export function startContent(): void {
         ...(change.via === 'load' ? { timeOrigin: Math.round(performance.timeOrigin) } : {}),
       })
         .then((r) => {
+          // Before the views, so the recorder and player log from their first decision.
+          setDebug(r.debug === true);
           recording.apply(r.recording);
           player.apply(r.run);
           if (window === window.top) {

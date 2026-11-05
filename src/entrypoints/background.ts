@@ -19,7 +19,9 @@ import { setupPanelFallback } from '../background/panel-fallback';
 import { onShortcut } from '../background/shortcuts';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample } from '../background/voice';
 import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
-import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
+import { carryRunToNewTab, dropRun, getRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
+import { debugHandlers, debugReady, debugTextForTab, dlog, onDebugTabRemoved } from '../background/debug';
+import { redactUrl } from '../core/debug/log';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -50,6 +52,12 @@ const handlers: Handlers = {
   ...runHandlers,
   ...editorHandlers,
   ...discoveryHandlers,
+  ...debugHandlers,
+  // The not-found card's Copy log (D111): the top frame of a tab with a run on its own site only.
+  'debug.copy': async (_p, ctx) => {
+    if (ctx.tabId === undefined || ctx.frameId !== 0 || !ctx.sender.origin) return { text: null };
+    return { text: await debugTextForTab(ctx.tabId, ctx.sender.origin, await getRun(ctx.tabId)) };
+  },
   'guide.list': async () => ({ guides: await listGuides() }),
   'voice.list': () => listVoices(),
   'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
@@ -88,6 +96,7 @@ const handlers: Handlers = {
     if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0 && payload.via !== 'leaving') {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
     }
+    if (ctx.frameId === 0) dlog('page', payload.via === 'load' ? 'page.load' : 'route', { tab: ctx.tabId, frame: 0, o: ctx.sender.origin ?? null }, () => ({ via: payload.via, url: redactUrl(payload.url), nav: payload.navigationType ?? null }));
     const recording = await onRouteReport(payload, ctx);
     // In-app route changes update the badge count (SPEC: Discovery, toolbar badge).
     if (ctx.frameId === 0 && ctx.tabId !== undefined && payload.via !== 'leaving') await updateBadge(ctx.tabId, ctx.sender.tab?.url ?? payload.url);
@@ -96,7 +105,7 @@ const handlers: Handlers = {
       // A new page has no picker running: end a pending pick so the panel stops waiting.
       if ((await chrome.storage.session.get(`pick:${ctx.tabId}`))[`pick:${ctx.tabId}`]) await endPick(ctx.tabId, true);
     }
-    return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url) };
+    return { ok: true as const, recording, run: await viewFor(ctx.tabId, ctx.sender.tab?.url), debug: await debugReady() };
   },
   'frame.nonce': async ({ selector }, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId === undefined) throw new Error('no frame');
@@ -179,5 +188,6 @@ export default defineBackground(() => {
     void chrome.storage.session.remove([framesKey(tabId), noncesKey(tabId), `test:route:${tabId}`]);
     void onTabRemoved(tabId);
     void resumeRunsMovedTo(tabId).then(() => dropRun(tabId));
+    void onDebugTabRemoved(tabId);
   });
 });

@@ -125,3 +125,16 @@ html {
 .section-title:focus {
   outline: none;
 }
+/* Debug log (D110): a sub-block of Problems. */
+.debug-log {
+  display: grid;
+  gap: var(--wm-space-3);
+  border-top: 1px solid var(--wm-border);
+  padding-top: var(--wm-space-4);
+  margin-top: var(--wm-space-1);
+}
+.subhead {
+  margin: 0;
+  font-size: var(--wm-text-md);
+  font-weight: var(--wm-weight-bold);
+}

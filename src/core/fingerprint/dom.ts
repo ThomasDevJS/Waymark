@@ -288,16 +288,22 @@ function descendantsWithShadow(el: Element, limit: number): Element[] {
  * inside open shadow roots. Null when there is no such region: then the click stays low-confidence.
  * Needs layout and computed style (a real browser).
  */
-export function clickableRegion(start: Element): Element | null {
+export function clickableRegion(start: Element, why?: (reason: string) => void): Element | null {
+  // `why` only explains a null for the debug log (D110); it never changes the result.
+  const no = (reason: string) => {
+    why?.(reason);
+    return null;
+  };
   const win = start.ownerDocument.defaultView;
-  if (!win) return null;
+  if (!win) return no('no window');
   const pointer = (e: Element) => win.getComputedStyle(e).cursor === 'pointer';
   const isRoot = (e: Element) => ['html', 'body'].includes(tagOf(e));
-  if (isRoot(start) || !pointer(start)) return null;
+  if (isRoot(start)) return no('clicked the page itself');
+  if (!pointer(start)) return no('no pointer cursor');
   let top = start;
   let up = isRepeatedItem(start) ? null : composedParent(start);
   for (let i = 0; up && !isRoot(up) && pointer(up); i++) {
-    if (i >= MAX_REGION_LEVELS) return null; // the pointer area goes on above what we look at
+    if (i >= MAX_REGION_LEVELS) return no(`the pointer area goes on above ${MAX_REGION_LEVELS} levels`);
     top = up;
     if (isRepeatedItem(up)) {
       up = null; // an item of a list or a card among cards: the region ends here
@@ -305,12 +311,13 @@ export function clickableRegion(start: Element): Element | null {
     }
     up = composedParent(up);
   }
-  if (up && isRoot(up) && pointer(up)) return null; // the whole page shows a pointer
+  if (up && isRoot(up) && pointer(up)) return no('the whole page shows a pointer');
   const box = top.getBoundingClientRect();
-  if (box.width <= 0 || box.height <= 0 || box.width * box.height > MAX_REGION_SHARE * win.innerWidth * win.innerHeight) return null;
+  if (box.width <= 0 || box.height <= 0) return no('the region has no size');
+  if (box.width * box.height > MAX_REGION_SHARE * win.innerWidth * win.innerHeight) return no('the region is over 25% of the viewport');
   const inside = descendantsWithShadow(top, MAX_REGION_NODES);
-  if (inside.length > MAX_REGION_NODES) return null;
-  for (const e of inside) if (isInteractive(e) || tagOf(e) === 'label') return null;
+  if (inside.length > MAX_REGION_NODES) return no(`the region has over ${MAX_REGION_NODES} descendants`);
+  for (const e of inside) if (isInteractive(e) || tagOf(e) === 'label') return no(`a control (${tagOf(e)}) inside the region`);
   return top;
 }
 

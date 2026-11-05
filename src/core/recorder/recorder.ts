@@ -9,7 +9,8 @@ import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
 import { buildFingerprint } from '../fingerprint/build';
-import { hasStrongSignal } from '../matcher/signals';
+import { hasStrongSignal, presentSignals } from '../matcher/signals';
+import { ariaRole } from '../debug/log';
 import { isInteractive, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
 import { hasInteractiveAncestor, promoteToRegion } from './region';
 import { safeLabel } from '../fingerprint/filters';
@@ -35,6 +36,16 @@ export interface RecorderOptions {
    * role + name, text, name or link (issue #6, docs/DECISIONS.md D47).
    */
   onSkip?: (reason: 'unfindable') => void;
+  /**
+   * Debug log (D110): what the recorder decided and why. `data` is called only by the logger, and
+   * holds tags, roles, signal names, flags and step titles, never typed values or page text.
+   */
+  debug?: (ev: string, data: () => Record<string, unknown>) => void;
+}
+
+/** What a fingerprint can be found by, for the debug log: names only. */
+export function fpFacts(fp: ElementFingerprint): Record<string, unknown> {
+  return { tag: fp.tag, role: ariaRole(fp.role), signals: presentSignals(fp), instance: fp.instance, alike: fp.matchCount, strong: hasStrongSignal(fp) };
 }
 
 export const PENDING_LINK_MS = 1000;
@@ -76,6 +87,15 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   const now = opts.now ?? (() => Date.now());
   const lang = opts.lang ?? 'en';
   const isOwn = opts.isOwnEvent ?? (() => false);
+  // Never throws into the recorder; does nothing without a logger.
+  const dbg = (ev: string, data: () => Record<string, unknown>) => {
+    if (!opts.debug) return;
+    try {
+      opts.debug(ev, data);
+    } catch {
+      // ignore
+    }
+  };
 
   let pending: Pending | null = null; // built on pointerdown, before the app can re-render
   let fieldClick: Pending | null = null; // click into a field or native select, waiting for input/change
@@ -105,14 +125,16 @@ export function createRecorder(opts: RecorderOptions): Recorder {
    * a click handler and a pointer cursor) records the region when it has something to find it by
    * again (D82). Otherwise the content itself, low-confidence, as before.
    */
-  const resolveTarget = (path: EventTarget[]): (ResolvedTarget & { fp?: ElementFingerprint; name?: string }) | null => {
+  type Resolved = ResolvedTarget & { fp?: ElementFingerprint; name?: string; region?: string };
+  const resolveTarget = (path: EventTarget[]): Resolved | null => {
     const t = resolveTargetFromPath(path);
     if (!t || !t.lowConfidence) return t;
     // The press already promoted this click's region: reuse it rather than fingerprint it again.
     const p = pending;
-    if (p?.promoted && now() - p.time <= PENDING_LINK_MS && path.includes(p.el)) return { element: p.el, lowConfidence: false, fp: p.fp, ...(p.name ? { name: p.name } : {}) };
-    const up = promoteToRegion(t, fpOf);
-    return up ? { element: up.element, lowConfidence: false, fp: up.fp, ...(up.name ? { name: up.name } : {}) } : t;
+    if (p?.promoted && now() - p.time <= PENDING_LINK_MS && path.includes(p.el)) return { element: p.el, lowConfidence: false, fp: p.fp, ...(p.name ? { name: p.name } : {}), region: 'promoted at the press (D82)' };
+    let why = '';
+    const up = promoteToRegion(t, fpOf, opts.debug ? (r) => (why = r) : undefined);
+    return up ? { element: up.element, lowConfidence: false, fp: up.fp, ...(up.name ? { name: up.name } : {}), region: 'promoted (D82)' } : { ...t, ...(why ? { region: `not promoted: ${why}` } : {}) };
   };
 
   const flagsFor = (el: Element, lowConfidence: boolean): StepFlag[] | undefined => {
@@ -134,12 +156,14 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when: When = whenNow()) => {
     if (!hasStrongSignal(fp)) {
+      dbg('skip', () => ({ why: 'nothing to find it by again (D47)', kind, ...fpFacts(fp) }));
       opts.onSkip?.('unfindable');
       last = { id: '', kind, el, time: now(), form: null, fp, skipped: true };
       return null;
     }
     const step = makeStep(kind, el, fp, title, flags, when);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
+    dbg('emit', () => ({ op: 'add', kind, title: title.replace(/\*\*/g, ''), flags: flags ?? [], ...fpFacts(fp) }));
     opts.emit({ op: 'add', step, at: when.at });
     return step;
   };
@@ -149,7 +173,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const f = fieldClick;
     if (!f || f.el === except) return;
     fieldClick = null;
-    if (isTextField(f.el)) add('click', f.el, f.fp, stepTitle('click', { name: nameFor(f.el, f.fp) }, lang));
+    if (isTextField(f.el)) {
+      dbg('field.click', () => ({ why: 'a click into a field that was not typed into stays a click' }));
+      add('click', f.el, f.fp, stepTitle('click', { name: nameFor(f.el, f.fp) }, lang));
+    }
   };
 
   const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
@@ -169,12 +196,21 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
 
   const onClick = (e: Event) => {
-    if (!trusted(e)) return;
-    if ((e as MouseEvent).detail > 1) return; // a double-click is one click step
+    if (!trusted(e)) {
+      if (!e.isTrusted) dbg('ignored', () => ({ why: 'a click made by a script (not trusted)' }));
+      return;
+    }
+    if ((e as MouseEvent).detail > 1) {
+      dbg('ignored', () => ({ why: 'second click of a double-click' }));
+      return; // a double-click is one click step
+    }
     const path = e.composedPath();
     watchRoots(path);
-    let t: (ResolvedTarget & { fp?: ElementFingerprint; name?: string }) | null = resolveTarget(path);
-    if (!t) return;
+    let t: Resolved | null = resolveTarget(path);
+    if (!t) {
+      dbg('ignored', () => ({ why: 'no element on the click path' }));
+      return;
+    }
     // Pressed on a control that opened something over itself (MUI's select opens on mousedown
     // behind a full-page backdrop): the mouseup lands on the backdrop, so the click goes to the
     // common ancestor of the two. That ancestor is on the pressed control's path (D61).
@@ -182,13 +218,22 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const m = e as MouseEvent;
     const atPress = !!pressed && pressed.x !== undefined && pressed.y !== undefined && Math.hypot(m.clientX - pressed.x, m.clientY - pressed.y) <= PRESS_SLOP_PX; // not a drag-off cancel
     if (t.lowConfidence && pressed && atPress && now() - pressed.time <= PENDING_LINK_MS && pressed.path.includes(t.element) && !path.includes(pressed.el)) {
+      dbg('press.link', () => ({ why: 'released on an ancestor of the pressed control: the press counts (D61)', tag: tagOf(pressed.el) }));
       t = { element: pressed.el, lowConfidence: false, ...(pressed.name ? { name: pressed.name } : {}) };
     }
     const el = t.element;
     const tag = tagOf(el);
-    if (tag === 'html' || tag === 'body') return;
+    const resolved = t;
+    dbg('target', () => ({ tag, lowConfidence: resolved.lowConfidence, interactive: isInteractive(el), ...(resolved.region ? { region: resolved.region } : {}) }));
+    if (tag === 'html' || tag === 'body') {
+      dbg('ignored', () => ({ why: 'a click on the page itself' }));
+      return;
+    }
     // A click on a non-interactive area is kept only if it has no interactive ancestor.
-    if (t.lowConfidence && hasInteractiveAncestor(el)) return;
+    if (t.lowConfidence && hasInteractiveAncestor(el)) {
+      dbg('ignored', () => ({ why: 'plain content inside a control: the control records it' }));
+      return;
+    }
 
     let fp: ElementFingerprint;
     const p = pending;
@@ -204,15 +249,24 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (isTextField(el) || isNativeSelect(el)) {
       flushFieldClick(el);
       // Clicking back into a field already typed into is not a new action.
-      if (last && last.kind === 'input' && last.el === el) return;
-      if (!fieldClick || fieldClick.el !== el) fieldClick = { el, fp, time: now(), path };
+      if (last && last.kind === 'input' && last.el === el) {
+        dbg('ignored', () => ({ why: 'a click back into the field just typed into' }));
+        return;
+      }
+      if (!fieldClick || fieldClick.el !== el) {
+        fieldClick = { el, fp, time: now(), path };
+        dbg('field.held', () => ({ why: 'a click into a field waits for typing or a change', tag }));
+      }
       return;
     }
     flushFieldClick();
 
     if (isCheckLike(el)) {
       // A label click and the click it forwards to the control are one check step.
-      if (sameTask.has(el)) return;
+      if (sameTask.has(el)) {
+        dbg('merge', () => ({ why: 'the click a label forwards to its control: one check step' }));
+        return;
+      }
       markSameTask(el);
       // Read the state after the app's own handlers ran (ARIA switches toggle in a click handler),
       // but keep the page and time of the click: a handler may also change the route (D67).
@@ -264,6 +318,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       const step = makeStep('select', el, fp, title);
       step.id = last.id;
       last.time = now();
+      dbg('merge', () => ({ why: 'the same select changed again: the step is updated', title: title.replace(/\*\*/g, '') }));
       opts.emit({ op: 'replace', stepId: last.id, step });
     } else add('select', el, fp, title);
   };
@@ -286,7 +341,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!(el instanceof Element)) return;
     if (isNativeSelect(el)) return; // recorded from the input event
     if (isNativeCheck(el)) {
-      if (sameTask.has(el)) return;
+      if (sameTask.has(el)) {
+        dbg('merge', () => ({ why: 'the change after the check click: one check step' }));
+        return;
+      }
       markSameTask(el);
       const fp = fpOf(el);
       add('check', el, fp, stepTitle('check', { name: nameFor(el, fp), checked: checkedState(el) }, lang));
@@ -312,6 +370,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       const step = makeStep('submit', last.el, last.fp, title);
       step.id = last.id;
       last.kind = 'submit';
+      dbg('merge', () => ({ why: 'a click on the submit button, then submit: one submit step' }));
       opts.emit({ op: 'replace', stepId: last.id, step });
       return;
     }
@@ -319,6 +378,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       const button = form.querySelector('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
       // A default button with nothing to find it by (an icon) would be skipped: use the field.
       const target = button && hasStrongSignal(fpOf(button)) ? button : enter.el;
+      dbg('submit.enter', () => ({ why: target === button ? 'Enter in a field submits through the default button' : 'Enter in a field; the default button has nothing to find it by, so the field is the target (D47)' }));
       add('submit', target, fpOf(target), title);
       enter = null;
     }

@@ -21,6 +21,8 @@ import {
 } from '../core/recorder/session';
 import { originToMatchPattern, stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
+import { dlog } from './debug';
+import { redactUrl } from '../core/debug/log';
 
 const KEY = 'recording';
 
@@ -181,21 +183,44 @@ export const recordingHandlers: Handlers = {
     const tabId = ctx.tabId;
     const top = ctx.sender.tab?.url;
     const clean = recorderStep(op.step);
-    if (!clean) return { ok: false };
+    if (!clean) {
+      dlog('rec', 'step.refused', { tab: tabId, frame: ctx.frameId, o: ctx.sender.origin ?? null }, { why: 'not a recorder step', kind: op.step.kind });
+      return { ok: false };
+    }
     // Queued at once, in arrival order, so a step is never overtaken by the route report it
     // caused or by a Stop sent after it; the site check runs inside the queue (D67).
     const result = await mutate(async (st) => {
+      // Debug log entries are written here, inside the queued callback, so logging cannot change
+      // the order of steps and route reports (D67).
+      const where = { tab: tabId, frame: ctx.frameId, o: ctx.sender.origin ?? null };
+      const refused = (why: string) => {
+        dlog('rec', 'step.refused', where, { why, kind: clean.kind });
+        return false;
+      };
       // A script left in a page whose site access was revoked must not keep recording.
-      if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return false;
+      if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return refused('site access is gone');
       // Content scripts may send rec.step only while their tab is recording (SPEC: Security).
-      if (!st || !isRecordingTab(st, tabId) || st.status !== 'recording') return false;
+      if (!st || !isRecordingTab(st, tabId)) return refused('this tab is not recording');
+      if (st.status !== 'recording') return refused('recording is paused');
       const step = clean;
       // Steps belong to the page: a step recorded in a frame gets the top page's URL rule.
       if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top);
       if (top) addOrigin(st, new URL(top).origin);
       // The action's own time, not when this message got here: a route report it caused may
       // have been handled first (D67).
-      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at), tabId);
+      const before = st.steps.length;
+      const ok = applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at), tabId);
+      dlog('rec', ok ? (op.op === 'add' ? 'step.added' : 'step.replaced') : 'step.refused', where, () => ({
+        ...(ok ? {} : { why: op.op === 'replace' ? 'not the last step' : st.steps.length >= 500 ? 'the 500-step limit' : 'duplicate step id' }),
+        n: st.steps.length,
+        kind: step.kind,
+        title: step.title.replace(/\*\*/g, ''),
+        flags: step.flags ?? [],
+        page: step.url.value,
+        // A navigate step this action caused had been added first: taken back (D67).
+        tookBackNav: op.op === 'add' && ok ? Math.max(0, before + 1 - st.steps.length) : 0,
+      }));
+      return ok;
     }, (ok) => ok);
     if (result) {
       const st = await getRecording();
@@ -235,6 +260,15 @@ export async function onRouteReport(
     });
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
     st.lastUrl[key] = urlKey(payload.url);
+    if (payload.via !== 'leaving') {
+      dlog('rec', step ? 'nav.step' : 'nav.no-step', { tab: tabId, frame: 0, o: ctx.sender.origin ?? null }, () => ({
+        via: payload.via,
+        nav: payload.navigationType ?? null,
+        url: redactUrl(payload.url),
+        ...(step ? { page: step.url.value } : { why: !prevUrl ? 'first page of the tab' : 'same page, a replace, a query-only change, or within 1.5 s of the last action' }),
+        sinceAction: at - st.lastActionAt,
+      }));
+    }
     if (step) {
       st.steps.push(step);
       // A click reported after this, but done just before the navigation, takes it back (D67).

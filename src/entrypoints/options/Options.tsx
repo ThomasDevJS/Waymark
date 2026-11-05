@@ -15,10 +15,74 @@ import { fetchOnlyPatterns } from '../../background/site-access';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
+import type { DebugStatus } from '../../core/messaging/protocol';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
 const copied = signal(false);
+/** Debug log (D110): the switch, how many entries it holds, and the Copy button's state. */
+const debug = signal<DebugStatus | null>(null);
+const debugCopied = signal<'copied' | 'failed' | null>(null);
+
+async function loadDebug() {
+  debug.value = await send('debug.get', {}).catch(() => debug.value);
+}
+
+async function copyDebug() {
+  try {
+    const { text } = await send('debug.text', {});
+    await navigator.clipboard.writeText(text);
+    debugCopied.value = 'copied';
+  } catch {
+    debugCopied.value = 'failed';
+  }
+  setTimeout(() => (debugCopied.value = null), 2500);
+  await loadDebug();
+}
+
+function DebugLog() {
+  const d = debug.value;
+  useEffect(() => {
+    // The count follows what is collected while this page is open.
+    const t = setInterval(() => {
+      if (debug.value?.on && document.visibilityState === 'visible') void loadDebug();
+    }, 2000);
+    return () => clearInterval(t);
+  }, []);
+  if (!d) return null;
+  return (
+    <div class="debug-log" data-testid="debug-log">
+      <h3 class="subhead">Debug log</h3>
+      <label class="check">
+        <input type="checkbox" role="switch" class="switch" data-testid="debug-switch" checked={d.on} onChange={(e) => void send('debug.set', { on: (e.target as HTMLInputElement).checked }).then((r) => (debug.value = r))} />
+        <span>
+          Keep a debug log
+          <span class="hint block">
+            While this is on, Waymark notes what it decides as you record and play: which element a click picked and why, match scores, why a step did or didn’t move on. Turn it on, do what went wrong, then copy the log into the chat. It holds step titles, element types and scores, and page addresses without anything after <span class="mono">?</span> or <span class="mono">#</span>. Never what you type. It is cleared when the browser closes.
+          </span>
+        </span>
+      </label>
+      <p class="small muted" role="status" data-testid="debug-count">
+        {d.count ? `${d.count} ${d.count === 1 ? 'entry' : 'entries'} (the newest 2,000 are kept).` : d.on ? 'Nothing logged yet. Record or play a guide.' : 'Off. Nothing is being logged.'}
+      </p>
+      <div class="row">
+        <button type="button" data-testid="debug-copy" disabled={!d.count} onClick={() => void copyDebug()}>
+          <Icon name="copy" />
+          {debugCopied.value === 'copied' ? 'Copied' : 'Copy debug log'}
+        </button>
+        <button type="button" class="ghost danger" data-testid="debug-clear" disabled={!d.count} onClick={() => void send('debug.clear', {}).then((r) => (debug.value = r))}>
+          <Icon name="trash" />
+          Clear
+        </button>
+        {debugCopied.value === 'failed' && (
+          <span class="status-text warn" role="status">
+            Couldn’t copy. Click the page first, then try again.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Plain text a learner can send to the author (no server in v1). */
 export function problemReport(list: Problem[]): string {
@@ -95,6 +159,7 @@ const BETTER_VOICES: Record<string, string> = {
 
 async function load() {
   problems.value = (await send('problems.list', {})).problems;
+  await loadDebug();
   library.value = await send('library.get', {});
   libraryUrl.value = library.value.url ?? '';
   settings.value = await send('voice.settings.get', {});
@@ -467,6 +532,7 @@ export function Options() {
                 </div>
               </>
             )}
+            <DebugLog />
           </Section>
 
           <Section id="about" title="About" icon="info">

@@ -12,9 +12,9 @@ const target = { instance: 'unique' as const, matchCount: 1, tag: 'a', role: 'li
 const click = (id: string): Step => ({ id, kind: 'click', title: 'Click **Orders**', url: { kind: 'pattern', value: '/' }, target, advance: 'action' });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function stubChrome(state: RecordingState, permissionDelayMs: number) {
+function stubChrome(state: RecordingState, permissionDelayMs: number, debugOn = false) {
   const session: Record<string, unknown> = { recording: state };
-  const local: Record<string, unknown> = {};
+  const local: Record<string, unknown> = debugOn ? { debugSetting: { on: true } } : {};
   vi.stubGlobal('chrome', {
     storage: {
       session: {
@@ -42,7 +42,9 @@ function stubChrome(state: RecordingState, permissionDelayMs: number) {
     tabs: { get: async () => ({ url: `${ORIGIN}/` }), sendMessage: async () => undefined, query: async () => [] },
     action: { setBadgeText: async () => undefined, setBadgeBackgroundColor: async () => undefined },
   });
-  return () => session.recording as RecordingState;
+  const current = () => session.recording as RecordingState;
+  current.session = session;
+  return current;
 }
 
 const ctx = { kind: 'content' as const, sender: { tab: { id: 7, url: `${ORIGIN}/` }, origin: ORIGIN } as chrome.runtime.MessageSender, tabId: 7, frameId: 0 };
@@ -61,6 +63,22 @@ describe('rec.step and route.report in either order (D67)', () => {
     const route = onRouteReport({ url: `${ORIGIN}/orders`, via: 'navigation-api', navigationType: 'push', at: t + 20 }, ctx);
     await Promise.all([step, route]);
     expect(current().steps.map((s) => s.kind)).toEqual(['click']);
+  });
+
+  it('the same with the debug log on: logging inside the queue keeps the order (D110)', async () => {
+    const t = Date.now();
+    const current = stubChrome(startRecording('Orders', 7, `${ORIGIN}/`), 60, true);
+    const debug = await import('../../src/background/debug');
+    await debug.debugReady();
+    const { recordingHandlers, onRouteReport } = await import('../../src/background/recording');
+    const step = recordingHandlers['rec.step']!({ op: 'add', step: click('c1'), at: t }, ctx);
+    const route = onRouteReport({ url: `${ORIGIN}/orders`, via: 'navigation-api', navigationType: 'push', at: t + 20 }, ctx);
+    await Promise.all([step, route]);
+    expect(current().steps.map((s) => s.kind)).toEqual(['click']);
+    await debug.flushDebug();
+    const log = current.session.debugLog as { entries: { ev: string; d?: [string, unknown][] }[] };
+    expect(log.entries.map((e) => e.ev)).toEqual(['step.added', 'nav.no-step']);
+    expect(Object.fromEntries(log.entries[0]!.d ?? [])).toMatchObject({ kind: 'click', title: 'Click Orders', n: 1 });
   });
 
   it('the same without a delay', async () => {
