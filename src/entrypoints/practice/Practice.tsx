@@ -18,6 +18,8 @@ const view = signal<View>('dashboard');
 const playing = signal<Tutorial | null>(null);
 const sent = signal<string | null>(null);
 const ended = signal<string | null>(null);
+/** The drawn step's revision: the HD voice offer's sample stops when it changes (D141). */
+const stepRev = signal<number | null>(null);
 
 /** Test builds mark the player's state on <html>, as the content script does (data-waymark-test-*). */
 function mark(state: string | null) {
@@ -56,7 +58,10 @@ const player = new PracticePlayer({
     history.replaceState(null, '', location.pathname);
     requestAnimationFrame(() => document.getElementById('tutorials-title')?.focus());
   },
-  onView: (run, phase) => mark(`${phase}:${run.stepIndex}`),
+  onView: (run, phase) => {
+    mark(`${phase}:${run.stepIndex}`);
+    if (phase !== 'searching') stepRev.value = run.rev;
+  },
 });
 
 /** Stop the tutorial in the list: the same ending as Exit in the tooltip. */
@@ -402,7 +407,15 @@ export function Practice() {
         <aside class="stack">
           <TutorialList />
           {/* The first time a tutorial is about to speak: offer the HD voice once (D140). */}
-          {playing.value && <HdOffer about="tutorials" contentLang="en" onClosed={() => document.querySelector<HTMLElement>('[data-testid="practice-stop"]')?.focus()} />}
+          {playing.value && (
+            <HdOffer
+              about="tutorials"
+              contentLang="en"
+              stepKey={stepRev.value}
+              stopSpeech={() => send('tutorial.stop', {})}
+              onClosed={() => document.querySelector<HTMLElement>('[data-testid="practice-stop"]')?.focus()}
+            />
+          )}
           <PanelPicture />
         </aside>
       </div>

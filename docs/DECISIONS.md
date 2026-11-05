@@ -1165,3 +1165,13 @@ CSS only (`src/content/launcher.ts`); no listener, message or focus rule changes
 *5 Nov 2026 · SPEC: Voiceover (HD voice); issue #44*
 
 - #44's copy says 163 MB, which is the model file alone (`model_fp16.onnx`, 163,234,740 bytes). The download also fetches the voice, the tokenizer and the 6 MB English word list: `HD_TOTAL_BYTES` is 169,860,620 bytes. Settings, the privacy policy and the listing already say 170 MB, so the offer uses `mb(HD_TOTAL_BYTES)` ("170 MB") too, and a unit test pins it. "Nothing sent online" became "after that nothing is sent online": the download itself is a request to Hugging Face and GitHub, as the privacy policy says.
+
+### Fixes from the independent review (D140–D143)
+A privacy, permissions, accessibility and copy review of the code. Each fix has a test that fails on the first version (`test/browser/hd-offer.test.ts` "review fixes", `test/unit/hd-sw.test.ts`).
+- **Announcement** (medium): pressing Download turned the card's text paragraph into the live region and changed its text in the same update, which screen readers often don't announce. One keyed live region now stays mounted from the question through the download, and the focused heading is described by it.
+- **Error copy**: the card wrapped the service worker's message ("The download failed: The download stopped. Try again.. …"). It now says one fixed sentence, "The download failed. You can try again in Settings."; Settings keeps the detail.
+- **Stops only when it will speak**: `tutorial.speak` stopped all speech before knowing whether anything would read the step, so a step with HD off and no on-device voice cut off a guide in another tab. Speech is stopped only on the path that reads (`speakHdFirst`'s `stopFirst`, or `speakBundledText`), as before D142.
+- **Sample**: on the Practice page it stops only the tutorial's speech (`tutorial.stop`), never a guide in another tab (D129's rule); in the panel it still sends `voice.stop`, which stops the panel's own guide. The sample pauses when the step changes, so it never talks over the next step.
+- **Download that can't start**: if `hd.enable` fails after the hosts were granted, the card says so and keeps the question. `hdEnable` now records the hosts to give back before creating the offscreen document, and gives them back if that fails (Settings had the same gap).
+- **Privacy policy**: says the offer shows while a tutorial plays, or while an English guide plays with the panel open, until answered (it said "first starts").
+- **More tests**: `runView` carries the guide's `lang` (a French guide gets no offer); Close calls back so the page can restore focus; without a memory override the real `navigator.deviceMemory` is used.

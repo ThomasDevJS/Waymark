@@ -15,10 +15,11 @@ export const tutorialHandlers: Handlers = {
     if (!text) return { ok: false };
     const settings = await getVoiceSettings();
     if (settings.muted || (!settings.autoPlay && !explicit)) return { ok: false };
-    stopSpeech();
     const next = nextTutorialVoiceText(tutorialId, stepId);
-    // The tutorial flag is set with the speech time, so tutorial.stop stops the HD voice too.
-    const hd = await speakHdFirst({ token: `tutorial:${tutorialId}:${stepId}:${Date.now()}`, text, next, lang: 'en', settings, explicit: !!explicit, mark: { [TUTORIAL_SPEECH_KEY]: true } });
+    // Speech is stopped only when something will be read (here, or in speakBundledText), so a
+    // step that can't be read never cuts off a guide in another tab. The tutorial flag is set
+    // with the speech time, so tutorial.stop stops the HD voice too.
+    const hd = await speakHdFirst({ token: `tutorial:${tutorialId}:${stepId}:${Date.now()}`, text, next, lang: 'en', settings, explicit: !!explicit, mark: { [TUTORIAL_SPEECH_KEY]: true }, stopFirst: true });
     if (hd === 'hd') return { ok: true };
     if (hd === 'silent') return { ok: false };
     const ok = await speakBundledText(text, 'en', settings);

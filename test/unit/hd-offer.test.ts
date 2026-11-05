@@ -8,6 +8,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseMessage } from '../../src/core/messaging/protocol';
+import { runView, startRun } from '../../src/core/player/run';
+import type { Guide } from '../../src/core/model/schema';
 import { HD_FILES, HD_TOTAL_BYTES, mb } from '../../src/core/voice/hd';
 import { deviceLooksCapable, hdOfferBlocked, shouldOfferHd, type HdOfferInput } from '../../src/core/voice/offer';
 
@@ -74,5 +76,17 @@ describe('hd offer facts', () => {
     const content = { id: ID, url: 'https://app.example.com/x', origin: 'https://app.example.com', tab: { id: 3 }, frameId: 0 };
     expect(parseMessage({ type: 'voice.stop', payload: {} }, panel, ID)).toMatchObject({ ok: true });
     expect(parseMessage({ type: 'voice.stop', payload: {} }, content, ID)).toMatchObject({ ok: false });
+  });
+});
+
+describe('the panel learns the guide language from the run view', () => {
+  it('runView passes the guide lang, so a French guide never gets the offer in the panel', () => {
+    const guide: Guide = {
+      id: 'g1', schemaVersion: 1, revisionId: 'r1', title: 'Demo', lang: 'fr', tags: [], appOrigins: ['https://app.test'], startUrl: 'https://app.test/',
+      matchUrls: [], steps: [{ id: 'a', kind: 'note', title: 'Bonjour', url: { kind: 'pattern', value: '/' }, advance: 'next' }], version: 1, source: 'local', updatedAt: '',
+    };
+    const view = runView(startRun(guide));
+    expect(view.lang).toBe('fr');
+    expect(shouldOfferHd({ ...base, contentLang: view.lang ?? 'en' })).toBe(false);
   });
 });

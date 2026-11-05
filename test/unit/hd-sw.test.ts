@@ -249,6 +249,13 @@ describe('built-in tutorials on the HD voice (D142)', () => {
     expect(ttsSpeak).not.toHaveBeenCalled();
   });
 
+  it('a tutorial step that nothing can read (HD off, no on-device voice) never stops a guide speaking elsewhere (review)', async () => {
+    chrome.tts.getVoices = ((cb: (v: chrome.tts.TtsVoice[]) => void) => cb([])) as typeof chrome.tts.getVoices;
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: false });
+    expect(chrome.tts.stop).not.toHaveBeenCalled();
+  });
+
   it('only bundled text: an unknown step reads nothing, on either voice', async () => {
     local.hdStatus = ready;
     const { tutorialHandlers } = await import('../../src/background/tutorials');
@@ -290,6 +297,14 @@ describe('opt-in and remove', () => {
       await onHdReport({ status: { ...ready, state } as never });
       expect(hasDoc).toBe(false);
     }
+  });
+
+  it('enable gives the hosts back when the document cannot be created (review)', async () => {
+    chrome.offscreen.createDocument = vi.fn(async () => Promise.reject(new Error('no offscreen')));
+    const { hdEnable } = await import('../../src/background/hd');
+    await expect(hdEnable([...HD_HOST_PATTERNS])).rejects.toThrow('no offscreen');
+    expect(chrome.permissions.remove).toHaveBeenCalledWith({ origins: [...HD_HOST_PATTERNS] });
+    expect(local.hdReleaseHosts).toBeUndefined();
   });
 
   it('one download at a time: a second enable while downloading starts nothing', async () => {

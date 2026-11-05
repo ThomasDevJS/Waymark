@@ -165,8 +165,11 @@ export async function speakHdFirst(o: {
   tabId?: number;
   step?: number;
   mark?: Record<string, unknown>;
+  /** Stop other speech first, only once the HD voice will be used (a tutorial: D142 review). */
+  stopFirst?: boolean;
 }): Promise<'hd' | 'silent' | 'system'> {
   if (!o.text || !useHd(await getHdStatus(), o.lang)) return 'system';
+  if (o.stopFirst) stopSpeech();
   const where = o.tabId === undefined ? {} : { tab: o.tabId };
   const at = clock();
   await chrome.storage.session.set({ [SPEECH_AT_KEY]: at, ...o.mark });
