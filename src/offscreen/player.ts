@@ -18,6 +18,19 @@ export interface AudioSink {
 export const CHECK_SENTENCE = 'Click Save to store the invoice, then open the Orders page.';
 const WARM_UP = 'Hello.';
 const KEEP_CLIPS = 4;
+/** More NaN samples than this share of a clip, and it counts as no sound (D148). */
+export const MAX_NAN_SHARE = 0.01;
+
+/** Turns NaN (and infinite) samples into silence, in place; returns how many there were. */
+export function silenceNaN(samples: Float32Array): number {
+  let bad = 0;
+  for (let i = 0; i < samples.length; i++) {
+    if (Number.isFinite(samples[i])) continue;
+    samples[i] = 0;
+    bad++;
+  }
+  return bad;
+}
 
 export class HdPlayer {
   private loaded: Promise<void> | null = null;
@@ -88,6 +101,10 @@ export class HdPlayer {
       if (this.token !== token) return { ok: false, error: 'cancelled' };
       // Nothing to say (no readable words): let the system voice try instead of staying silent.
       if (!audio.samples.length) return { ok: false, error: 'no audio' };
+      // fp16 can return NaN, even for a whole sentence: playing that is a step read in silence,
+      // reported as played. More than 1 % NaN fails, so the system voice reads it (D148).
+      const bad = silenceNaN(audio.samples);
+      if (bad > audio.samples.length * MAX_NAN_SHARE) return { ok: false, error: `no sound: the voice model returned ${Math.ceil((bad / audio.samples.length) * 100)}% NaN samples` };
       this.sink.play(audio, text);
       if (next) this.prefetch(next, speed);
       return { ok: true };

@@ -4,6 +4,7 @@
  * the status in local storage, the hosts to release in session storage.
  */
 import { enqueue } from '../core/storage/queue';
+import { dlog } from './debug';
 import { HD_HOST_PATTERNS, HD_IDLE_MINUTES, HD_OFF, HD_WAIT_MS, HdStatusSchema, type HdStatus } from '../core/voice/hd';
 import { clock, OFFSCREEN_TARGET, type EngineKind, type OffscreenRequest, type SpeakReply } from '../offscreen/protocol';
 
@@ -169,6 +170,7 @@ export async function hdSpeak(token: string, text: string, speed: number, next: 
     clearTimeout(timer);
     if (reply?.ok) return 'played';
     if (reply?.error === 'cancelled') return 'cancelled';
+    dlog('voice', 'voice.hd.failed', {}, { why: reply?.error ?? 'no answer' });
     // Cancel this speak, so its audio never plays late over the system voice. The stop carries
     // this speak's own time: it cancels this one but never a newer step's.
     await toOffscreen({ type: 'hd.stop', at }).catch(() => undefined);

@@ -129,10 +129,9 @@ export class KokoroEngine implements HdEngine {
       style: new Tensor('float32', style, [1, STYLE_DIM]),
       speed: new Tensor('float32', [speed], [1]),
     })) as { waveform: Tensor };
-    const wave = out.waveform.data as Float32Array;
-    // fp16 inference can produce the odd NaN; play silence there rather than noise.
-    for (let i = 0; i < wave.length; i++) if (!Number.isFinite(wave[i])) wave[i] = 0;
-    return wave;
+    // fp16 inference can produce NaN samples, sometimes a whole sentence of them: the player
+    // decides (a few play as silence; a mostly-NaN clip fails, so the system voice reads it, D148).
+    return out.waveform.data as Float32Array;
   }
 
   async remove(): Promise<void> {
