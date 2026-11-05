@@ -165,6 +165,20 @@ export async function speakHdSample(): Promise<boolean> {
   return (await hdSpeak(`sample-${Date.now()}`, SAMPLE, hdSpeed(settings.rate), null)) === 'played';
 }
 
+/**
+ * Reads bundled text (a built-in tutorial step, D129) with the voice guides use. Never page or
+ * user text: callers look the text up in the bundled pack. System voice only (no HD, no fallback
+ * to a page's speechSynthesis: the Practice page is an extension page).
+ */
+export async function speakBundledText(text: string, lang: string, settings: VoiceSettings): Promise<boolean> {
+  if (!ttsAvailable() || !text) return false;
+  const voice = pickVoice(await getVoices(), lang, settings, uiLang());
+  if (!voice) return false;
+  stopSpeech();
+  chrome.tts.speak(text.slice(0, 5000), { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
+  return true;
+}
+
 /** "Test voice" in the options page: a fixed sample, never user-supplied text. */
 export async function speakSample(lang = 'en'): Promise<boolean> {
   const settings = await getVoiceSettings();

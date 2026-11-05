@@ -43,7 +43,7 @@ function finish() {
   requestAnimationFrame(() => (order.map((q) => document.querySelector<HTMLElement>(q)).find(Boolean) ?? document.body).focus());
 }
 
-/** `extra` is an optional second action (PR 2: "Try it on a practice page"). */
+/** `extra` is an optional second action (the tutorials: "Try a tutorial"). */
 export function Welcome({ extra }: { extra?: ComponentChildren }) {
   useEffect(loadWelcome, []);
   if (!welcomeShown.value) return null;

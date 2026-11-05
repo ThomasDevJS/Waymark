@@ -4,7 +4,8 @@ import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { siteLabel } from '../../core/text/names';
-import { Recorder, showStopped } from './Recorder';
+import { Recorder, recorderBusy, showStopped } from './Recorder';
+import { openPractice, setTutorialsHidden, Tutorials, tutorialsHidden } from './Tutorials';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
@@ -95,6 +96,10 @@ function SiteCard({ t }: { t: TabInfo | null }) {
           <Icon name="globe" />
           <strong>Open the web app you want to guide</strong>
           <span class="small">In this tab, open the web app you want to record or play guides on. The panel follows the tab you are on.</span>
+          <button type="button" class="sm" data-testid="try-practice" onClick={() => openPractice('tour')}>
+            <Icon name="tutorial" />
+            Or try a tutorial
+          </button>
         </div>
       </section>
     );
@@ -215,13 +220,48 @@ export function App() {
             <span class="grow">Recording didn’t start: {shortcutError.value}</span>
           </p>
         )}
-        <HelpCard />
-        <Welcome />
+        <HelpCard
+          extra={
+            <>
+            {tutorialsHidden.value && (
+              <li>
+                <button type="button" class="ghost help-link" data-testid="help-show-tutorials" onClick={() => setTutorialsHidden(false)}>
+                  <Icon name="tutorial" />
+                  <span class="grow">Show the tutorials again</span>
+                </button>
+              </li>
+            )}
+            <li>
+              <button
+                type="button"
+                class="ghost help-link"
+                data-testid="help-tutorials"
+                onClick={() => {
+                    openPractice('tour');
+                }}
+              >
+                <Icon name="tutorial" />
+                <span class="grow">Tutorial: how Waymark works (1 min)</span>
+                <span class="visually-hidden"> (opens the practice page in a new tab)</span>
+              </button>
+            </li>
+            </>
+          }
+        />
+        <Welcome
+          extra={
+            <button type="button" class="ghost" data-testid="welcome-try" onClick={() => openPractice('tour')}>
+              <Icon name="tutorial" />
+              Try a tutorial
+            </button>
+          }
+        />
         {welcomeShown.value !== null && (
           <>
             <SiteCard t={t} />
             {(t?.granted || initialEdit) && <Recorder tabId={t?.tabId ?? null} tabUrl={t?.url ?? null} initialEdit={initialEdit} />}
             {t && !t.granted && <LibraryOnly />}
+            {!recorderBusy.value && <Tutorials tabUrl={t?.granted && t.url ? t.url : null} />}
           </>
         )}
       </main>

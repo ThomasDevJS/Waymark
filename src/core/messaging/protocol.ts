@@ -93,6 +93,10 @@ export const RequestSchemas = {
   'debug.set': z.object({ on: z.boolean() }),
   'debug.text': z.object({}),
   'debug.clear': z.object({}),
+  // Built-in tutorials on the Practice page (D129): ids only. The service worker reads the text
+  // from the bundled pack, so a page can never make Waymark speak text of its own.
+  'tutorial.speak': z.object({ tutorialId: z.string().regex(/^[a-z][a-z0-9-]{0,30}$/), stepId: z.string().regex(/^[0-9A-Za-z_-]{1,64}$/), explicit: z.boolean().optional() }),
+  'tutorial.stop': z.object({}),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -217,6 +221,8 @@ export interface ResponseMap {
   'debug.set': DebugStatus;
   'debug.text': { text: string };
   'debug.clear': DebugStatus;
+  'tutorial.speak': { ok: boolean };
+  'tutorial.stop': { ok: boolean };
   'debug.log': { ok: boolean };
   'debug.copy': { text: string | null };
 }
@@ -316,6 +322,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'debug.set',
   'debug.text',
   'debug.clear',
+  'tutorial.speak',
+  'tutorial.stop',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */

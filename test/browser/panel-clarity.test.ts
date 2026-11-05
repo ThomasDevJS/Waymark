@@ -280,7 +280,7 @@ describe('tooltip hint (D127)', () => {
   const view = (step: Step): RunView => ({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Demo', stepIndex: 0, total: 2, step, stepToken: 't' });
 
   it('says what to do for steps that move on by themselves, and not for Next steps', () => {
-    expect(actionHint(steps[0]!)).toBe('Click the highlighted element to continue.');
+    expect(actionHint(steps[0]!)).toBe('Click the highlighted item to continue.');
     expect(actionHint({ kind: 'click', advance: 'next' })).toBeNull();
     expect(actionHint({ kind: 'note', advance: 'next' })).toBeNull();
     expect(actionHint({ kind: 'input', advance: 'action' })).toBe('Fill in the highlighted field to continue.');
@@ -293,7 +293,7 @@ describe('tooltip hint (D127)', () => {
     const run = new PlayerUI({ ...base, replayVoice() {} });
     run.showStep(view(steps[0]!), btn);
     const hint = overlayRoot().querySelector('[data-testid="action-hint"]')!;
-    expect(hint.textContent).toContain('Click the highlighted element');
+    expect(hint.textContent).toContain('Click the highlighted item');
     // Screen readers hear it with the tooltip.
     expect(overlayRoot().querySelector('.tip')!.getAttribute('aria-describedby')!.split(' ')).toContain(hint.id);
     run.clear();

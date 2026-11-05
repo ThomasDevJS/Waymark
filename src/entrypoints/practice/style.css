@@ -1,0 +1,194 @@
+/* Practice page (D128): the panel's components, laid out as a small app with a side column. */
+@import '../sidepanel/style.css';
+
+.practice-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wm-space-4);
+  padding: var(--wm-space-3) var(--wm-space-4);
+  background: var(--wm-surface);
+  border-bottom: 1px solid var(--wm-border);
+}
+.app-name {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  font-weight: 600;
+}
+.logo {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--wm-radius-sm);
+  display: grid;
+  place-items: center;
+  background: var(--wm-fg);
+  color: var(--wm-surface);
+  font-weight: 700;
+}
+.practice-header nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+button.nav-link {
+  border-color: transparent;
+  background: transparent;
+}
+button.nav-link.on {
+  background: var(--wm-accent-soft);
+  color: var(--wm-accent-text);
+}
+.practice-note {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: center;
+  max-width: 1100px;
+  margin: var(--wm-space-3) auto 0;
+  padding: 0 var(--wm-space-4);
+  color: var(--wm-fg-muted);
+}
+.practice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--wm-space-4);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--wm-space-4);
+}
+@media (min-width: 860px) {
+  .practice-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
+  }
+}
+.practice-layout main {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+}
+.overdue {
+  margin: 0;
+  color: var(--wm-fg-muted);
+}
+canvas.chart {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  color: var(--wm-accent);
+  border: 1px solid var(--wm-border);
+  border-radius: var(--wm-radius-md);
+}
+table.invoices {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wm-text-sm);
+}
+table.invoices th,
+table.invoices td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--wm-border);
+}
+.block {
+  display: block;
+}
+.tutorial-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--wm-space-2);
+}
+.tutorial-list > li {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: center;
+}
+.tutorials h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  font-size: var(--wm-text-md);
+}
+
+/* The picture of the side panel: drawn with the same tokens, clearly not a real control. */
+.panel-pic {
+  margin: 0;
+  display: grid;
+  gap: var(--wm-space-2);
+}
+.pic {
+  border: 1px dashed var(--wm-border-input);
+  border-radius: var(--wm-radius-lg);
+  background: var(--wm-surface-2);
+  padding: var(--wm-space-3);
+  display: grid;
+  gap: var(--wm-space-2);
+  pointer-events: none;
+  user-select: none;
+}
+.pic-head {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  font-weight: 600;
+  font-size: var(--wm-text-sm);
+}
+.pic-head svg {
+  width: 18px;
+  height: 18px;
+}
+.pic-card {
+  background: var(--wm-surface);
+  border: 1px solid var(--wm-border);
+  border-radius: var(--wm-radius-md);
+  padding: var(--wm-space-2) var(--wm-space-3);
+  display: grid;
+  gap: var(--wm-space-2);
+}
+.pic-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pic-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--wm-border-input);
+  border-radius: var(--wm-radius-sm);
+  padding: 2px 8px;
+  font-size: var(--wm-text-xs);
+  color: var(--wm-fg-muted);
+}
+.pic-btn {
+  display: inline-block;
+  border: 1px solid var(--wm-border-input);
+  border-radius: var(--wm-radius-sm);
+  padding: 2px 8px;
+  font-size: var(--wm-text-xs);
+  background: var(--wm-surface);
+}
+.pic-btn.primary {
+  background: var(--wm-accent);
+  border-color: var(--wm-accent);
+  color: var(--wm-accent-fg);
+}
+.pic-btn.ghost {
+  border-color: transparent;
+}
+.pic-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  background: var(--wm-surface-2);
+}
+.pic-badge.rec {
+  font-size: var(--wm-text-xs);
+  color: var(--wm-rec);
+  font-weight: 600;
+}

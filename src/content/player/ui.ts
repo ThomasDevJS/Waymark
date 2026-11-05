@@ -146,7 +146,7 @@ export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'ad
   if (step.advance !== 'action') return null;
   switch (step.kind) {
     case 'click':
-      return 'Click the highlighted element to continue.';
+      return 'Click the highlighted item to continue.';
     case 'input':
       return 'Fill in the highlighted field to continue.';
     case 'select':
