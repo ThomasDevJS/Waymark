@@ -461,3 +461,28 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Spec**: Permissions, privacy and security ("validate everything"); deferred Low from the security audit (D48).
 - **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
 - **Version** 0.3.1.
+
+## 2026-11-05 — Release engineering
+
+### D54. CI minute budget: one run per change, cancel superseded runs, skip docs-only changes
+- **Spec**: Tech stack, testing; Distribution (CI artifact). Hard rule: $0 running cost.
+- **Why**: the repo is private on the Free plan, which includes 2,000 Actions minutes a month. Every branch push ran CI twice (`push` and `pull_request`). GitHub bills each job rounded up to the whole minute, so a run of the three D52 jobs (check about 1.5 min, e2e shards about 2.5 min each, more when apt is slow) bills about 8 minutes, not the 6.5 job-minutes it uses.
+- **Change** (`.github/workflows/ci.yml`):
+  - Triggers: `push` to `main` only, `pull_request`, and `workflow_dispatch`. A branch without a pull request runs no CI; run the workflow by hand to test one.
+  - `concurrency` per pull request (or ref), with `cancel-in-progress`, so a newer push cancels the run it supersedes.
+  - Docs-only changes (any `*.md`, anything under `docs/`) skip the check and e2e jobs. `THIRD_PARTY_NOTICES.md` is not docs-only: it is copied into the build.
+    - On `main`, a trigger-level filter skips the run entirely. It is a `paths` list with negations rather than `paths-ignore`, because `paths-ignore` can't make the `THIRD_PARTY_NOTICES.md` exception.
+    - On pull requests a trigger-level filter would leave required checks "pending" forever. Instead a small `changes` job lists the PR's files with the API (`scripts/ci-changes.mjs`, unit-tested; renames count both names; any error means "run everything"), and the check and e2e jobs are skipped when it says docs-only. A skipped job counts as passed for a required check.
+    - A `CI result` job needs all the others and starts only when one failed or was cancelled, and then fails. Make it the one required check if branch protection is turned on: a skipped matrix job does not report under its shard names (`e2e (1)`, `e2e (2)`), so those can't be required. When everything passes it is skipped and costs nothing.
+  - The extension zip is uploaded on `main` pushes and manual runs only, kept 14 days (was every run, 30 days). The zip is 3 MB and the Free plan has 500 MB of artifact storage; at tonight's rate (85 runs in 6 hours) 30-day artifacts of every run would have filled it in two days, and uploads then fail. Tagged releases (D56) keep stable downloads that don't count against it.
+- **Estimated billed minutes** (8 per full run, 1 for the `changes` job):
+
+  | | Before | After |
+  | --- | --- | --- |
+  | Push to a branch with no PR yet | 8 | 0 |
+  | Push to a PR branch | 16 (two runs) | 9 (one run plus `changes`); 0 for the superseded run if cancelled early |
+  | Docs-only push to a PR | 16 | 1 |
+  | Merge to `main` | 8 | 8 (0 if docs-only) |
+  | A PR with 3 code pushes, then merged | 56 | 35 |
+
+  Tonight so far (19:31–01:28 UTC) was 85 runs: 53 branch pushes, 21 pull request runs and 11 main pushes, about 680 billed minutes. With these rules the same work would have run 32 times, about 280 minutes. So the monthly budget covers about seven nights like tonight, against fewer than three before.
