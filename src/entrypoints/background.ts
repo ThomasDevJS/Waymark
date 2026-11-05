@@ -16,6 +16,7 @@ import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site
 import { isSiteOrigin } from '../core/model/schema';
 import { rebuildIndex } from '../core/storage/guides';
 import { setupPanelFallback } from '../background/panel-fallback';
+import { onShortcut } from '../background/shortcuts';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample } from '../background/voice';
 import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
@@ -170,7 +171,10 @@ export default defineBackground(() => {
     void onTabCreated(tab);
     void carryRunToNewTab(tab);
   });
-  chrome.commands?.onCommand.addListener((command, tab) => void onRunCommand(command, tab));
+  chrome.commands?.onCommand.addListener((command, tab) => {
+    // Recording shortcut first: it opens the side panel, which must happen before any await (D105).
+    if (!onShortcut(command, tab)) void onRunCommand(command, tab);
+  });
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), noncesKey(tabId), `test:route:${tabId}`]);
     void onTabRemoved(tabId);

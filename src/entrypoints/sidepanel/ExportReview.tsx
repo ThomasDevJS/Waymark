@@ -6,10 +6,20 @@ import { signal } from '@preact/signals';
 import type { Guide } from '../../core/model/schema';
 import { makePack } from '../../core/sharing/pack';
 import { applyRemovals, packStrings, type StringKind } from '../../core/sharing/review';
+import { howtoHtml, howtoMarkdown, howtoStrings, looksLikeData } from '../../core/sharing/howto';
 import { Icon } from '../../ui/Icon';
 
 const removed = signal<Set<string>>(new Set());
 const fileName = signal('guides');
+/** What to export (D104): a pack to import elsewhere, or a how-to to read or print. */
+export type ExportFormat = 'pack' | 'markdown' | 'html';
+const format = signal<ExportFormat>('pack');
+
+const FORMATS: { value: ExportFormat; label: string; hint: string; ext: string; type: string }[] = [
+  { value: 'pack', label: 'Guide pack', hint: 'For Waymark: import it in another browser or a team library.', ext: '.waymark.json', type: 'application/json' },
+  { value: 'markdown', label: 'How-to (Markdown)', hint: 'Numbered steps with titles and notes, for docs and wikis.', ext: '.md', type: 'text/markdown' },
+  { value: 'html', label: 'How-to (printable page)', hint: 'Open it in the browser and print it, or save it as PDF.', ext: '.html', type: 'text/html' },
+];
 
 const KIND: Record<StringKind, string> = {
   'guide-title': 'Guide title',
@@ -30,12 +40,22 @@ export function exportJson(guides: Guide[], drop: Set<string>): string {
   return JSON.stringify(makePack(applyRemovals(guides, drop)), null, 2);
 }
 
-function download(name: string, json: string) {
-  const blob = new Blob([json], { type: 'application/json' });
+/** The file for a format, built from the reviewed copy (the same removals for every format). */
+export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat): string {
+  if (f === 'pack') return exportJson(guides, drop);
+  const copy = applyRemovals(guides, drop);
+  return f === 'markdown' ? howtoMarkdown(copy) : howtoHtml(copy);
+}
+
+export const safeFileName = (name: string) => name.replace(/[^\w.-]+/g, '-') || 'guides';
+
+function download(name: string, text: string, f: ExportFormat) {
+  const spec = FORMATS.find((x) => x.value === f)!;
+  const blob = new Blob([text], { type: `${spec.type};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${name.replace(/[^\w.-]+/g, '-') || 'guides'}.waymark.json`;
+  a.download = `${safeFileName(name)}${spec.ext}`;
   document.body.append(a);
   a.click();
   a.remove();
@@ -43,16 +63,45 @@ function download(name: string, json: string) {
 }
 
 export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () => void }) {
-  const strings = packStrings(guides);
-  const removedCount = removed.value.size;
+  const f = format.value;
+  const spec = FORMATS.find((x) => x.value === f)!;
+  const strings = f === 'pack' ? packStrings(guides) : howtoStrings(guides);
+  const keys = new Set(strings.map((x) => x.key));
+  const removedCount = [...removed.value].filter((k) => keys.has(k)).length;
+  const flagged = strings.filter((x) => !removed.value.has(x.key) && looksLikeData(x)).length;
+  const finish = () => {
+    removed.value = new Set();
+    format.value = 'pack';
+    onDone();
+  };
   return (
     <section class="stack export-review" aria-labelledby="export-title" data-testid="export-review">
       <div class="stack-sm">
         <h2 id="export-title">Review before export</h2>
         <p class="small muted">
-          This is everything the pack will contain, word for word. Remove business data such as customer names, amounts and internal codes. To change titles, sites or pages, edit the guide.
+          This is everything the {f === 'pack' ? 'pack' : 'how-to'} will contain, word for word. Remove business data such as customer names, amounts and internal codes. To change titles, sites or pages, edit the guide.
         </p>
       </div>
+      <fieldset class="formats" data-testid="export-format">
+        <legend class="label">Format</legend>
+        {FORMATS.map((x) => (
+          <label key={x.value} class={`format${f === x.value ? ' on' : ''}`}>
+            <input type="radio" name="export-format" value={x.value} checked={f === x.value} data-testid={`format-${x.value}`} onChange={() => (format.value = x.value)} />
+            <span class="stack-sm">
+              <strong>{x.label}</strong>
+              <span class="xsmall muted">{x.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {flagged > 0 && (
+        <p class="banner warn" role="status" data-testid="data-like-warning">
+          <Icon name="warn" />
+          <span>
+            {flagged === 1 ? '1 item looks' : `${flagged} items look`} like data (an email, an amount, a date or a code). Check {flagged === 1 ? 'it' : 'them'} below.
+          </span>
+        </p>
+      )}
       {guides.map((g) => (
         <div key={g.id} class="stack-sm">
           <h3 class="section-label">
@@ -64,13 +113,20 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
               .filter((s) => s.guideId === g.id)
               .map((s) => {
                 const gone = removed.value.has(s.key);
+                const data = !gone && looksLikeData(s);
                 return (
-                  <li key={s.key} class={`list-item${gone ? ' removed' : ''}`}>
+                  <li key={s.key} class={`list-item${gone ? ' removed' : ''}`} data-testid={data ? `data-like-${s.key}` : undefined}>
                     <div class="grow">
                       <div class="xsmall muted">
                         {s.stepIndex !== null ? `Step ${s.stepIndex + 1} · ` : ''}
                         {KIND[s.kind]}
                         {gone && ' · removed'}
+                        {data && (
+                          <span class="badge warn">
+                            <Icon name="warn" />
+                            Looks like data
+                          </span>
+                        )}
                       </div>
                       <div class="value">{s.value}</div>
                     </div>
@@ -101,7 +157,7 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
           <span class="label">File name</span>
           <input value={fileName.value} aria-describedby="export-file-hint" onInput={(e) => (fileName.value = (e.target as HTMLInputElement).value)} />
           <span class="hint" id="export-file-hint">
-            Saved as {(fileName.value.replace(/[^\w.-]+/g, '-') || 'guides') + '.waymark.json'}
+            Saved as {safeFileName(fileName.value) + spec.ext}
             {removedCount ? ` · ${removedCount} ${removedCount === 1 ? 'item' : 'items'} removed` : ''}
           </span>
         </label>
@@ -109,24 +165,16 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
           <button
             type="button"
             class="primary"
-            data-testid="download-pack"
+            data-testid={f === 'pack' ? 'download-pack' : 'download-howto'}
             onClick={() => {
-              download(fileName.value, exportJson(guides, removed.value));
-              removed.value = new Set();
-              onDone();
+              download(fileName.value, exportText(guides, removed.value, f), f);
+              finish();
             }}
           >
             <Icon name="download" />
-            Download pack
+            {f === 'pack' ? 'Download pack' : 'Download how-to'}
           </button>
-          <button
-            type="button"
-            class="ghost"
-            onClick={() => {
-              removed.value = new Set();
-              onDone();
-            }}
-          >
+          <button type="button" class="ghost" onClick={finish}>
             Cancel
           </button>
         </div>

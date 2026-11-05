@@ -199,6 +199,9 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await panel.getByTestId('export').click();
   await expect(panel.getByTestId('export-review')).toBeVisible();
   await panelShot(panel, 'panel-07-export-review');
+  await panel.getByTestId('format-markdown').check();
+  await panelShot(panel, 'panel-15-export-howto');
+  await panel.getByTestId('format-pack').check();
   const [download] = await Promise.all([panel.waitForEvent('download'), panel.getByTestId('download-pack').click()]);
   const packPath = join(OUT, '..', '.pack.json');
   await download.saveAs(packPath);

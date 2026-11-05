@@ -107,14 +107,17 @@ async function speak(tabId: number, text: string, lang: string, settings: VoiceS
   chrome.tts.speak(text, { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
 }
 
-/** Speaks the run's current step once, when it becomes current. */
-export async function speakCurrentStep(tabId: number, run: Run | null): Promise<void> {
+/**
+ * Speaks the run's current step once, when it becomes current. `explicit` is the learner asking
+ * for it (Replay voice, D106): it speaks even with "Read each step aloud" off, but never muted.
+ */
+export async function speakCurrentStep(tabId: number, run: Run | null, explicit = false): Promise<void> {
   stopSpeech();
   if (!run || run.status !== 'running') return;
   const step = currentStep(run);
   if (!step) return;
   const settings = await getVoiceSettings();
-  if (!settings.autoPlay || settings.muted) return;
+  if ((!settings.autoPlay && !explicit) || settings.muted) return;
   // One voice channel: only the focused tab speaks, and only on the guide's own sites: a
   // step is never read out (or sent to the speechSynthesis fallback) on another site (D48).
   const tab = await focusedTab(tabId);
@@ -132,7 +135,7 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
     // Fall back only if nothing newer happened meanwhile and the learner didn't mute.
     const latest = (await chrome.storage.session.get(SPEECH_AT_KEY))[SPEECH_AT_KEY];
     const now = await getVoiceSettings();
-    if (latest !== at || now.muted || !now.autoPlay) return;
+    if (latest !== at || now.muted || (!now.autoPlay && !explicit)) return;
   }
   await speak(tabId, text, lang, settings);
 }

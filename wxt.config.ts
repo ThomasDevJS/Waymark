@@ -61,6 +61,10 @@ export default defineConfig({
       'next-step': { suggested_key: { default: 'Alt+Period' }, description: 'Guide: next step' },
       'previous-step': { suggested_key: { default: 'Alt+Comma' }, description: 'Guide: previous step' },
       'exit-guide': { description: 'Guide: exit' },
+      // D105: start or stop recording in the current tab, and open the side panel (the toolbar
+      // button's action). Chrome allows four suggested keys; these are the last two.
+      'toggle-recording': { suggested_key: { default: 'Alt+R' }, description: 'Start or stop recording in this tab' },
+      _execute_action: { suggested_key: { default: 'Alt+W' }, description: 'Open the Waymark side panel' },
     },
   },
 });

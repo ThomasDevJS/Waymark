@@ -14,6 +14,12 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - A **Completed** badge on guides you have finished, **Restart** (in the list and while a guide plays), and **Start from step N** in a guide's More menu (D101).
 - Tag chips under the search box filter the library; the editor has a Tags field (D102).
 - Duplicate for your own guides (More menu) and for steps in the editor (D103).
+- Export a guide as a text how-to, in Markdown or as a printable page, after the same review as packs; text that looks like data is flagged in the review (D104).
+- Keyboard shortcuts: Alt+R starts or stops recording in the current tab, Alt+W opens the side panel. Both can be changed at chrome://extensions/shortcuts (D105).
+- Replay voice and Repeat step buttons in the tooltip (D106).
+
+### Fixed
+- The tooltip's mute button can be pressed again in the same step to unmute; before, it kept the state from when the step was drawn (D106).
 
 ### For developers
 - CI runs once per change instead of twice, cancels superseded pull request runs and skips docs-only changes, to stay within the Free plan's Actions minutes (D54).

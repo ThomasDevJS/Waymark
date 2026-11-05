@@ -8,6 +8,7 @@ import { Editor } from './Editor';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { FLAG_HELP, FlagNotes } from './steps';
+import { useShortcutOutcome } from './shortcut';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
@@ -68,6 +69,13 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
   useEffect(() => {
     if (initialEdit) editing.value = initialEdit;
   }, [initialEdit]);
+  // Stopped with the keyboard shortcut: open the editor, as the Stop button does (D105).
+  useShortcutOutcome(['stopped'], (o) => {
+    if (o.kind !== 'stopped') return;
+    recording.value = null;
+    saved.value = { title: o.title, count: o.count };
+    openEditor(o.guideId, tabId);
+  });
   useEffect(() => {
     void refresh(tabId);
     // The panel is a trusted context and may watch session storage directly.

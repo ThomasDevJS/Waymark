@@ -4,7 +4,7 @@
  * is built with DOM APIs (user strings never reach innerHTML).
  */
 import { arrow, autoUpdate, computePosition, flip, offset, shift, size, type Placement } from '@floating-ui/dom';
-import { ChevronLeft, ChevronRight, CircleCheck, MapPin, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
+import { ChevronLeft, ChevronRight, CircleCheck, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
 import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
@@ -56,6 +56,8 @@ button.ghost { border-color: transparent; background: transparent; }
 button.ghost:hover { background: var(--wm-surface-hover); }
 button.icon { min-height: 28px; min-width: 28px; padding: 4px; justify-content: center; border-color: transparent; background: transparent; color: var(--wm-fg-muted); }
 button.icon:hover { background: var(--wm-surface-hover); color: var(--wm-fg); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:disabled:hover { background: transparent; color: var(--wm-fg-muted); }
 button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
 button svg { width: 16px; height: 16px; flex: none; }
 a { color: var(--wm-accent-text); }
@@ -88,6 +90,10 @@ export interface UiHandlers {
   report(): void;
   goBack(): void;
   mute(muted: boolean): void;
+  /** Read the current step aloud again (D106). Without it (Test step's highlight) there is no button. */
+  replayVoice?(): void;
+  /** Show the current step again: find, scroll to and highlight the element, and read it (D106). */
+  repeat?(): void;
 }
 
 export type Card = 'not-found' | 'off-track' | 'done';
@@ -138,6 +144,8 @@ export class PlayerUI {
   private ring: HTMLElement | null = null;
   private tip: HTMLElement | null = null;
   private announcer: HTMLElement | null = null;
+  /** A keyboard user pressed this tooltip button; it gets focus back when the step is redrawn. */
+  private refocus: string | null = null;
   private stopAuto: (() => void) | null = null;
 
   constructor(private readonly h: UiHandlers) {}
@@ -220,6 +228,10 @@ export class PlayerUI {
     const arrowEl = el('div', 'arrow');
     layer.append(tip);
     this.tip = tip;
+    if (this.refocus) {
+      tip.querySelector<HTMLElement>(`[data-action="${this.refocus}"]`)?.focus();
+      this.refocus = null;
+    }
     this.announce(`Step ${Math.min(view.stepIndex + 1, view.total)} of ${view.total}: ${plain(step.title)}`);
 
     if (!target) {
@@ -354,11 +366,23 @@ export class PlayerUI {
     const n = Math.min(view.stepIndex + 1, view.total);
     const head = el('div', 'head');
     head.append(el('span', 'count', `Step ${n} of ${view.total}`));
-    // Mute toggle: reflects the global voice setting; the service worker stops speech.
-    const mute = this.iconButton(view.muted ? VolumeX : Volume2, 'mute', 'Mute voice', () => this.h.mute(!view.muted));
-    mute.setAttribute('aria-pressed', String(view.muted));
+    // Mute toggle: reflects the global voice setting; the service worker stops speech. It reads
+    // the current state when pressed, so it works again before the step changes (D106).
+    this.muted = view.muted;
+    const mute = this.iconButton(view.muted ? VolumeX : Volume2, 'mute', 'Mute voice', () => this.h.mute(!this.muted));
     const exit = this.iconButton(X, 'exit', 'Exit guide', this.h.exit);
+    const { replayVoice, repeat: repeatStep } = this.h;
+    if (view.step && view.status === 'running' && replayVoice && repeatStep) {
+      const replay = this.iconButton(Speech, 'replay-voice', 'Replay voice', replayVoice);
+      const repeat = this.iconButton(RotateCcw, 'repeat', 'Repeat step', () => {
+        // Only a keyboard user's focus comes back: a mouse press never takes focus (mousedown).
+        this.refocus = repeat.matches(':focus') ? 'repeat' : null;
+        repeatStep();
+      });
+      head.append(repeat, replay);
+    }
     head.append(mute, exit);
+    this.paintMute(head, view.muted);
     const progress = el('div', 'progress');
     progress.setAttribute('aria-hidden', 'true');
     const bar = el('span');
@@ -366,6 +390,30 @@ export class PlayerUI {
     progress.append(bar);
     tip.append(head, progress);
     return tip;
+  }
+
+  private muted = false;
+
+  /** The mute and Replay voice buttons for the current state; Replay voice says why it is off. */
+  private paintMute(scope: ParentNode, muted: boolean): void {
+    const mute = scope.querySelector<HTMLButtonElement>('[data-action="mute"]');
+    if (mute) {
+      mute.setAttribute('aria-pressed', String(muted));
+      mute.querySelector('svg')?.replaceWith(buildSvg(muted ? VolumeX : Volume2));
+    }
+    const replay = scope.querySelector<HTMLButtonElement>('[data-action="replay-voice"]');
+    if (replay) {
+      replay.disabled = muted;
+      const label = muted ? 'Replay voice (voice is muted)' : 'Replay voice';
+      replay.setAttribute('aria-label', label);
+      replay.title = label;
+    }
+  }
+
+  /** A mute change during a step updates the tooltip in place (no redraw, no new announcement). */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.tip) this.paintMute(this.tip, muted);
   }
 
   private iconButton(icon: IconNode, action: string, label: string, fn: () => void): HTMLButtonElement {

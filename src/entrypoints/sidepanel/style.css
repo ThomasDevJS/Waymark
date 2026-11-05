@@ -538,3 +538,46 @@ textarea {
 .card-head h2 {
   margin: 0;
 }
+
+/* Export formats (D104): a pack or a how-to, as selectable cards. */
+.formats {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--wm-space-2);
+}
+.formats > legend {
+  padding: 0;
+  margin-bottom: var(--wm-space-1);
+}
+.format {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: flex-start;
+  padding: var(--wm-space-2) var(--wm-space-3);
+  border: 1px solid var(--wm-border);
+  border-radius: var(--wm-radius-md);
+  background: var(--wm-surface);
+  cursor: pointer;
+}
+.format > input {
+  margin-top: 3px;
+  accent-color: var(--wm-accent);
+}
+.format.on {
+  border-color: var(--wm-accent);
+  background: var(--wm-accent-soft);
+}
+.format:has(input:focus-visible) {
+  outline: 2px solid var(--wm-focus);
+  outline-offset: 2px;
+}
+.review-list .badge.warn {
+  margin-left: 6px;
+}
+@media (forced-colors: active) {
+  .format.on {
+    border-width: 2px;
+  }
+}
