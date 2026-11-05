@@ -15,7 +15,7 @@ Last full run: 2026-11-05, version 0.2.5. "Before" is the same harness on main a
 
 | Site | Task | Steps | Before | After | Notes |
 | --- | --- | --- | --- | --- | --- |
-| TodoMVC React | add, complete, filter (hash routes), clear | 5 | 0/5 found, stuck on step 1 (×3 variants) | 5/5 (×3 variants) | D51: the input step now advances on Enter. The toggle is `instance: 'any'` (shared test id, no name). |
+| TodoMVC React | add, complete, filter (hash routes), clear | 5 | 0/5 found, stuck on step 1 (×3 variants) | 5/5 (×3 variants) | D53: the input step now advances on Enter. The toggle is `instance: 'any'` (shared test id, no name). |
 | TodoMVC Vue | same | 5 | not recordable | not recordable | The toggle has no name and no test id: since D47 it is not recorded (4 steps). Next fix. |
 | TodoMVC Angular | same | 5 | not recordable | not recordable | Same as Vue. |
 | the-internet | log in and out (form submit, full page loads) | 4 | 4/4 | 4/4 (×2) | |
@@ -24,13 +24,13 @@ Last full run: 2026-11-05, version 0.2.5. "Before" is the same harness on main a
 | the-internet | TinyMCE editor in an iframe | 3 | 3/3 | 3/3 | |
 | SauceDemo (React) | log in, add a product, check out | 6 | 6/6 | 6/6 (×2) | |
 | GlobalSQA bank (AngularJS, hash routes) | customer login and deposit | 6 | 6/6 | 6/6 (×2) | Two buttons named Deposit, told apart. |
-| demoqa (React) | web table: add a record, edit a row | 9 | edit step not recordable | 9/9 (×2) | D53: an svg icon click records its wrapper span. |
-| MUI (React) | portaled select | 2 | open step lost | 2/2 (×2) | D52: the select opens on mousedown behind a backdrop. |
+| demoqa (React) | web table: add a record, edit a row | 9 | edit step not recordable | 9/9 (×2) | D55: an svg icon click records its wrapper span. |
+| MUI (React) | portaled select | 2 | open step lost | 2/2 (×2) | D54: the select opens on mousedown behind a backdrop. |
 | MUI (React) | modal dialog | 2 | 2/2 | 2/2 (×2) | |
 | MUI X (React) | date picker | 2 | 2/2 | 2/2 | |
 | Ant Design (React) | portaled select in a form | 2 | 3/4 | 4/4 (×2) | The one miss before was the page remount closing the open dropdown (see the date picker); the task now waits for it. |
 | Ant Design (React) | date picker | 2 | **1 wrong** (intermittent) | **1 wrong** (intermittent) | ant.design remounts the page about 3 s after load. For about 1.5 s the only "Select date" input is a look-alike in another demo, and it is accepted when the step searches in that window (4 of the last 6 runs). Next fix. |
-| Angular Material | portaled select | 2 | 0/2 (not found) | 2/2 (×2) | D54: `mat-select-10` style ids are generated. |
+| Angular Material | portaled select | 2 | 0/2 (not found) | 2/2 (×2) | D56: `mat-select-10` style ids are generated. |
 
 Tasks passing: **8 of 16 before, 13–14 of 16 after** (14 when the Ant date picker does not hit the remount window). Wrong matches: the same intermittent one before and after; it is the next fix. TodoMVC Vue and Angular show as "recorded 4 steps, expected 5".
 

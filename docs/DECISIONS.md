@@ -394,23 +394,23 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
 
-### D51. An input step also advances on Enter in a non-empty one-line field
+### D53. An input step also advances on Enter in a non-empty one-line field
 - **Spec**: Player, "Advancing" (input: `change`, or blur with a non-empty value, or Next).
 - **Finding**: TodoMVC (React, Vue, Angular) takes the typed text on Enter and clears the field. No `change` fires and focus stays, so the run never left "Enter New Todo Input" until the learner pressed Next.
 - **Change**: a trusted Enter keydown (not with Shift, Ctrl, Alt or Meta, not while composing) on the target `input`, checked before the app clears it, advances when the field has a value. A `textarea` or rich editor gets a new line and does not advance. The value is only checked for emptiness, never read or stored.
 
-### D52. A press on the target that the app turns into a click on an ancestor still counts
+### D54. A press on the target that the app turns into a click on an ancestor still counts
 - **Spec**: Recorder, "Event capture" (use the pending fingerprint when the click target is that node or linked in `composedPath()`); Player, "Advancing" (click: a trusted click lands on the target).
 - **Finding**: MUI's Select opens on `mousedown` and puts a full-page backdrop under the pointer. The `mouseup` lands on the backdrop, so the browser sends `click` to the common ancestor of the two, `<body>`. The recorder dropped the "open the select" step (the guide had only "Choose **Twenty**", which can never be shown with the menu closed), and the player would never advance on it.
 - **Change**: when a click's own target is non-interactive, is an ancestor of the element a trusted `pointerdown` resolved to, comes within 1 s, **and is released within 4 px of the press**, the recorder records the pressed element and the player's click rule advances. A click whose own target is interactive (a card link around the button) is unaffected.
 - **Drag-off cancels** (independent review): pressing a button, sliding off and releasing elsewhere is how people cancel a click, and the browser also sends that click to the common ancestor. The 4 px rule keeps it from counting. The recorder's older "click on an ancestor of the pressed node" link (for a node the app re-rendered) has the same 4 px rule now; before, such a drag recorded a click on the button.
 
-### D53. A click inside an `<svg>` with no interactive ancestor resolves to the element around the svg
+### D55. A click inside an `<svg>` with no interactive ancestor resolves to the element around the svg
 - **Spec**: Element targeting, record step 1 (nearest interactive element within 5 levels; otherwise the click is kept as low-confidence).
 - **Finding**: demoqa's row actions are `<span id="edit-record-2" title="Edit"><svg><path/></svg></span>` with a click handler. A click lands on the `<path>`, which has no id, name or text, so the step was "Click **the element**" with no strong signal (since D47 it is not recorded at all), while the span has a stable id and a title.
 - **Change**: for a low-confidence click inside an icon-sized `<svg>` (48 px or less on both sides), the target climbs out of SVG-namespace elements to the first HTML element around it. It stays low-confidence (flagged), and D47 still skips it when the wrapper has no strong signal either. A click in a larger svg (a chart or diagram) keeps its own target: the wrapper would be the whole chart. An svg inside a button or link already resolved to the button or link.
 
-### D54. Ids that component libraries number per page load are generated
+### D56. Ids that component libraries number per page load are generated
 - **Spec**: Element targeting, record step 2 (drop ids that look generated: `ember123`, long digit runs, …).
 - **Finding**: Angular Material's select was recorded with `id="mat-select-10"` and its option with `mat-option-51`. These counters change between page loads, so on replay the id and the CSS path built from it both failed. A perfect role + name match then scored 45 of 80 points (56, under the 60 threshold), and the step was not found on an unchanged page.
 - **Change**: ids, test ids and classes of the form `<library>-[words-]<number>[-…]` are generated, for the prefixes `mat`, `mdc`, `cdk`, `headlessui`, `downshift`, `react-select`, `react-aria`, `rc`, `mui`, `chakra` and `reach` (`mat-select-10`, `cdk-overlay-3`, `headlessui-menu-button-3`, `downshift-0-input`, `rc-tabs-0-tab-1`). Other `word-number` ids (`edit-record-2`, `step-1`) and Material's typography classes (`mat-display-1`, `mat-headline-2`) are kept.
