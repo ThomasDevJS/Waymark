@@ -333,7 +333,13 @@ export function createApp(options = {}, doc = document) {
   chartSvg.append(node);
   const chart = h('div', { id: 'org-chart', cls: 'chart' }, [chartSvg]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), table, cards, drafts].map(maybeWrap));
+  // Two date fields with the same placeholder in look-alike demos (ant.design): only the
+  // container's id tells them apart, no landmark or label does.
+  const datePicker = (/** @type {string} */ id, /** @type {string} */ key) =>
+    h('div', { id, cls: 'picker' }, [h('input', { type: 'text', cls: 'dateinput', placeholder: 'Select date', 'data-fx': key })]);
+  const dates = h('div', { cls: 'dates' }, [datePicker('picker-basic', 'date-basic'), datePicker('picker-range', 'date-other')]);
+
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), dates, table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 
