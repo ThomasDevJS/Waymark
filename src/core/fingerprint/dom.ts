@@ -548,21 +548,37 @@ export function itemName(item: Element, owner?: Element): string | undefined {
   return undefined;
 }
 
+/** Checkboxes, radios and switches: the controls a list item names (a todo's toggle). */
+function isToggle(el: Element): boolean {
+  if (tagOf(el) === 'input') {
+    const t = (el.getAttribute('type') ?? '').toLowerCase();
+    return t === 'checkbox' || t === 'radio';
+  }
+  const role = explicitRole(el);
+  return role === 'checkbox' || role === 'radio' || role === 'switch';
+}
+
 /**
- * Raw item label of a nameless control (D65): its item's label or heading, e.g. "Walk the dog"
- * for a TodoMVC toggle. None when a link in the item has a name (the row is named by that link,
- * and what is left is status), and never inside an editable region (typed text).
+ * Raw item label of a nameless toggle (D65): its item's label or heading when that is all the
+ * item says, e.g. "Walk the dog" for a TodoMVC toggle. None when:
+ * - the control is not a checkbox, radio or switch (an icon button is an action, not the item);
+ * - the item has other visible text: then the label is status or a category ("Overdue",
+ *   "Books") and the real name is elsewhere;
+ * - a link in the item has a name (the row is named by that link);
+ * - the item contains another item (nested lists) or anything editable (typed text).
  */
 export function rawItemLabel(el: Element): string | undefined {
+  if (!isToggle(el)) return undefined;
   const item = itemOf(el);
   if (!item) return undefined;
-  if ((item as HTMLElement).isContentEditable || (el as HTMLElement).isContentEditable) return undefined;
-  // A named link names the row (an issue list), and what is left is status. A named button is
-  // an action ("Delete todo") and says nothing about which row it is.
+  if ((item as HTMLElement).isContentEditable || item.querySelector('[contenteditable]:not([contenteditable="false"])')) return undefined;
+  if (item.querySelector(ITEM_SELECTOR)) return undefined;
   for (const c of Array.from(item.querySelectorAll('a[href]'))) {
     if (c !== el && !c.contains(el) && (rawAccessibleName(c) || rawOwnText(c))) return undefined;
   }
-  return itemName(item, el);
+  const name = itemName(item, el);
+  if (!name || name !== plainVisibleText(item)) return undefined;
+  return name;
 }
 
 /** Item label, or undefined when missing or data-like. */

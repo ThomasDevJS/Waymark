@@ -524,14 +524,21 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D65. A nameless control in a list item is named by the item's label
 - **Spec**: Element targeting, record step 2 and playback step 3 (signals and weights); Data model (new optional `ElementFingerprint.itemLabel`).
 - **Finding**: the todo toggles of TodoMVC in Vue and Angular are `<input type=checkbox class=toggle>` next to a `<label>` that is not linked to them. They have no name, text or test id, so since D47 a click on one is not recorded at all. In React they share a test id and were `instance: 'any'` ("check any todo"), and the title was "Check **the checkbox**". What the author meant is in the row: "Walk the dog".
-- **Change**: a control with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field. Hidden parts and the text of interactive elements are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong. The step title uses it ("Check **Walk the dog**").
-- **When there is none** (independent review):
-  - a link in the item has a name. In an issue list the row is named by its link, and what is left ("Open", "Closed") is status that moves between rows; using it picked the wrong row in the review's test. A named button ("Delete todo" in React and Angular TodoMVC) is an action and does not count;
-  - the item is inside an editable region. In a rich-text task list the label is typed text;
-  - the only text is loose text, not a label or heading.
-- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`).
-- **Safety**: when the item is gone (another list), the other rows' controls match only what record-time look-alikes matched (D64), so the result is not-found, never another row. Named row actions ("Edit", "Delete") get no item label and stay `any`. Candidates are gathered per item in one pass.
-- **Cost**: when the item's text changes, the step is not found. That is the same contract as own text.
+- **Change**: a **checkbox, radio or switch** with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field, and it must be **everything the item says**: the item's visible text, outside interactive elements, is exactly that label. Hidden parts are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong, not identifying. The step title uses it ("Check **Walk the dog**").
+- **Why so narrow** (two independent reviews; each case is a regression test in `test/browser/item-label.test.ts`). A label is identity only when it is the item's name, and status or context that moves between rows picked the wrong row:
+  - "Open" next to a named link in an issue list;
+  - an "Overdue" badge next to "Pay rent";
+  - a "Books" category heading over "Dune";
+  - a parent row taking a nested child's label.
+  So there is no item label when:
+  - the item has other visible text;
+  - a link in it has a name;
+  - it contains another item;
+  - anything in it is editable (typed text in rich-text task lists);
+  - the control is not a toggle. A nameless delete icon would otherwise be titled "Click **Walk the dog**".
+- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`). When the item is gone (another list), the other rows' toggles match only what record-time look-alikes matched (D64), so the result is not-found.
+- **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
+- **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
 
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*

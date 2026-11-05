@@ -91,6 +91,47 @@ describe('item label: review of D65', () => {
     expect(JSON.stringify(fp)).not.toContain('lawyer');
   });
 
+  // Second review of D65: a label is used only when it is the whole of a toggle's item.
+  it('nested lists: a parent row never borrows a child row\'s label', () => {
+    const ul = list([
+      '<li><span>Parent one</span><input type="checkbox"><ul><li><label>Child A</label></li></ul></li>',
+      '<li><span>Parent two</span><input type="checkbox"><ul><li><label>Child B</label></li></ul></li>',
+    ]);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBeUndefined();
+  });
+
+  it('a status label next to the real name is not the name', () => {
+    const ul = list([
+      '<li><input type="checkbox"><label class="badge">Overdue</label><span>Pay rent</span></li>',
+      '<li><input type="checkbox"><label class="badge">Done</label><span>Buy milk</span></li>',
+    ]);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBeUndefined();
+  });
+
+  it('a category heading over the real content is not the name', () => {
+    const ul = list(['<li><h3>Books</h3><p>Dune</p><input type="checkbox"></li>']);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBeUndefined();
+  });
+
+  it('never reads an editable element inside the row', () => {
+    const ul = list([
+      '<li><input type="checkbox"><h3 contenteditable="true">secret typed note</h3></li>',
+      '<li><input type="checkbox"><div contenteditable="true"><label>typed in label</label></div></li>',
+    ]);
+    ul.className = 'review';
+    for (const i of Array.from(ul.querySelectorAll('input'))) expect(JSON.stringify(buildFingerprint(i))).not.toMatch(/secret|typed/);
+  });
+
+  it('only toggles are named by their item: a nameless icon button is not "Walk the dog"', () => {
+    const ul = list(['<li><div class="view"><input class="toggle" type="checkbox"><label>Walk the dog</label><button class="destroy"></button></div></li>']);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('button')!).itemLabel).toBeUndefined();
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBe('Walk the dog');
+  });
+
   it('text hidden by CSS is not part of the label', () => {
     const ul = list(['<li><input type="checkbox"><label>Task<span style="display:none"> Saving…</span></label></li>']);
     ul.className = 'review';
