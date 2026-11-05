@@ -459,5 +459,5 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 
 ### D53. Records sent by extension pages have entry limits
 - **Spec**: Permissions, privacy and security ("validate everything"); deferred Low from the security audit (D48).
-- **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. That is more than any real pack or voice list needs: a 5 MB pack of the smallest guides still fits. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
+- **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
 - **Version** 0.3.1.
