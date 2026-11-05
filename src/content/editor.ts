@@ -4,7 +4,9 @@
  */
 import { send } from '../core/messaging/client';
 import type { ContentPush } from '../core/messaging/protocol';
-import { buildFingerprint, resolveTargetFromPath } from '../core/fingerprint';
+import { buildFingerprint, resolveTargetFromPath, type ResolvedTarget } from '../core/fingerprint';
+import type { ElementFingerprint } from '../core/model/schema';
+import { promoteToRegion } from '../core/recorder/region';
 import { hasStrongSignal } from '../core/matcher/signals';
 import { waitForMatch, STRONG } from '../core/matcher';
 import { NO_RUN } from '../core/player/run';
@@ -37,11 +39,22 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   let testUi: PlayerUI | null = null;
   let testTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // What a click here would pick, with the clickable region of D82 applied. Memoized on the
+  // hovered element: the promotion builds a fingerprint, too costly for every mouse move.
+  let lastHover: { from: Element; pick: { element: Element; fp?: ElementFingerprint; name?: string } } | null = null;
+  const pickFor = (t: ResolvedTarget) => {
+    if (lastHover?.from === t.element) return lastHover.pick;
+    const up = promoteToRegion(t, (el) => buildFingerprint(el, { framePath: framePath() }));
+    const pick: { element: Element; fp?: ElementFingerprint; name?: string } = up ?? { element: t.element };
+    lastHover = { from: t.element, pick };
+    return pick;
+  };
+
   const onMove = (e: Event) => {
     if (isOverlayPath(e.composedPath())) return;
     const t = resolveTargetFromPath(e.composedPath());
     if (!t || !box) return;
-    const r = t.element.getBoundingClientRect();
+    const r = pickFor(t).element.getBoundingClientRect();
     Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, display: 'block' });
   };
 
@@ -70,14 +83,18 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
       send('pick.abort', {}).catch(() => undefined);
       return;
     }
-    const fp = buildFingerprint(t.element, { framePath: framePath() });
+    // Plain content inside a clickable card picks the card, as the recorder does (D82).
+    lastHover = null;
+    const pick = pickFor(t);
+    const hint = pick.name;
+    const fp = pick.fp ?? buildFingerprint(pick.element, { framePath: framePath() });
     if (!hasStrongSignal(fp)) {
       // It could never be found again (issue #6): keep picking and say why.
       if (banner) banner.textContent = PICK_REJECTED;
       testMark('pick-rejected', fp.tag);
       return;
     }
-    const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? fp.itemLabel ?? roleWord(fp.role);
+    const name = hint ?? fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? fp.itemLabel ?? roleWord(fp.role);
     send('pick.result', { target: fp, title: stepTitle('click', { name }) }).catch(() => undefined);
     testMark('picked', fp.text ?? fp.accessibleName ?? fp.tag);
     stopPick();

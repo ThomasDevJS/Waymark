@@ -237,6 +237,83 @@ export function resolveTargetFromPath(path: EventTarget[]): ResolvedTarget | nul
   return { element: first, lowConfidence: true };
 }
 
+/** A clickable region (D82) covers at most this share of the viewport. */
+export const MAX_REGION_SHARE = 0.25;
+/** ...and is found within this many levels above the clicked node. */
+const MAX_REGION_LEVELS = 6;
+/** Regions with more descendants than this are layout, not a control. */
+const MAX_REGION_NODES = 200;
+
+/** Items of a list, table, grid or menu: a clickable region never spans more than one (D82). */
+const REGION_ITEM_TAGS = new Set(['li', 'tr', 'td', 'th', 'option', 'dt', 'dd']);
+const REGION_ITEM_ROLES = new Set(['row', 'listitem', 'option', 'gridcell', 'cell', 'treeitem', 'menuitem', 'tab', 'article']);
+
+/** One of several alike siblings (same tag, and no class or a shared class), or a list/table item. */
+function isRepeatedItem(e: Element): boolean {
+  if (REGION_ITEM_TAGS.has(tagOf(e))) return true;
+  const role = e.getAttribute('role');
+  if (role && REGION_ITEM_ROLES.has(role)) return true;
+  const parent = e.parentElement;
+  if (!parent) return false;
+  const mine = new Set(Array.from(e.classList));
+  for (const sib of Array.from(parent.children)) {
+    if (sib === e || tagOf(sib) !== tagOf(e)) continue;
+    const theirs = Array.from(sib.classList);
+    if ((mine.size === 0 && theirs.length === 0) || theirs.some((c) => mine.has(c))) return true;
+  }
+  return false;
+}
+
+/** Descendants of `el`, including those in open shadow roots (its own and nested), up to `limit` + 1. */
+function descendantsWithShadow(el: Element, limit: number): Element[] {
+  const out: Element[] = [];
+  const visit = (root: Element | ShadowRoot) => {
+    for (const e of Array.from(root.querySelectorAll('*'))) {
+      out.push(e);
+      if (out.length > limit) return;
+      if (e.shadowRoot) visit(e.shadowRoot);
+      if (out.length > limit) return;
+    }
+  };
+  if (el.shadowRoot) visit(el.shadowRoot);
+  if (out.length <= limit) visit(el);
+  return out;
+}
+
+/**
+ * The clickable region a click on plain content landed in (D82): going up from `start` while the
+ * page shows a pointer cursor (it is inherited, so the region is where the pointer starts), and
+ * stopping at the first repeated item (a card among alike cards, a list item, a row), so a region
+ * is never a whole list or table. The region must be small and hold no control of its own, also
+ * inside open shadow roots. Null when there is no such region: then the click stays low-confidence.
+ * Needs layout and computed style (a real browser).
+ */
+export function clickableRegion(start: Element): Element | null {
+  const win = start.ownerDocument.defaultView;
+  if (!win) return null;
+  const pointer = (e: Element) => win.getComputedStyle(e).cursor === 'pointer';
+  const isRoot = (e: Element) => ['html', 'body'].includes(tagOf(e));
+  if (isRoot(start) || !pointer(start)) return null;
+  let top = start;
+  let up = isRepeatedItem(start) ? null : composedParent(start);
+  for (let i = 0; up && !isRoot(up) && pointer(up); i++) {
+    if (i >= MAX_REGION_LEVELS) return null; // the pointer area goes on above what we look at
+    top = up;
+    if (isRepeatedItem(up)) {
+      up = null; // an item of a list or a card among cards: the region ends here
+      break;
+    }
+    up = composedParent(up);
+  }
+  if (up && isRoot(up) && pointer(up)) return null; // the whole page shows a pointer
+  const box = top.getBoundingClientRect();
+  if (box.width <= 0 || box.height <= 0 || box.width * box.height > MAX_REGION_SHARE * win.innerWidth * win.innerHeight) return null;
+  const inside = descendantsWithShadow(top, MAX_REGION_NODES);
+  if (inside.length > MAX_REGION_NODES) return null;
+  for (const e of inside) if (isInteractive(e) || tagOf(e) === 'label') return null;
+  return top;
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** An svg at most this big on both sides is an icon (D62). */
 const MAX_ICON_PX = 48;

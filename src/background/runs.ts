@@ -97,8 +97,13 @@ async function endRun(tabId: number): Promise<void> {
  * stored spokenToken keeps it to once per step, even across service worker restarts (D41).
  */
 async function voiceSync(tabId: number): Promise<void> {
+  // A step on an element is read once some frame found it, not while its page or frame is still
+  // loading (#32). Note and navigate steps are read at once. The board is read before the queue
+  // (mutateRun) and is only a gate: a later winner report calls voiceSync again.
+  const board = await getBoard(tabId);
   const { run, out } = await mutateRun(tabId, (r) => {
     if (!r || r.status !== 'running' || r.spokenToken === r.stepToken) return false;
+    if (currentStep(r)?.target && !(board && board.stepToken === r.stepToken && board.winner)) return false;
     r.spokenToken = r.stepToken;
     return true;
   });
@@ -241,14 +246,18 @@ export const runHandlers: Handlers = {
     const frameId = ctx.frameId;
     const changed = await enqueue(async () => {
       const run = await getRun(tabId);
-      if (!run || run.status !== 'running' || run.stepToken !== r.stepToken) return false;
+      if (!run || run.status !== 'running' || run.stepToken !== r.stepToken) return null;
       const before = await getBoard(tabId);
       const prev = before && before.stepToken === r.stepToken ? { winner: before.winner, gave: before.topGaveUp } : null;
       const board = recordReport(before, { ...r, frameId });
       await chrome.storage.session.set({ [boardKey(tabId)]: board });
-      return !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp;
+      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner };
     });
-    if (changed) await broadcast(tabId);
+    if (!changed) return { ok: true };
+    if (changed.changed) await broadcast(tabId);
+    // Found: read the step now (D83). Idempotent (spokenToken), so a report after a service worker
+    // restart that interrupted the first read still gets it read.
+    if (changed.found) await voiceSync(tabId);
     return { ok: true };
   },
   'run.problem': async ({ stepId }, ctx: HandlerContext) => {
