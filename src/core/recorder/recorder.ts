@@ -36,7 +36,7 @@ export interface RecorderOptions {
 }
 
 export const PENDING_LINK_MS = 1000;
-/** A press and a click on its ancestor are one click only when released this close to the press (D54). */
+/** A press and a click on its ancestor are one click only when released this close to the press (D61). */
 export const PRESS_SLOP_PX = 4;
 export const SUBMIT_MERGE_MS = 1500;
 
@@ -157,7 +157,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!t) return;
     // Pressed on a control that opened something over itself (MUI's select opens on mousedown
     // behind a full-page backdrop): the mouseup lands on the backdrop, so the click goes to the
-    // common ancestor of the two. That ancestor is on the pressed control's path (D54).
+    // common ancestor of the two. That ancestor is on the pressed control's path (D61).
     const pressed = pending;
     const m = e as MouseEvent;
     const atPress = !!pressed && pressed.x !== undefined && pressed.y !== undefined && Math.hypot(m.clientX - pressed.x, m.clientY - pressed.y) <= PRESS_SLOP_PX; // not a drag-off cancel
@@ -174,7 +174,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const p = pending;
     pending = null;
     // A click on an ancestor of the pressed node (it was re-rendered) is linked only when released
-    // where it was pressed: dragging off a button cancels the click (review of D54).
+    // where it was pressed: dragging off a button cancels the click (review of D61).
     const releasedAtPress = !p || p.x === undefined || p.y === undefined || Math.hypot((e as MouseEvent).clientX - p.x, (e as MouseEvent).clientY - p.y) <= PRESS_SLOP_PX;
     const linked = p && now() - p.time <= PENDING_LINK_MS && (p.el === el || path.includes(p.el) || (p.path.includes(el) && releasedAtPress));
     if (p && linked) fp = p.fp;
