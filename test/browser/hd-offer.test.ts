@@ -81,6 +81,13 @@ afterEach(() => {
 const card = () => root.querySelector<HTMLElement>('[data-testid="hd-offer"]');
 const btn = (id: string) => root.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)!;
 const settle = () => new Promise((r) => setTimeout(r, 30));
+/** Waits for a button to be on screen (the card reads its gate asynchronously; under load 30 ms isn't always enough). */
+async function find(id: string): Promise<HTMLButtonElement> {
+  await vi.waitFor(() => {
+    if (!btn(id)) throw new Error(`${id} not shown yet`);
+  });
+  return btn(id);
+}
 
 async function mount(props: Partial<Parameters<typeof HdOffer>[0]> = {}) {
   render(h(HdOffer, { about: 'tutorials', contentLang: 'en', ...props }), root);
@@ -158,7 +165,7 @@ describe('answering', () => {
   it('Not now is remembered and closes the card; nothing is requested or downloaded', async () => {
     const onClosed = vi.fn();
     await mount({ onClosed });
-    await userEvent.click(btn('hd-offer-later'));
+    await userEvent.click(await find('hd-offer-later'));
     await settle();
     expect(stored[HD_OFFER_KEY]).toBe('later');
     expect(card()).toBeNull();
@@ -169,7 +176,7 @@ describe('answering', () => {
 
   it('Download asks for the two download hosts from the click, starts the shared download and follows it', async () => {
     await mount();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     expect(chrome.permissions.request).toHaveBeenCalledWith({ origins: [...HD_HOST_PATTERNS] });
     expect(sent.find((m) => m.type === 'hd.enable')?.payload).toEqual({ added: [...HD_HOST_PATTERNS] });
@@ -183,14 +190,14 @@ describe('answering', () => {
     await settle();
     expect(card()!.dataset.state).toBe('ready');
     expect(root.querySelector('[data-testid="hd-offer-status"]')!.textContent).toBe('The HD voice is on. The next step uses it.');
-    await userEvent.click(btn('hd-offer-close'));
+    await userEvent.click(await find('hd-offer-close'));
     expect(card()).toBeNull();
   });
 
   it('a refused host request keeps the question and says why; nothing is remembered', async () => {
     granted = false;
     await mount();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     expect(sent.some((m) => m.type === 'hd.enable')).toBe(false);
     expect(stored[HD_OFFER_KEY]).toBeUndefined();
@@ -200,9 +207,9 @@ describe('answering', () => {
 
   it('Cancel the download removes it and closes the card', async () => {
     await mount();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
-    await userEvent.click(btn('hd-offer-cancel'));
+    await userEvent.click(await find('hd-offer-cancel'));
     await settle();
     expect(sent.some((m) => m.type === 'hd.remove')).toBe(true);
     expect(card()).toBeNull();
@@ -210,7 +217,7 @@ describe('answering', () => {
 
   it('Listen to a sample stops the step being read, then plays the bundled file; it never downloads', async () => {
     await mount();
-    await userEvent.click(btn('hd-offer-sample'));
+    await userEvent.click(await find('hd-offer-sample'));
     await settle();
     expect(sent.map((m) => m.type)).toContain('voice.stop');
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
@@ -220,7 +227,7 @@ describe('answering', () => {
     expect(chrome.permissions.request).not.toHaveBeenCalled();
     expect(sent.some((m) => m.type === 'hd.enable')).toBe(false);
     // Pressing it again stops the sample.
-    await userEvent.click(btn('hd-offer-sample'));
+    await userEvent.click(await find('hd-offer-sample'));
     expect(btn('hd-offer-sample').getAttribute('aria-pressed')).toBe('false');
   });
 });
@@ -230,7 +237,7 @@ describe('review fixes', () => {
     await mount();
     const region = root.querySelector('[role="status"]');
     expect(region).not.toBeNull();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(root.querySelector('[role="status"]')).toBe(region);
@@ -241,7 +248,7 @@ describe('review fixes', () => {
 
   it('a failed download reads as one plain sentence, whatever the service worker says', async () => {
     await mount();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     hd = { ...HD_OFF, state: 'error', message: 'The download stopped. Try again.' };
     setStored({ hdStatus: hd });
@@ -252,7 +259,7 @@ describe('review fixes', () => {
   it('the sample stops speech the page’s own way (the Practice page: tutorial speech only), never voice.stop', async () => {
     const stopSpeech = vi.fn(async () => undefined);
     await mount({ stopSpeech });
-    await userEvent.click(btn('hd-offer-sample'));
+    await userEvent.click(await find('hd-offer-sample'));
     await settle();
     expect(stopSpeech).toHaveBeenCalledTimes(1);
     expect(sent.some((m) => m.type === 'voice.stop')).toBe(false);
@@ -260,7 +267,7 @@ describe('review fixes', () => {
 
   it('the sample stops when the next step starts, so the step is never talked over', async () => {
     await mount({ stepKey: 1 });
-    await userEvent.click(btn('hd-offer-sample'));
+    await userEvent.click(await find('hd-offer-sample'));
     await settle();
     expect(btn('hd-offer-sample').getAttribute('aria-pressed')).toBe('true');
     vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
@@ -272,7 +279,7 @@ describe('review fixes', () => {
   it('a download that fails to start after the hosts were granted says so and keeps the question', async () => {
     enableFails = true;
     await mount();
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     expect(card()!.dataset.state).toBe('offer');
     expect(root.querySelector('[data-testid="hd-offer-message"]')!.textContent).toContain('could not start');
@@ -282,12 +289,12 @@ describe('review fixes', () => {
   it('Close calls onClosed, so the page can put focus back', async () => {
     const onClosed = vi.fn();
     await mount({ onClosed });
-    await userEvent.click(btn('hd-offer-download'));
+    await userEvent.click(await find('hd-offer-download'));
     await settle();
     hd = { ...HD_OFF, state: 'ready', loaded: HD_TOTAL_BYTES };
     setStored({ hdStatus: hd });
     await settle();
-    await userEvent.click(btn('hd-offer-close'));
+    await userEvent.click(await find('hd-offer-close'));
     expect(onClosed).toHaveBeenCalledTimes(1);
   });
 

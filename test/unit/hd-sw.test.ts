@@ -203,7 +203,7 @@ describe('built-in tutorials on the HD voice (D142)', () => {
     local.hdStatus = ready;
     const { tutorialHandlers } = await import('../../src/background/tutorials');
     expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: true });
-    expect(speaks()).toMatchObject([{ text: expect.stringMatching(/^Welcome to the practice page\./), next: expect.stringMatching(/^Click New invoice\./) }]);
+    expect(speaks()).toMatchObject([{ text: expect.stringMatching(/^Welcome to the tutorial page\./), next: expect.stringMatching(/^Click New invoice\./) }]);
     expect(ttsSpeak).not.toHaveBeenCalled();
   });
 
@@ -219,7 +219,7 @@ describe('built-in tutorials on the HD voice (D142)', () => {
     offscreenReply = async (m) => (m.type === 'hd.speak' ? { ok: false, error: 'wasm failed' } : { ok: true });
     const { tutorialHandlers } = await import('../../src/background/tutorials');
     expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: true });
-    expect(ttsSpeak.mock.calls[0]![0]).toMatch(/^Welcome to the practice page\./);
+    expect(ttsSpeak.mock.calls[0]![0]).toMatch(/^Welcome to the tutorial page\./);
   });
 
   it('never while muted, and never with "Read each step aloud" off unless asked', async () => {

@@ -36,7 +36,7 @@ test('Practice page: the offer shows as the tutorial starts, which plays at once
   await expect(offer).toBeVisible();
   await expect(offer).toContainText('Tutorials sound much better with the HD voice.');
   await expect(offer).toContainText('about 170 MB');
-  await expect.poll(ttsLog).toContainEqual(expect.stringMatching(/^Welcome to the practice page\./));
+  await expect.poll(ttsLog).toContainEqual(expect.stringMatching(/^Welcome to the tutorial page\./));
   // The offer doesn't take focus from the guide.
   expect(await practice.evaluate(() => document.activeElement?.closest('[data-testid="hd-offer"]') ?? null)).toBeNull();
 
