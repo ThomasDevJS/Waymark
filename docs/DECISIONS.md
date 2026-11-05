@@ -746,6 +746,16 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - e2e: each frame sends exactly one report per step, across an 8 s run where every frame finishes. It failed before (2 for some frames).
   - The D45 e2e (Open start page) still passes.
 
+### D88. The editor never gets wider than the panel; the "Saved" note goes once you edit
+*5 Nov 2026 · SPEC: UI sections (side panel editor); issue #52*
+
+- **Finding**: buttons default to `white-space: nowrap`, and each step's title sits in a button (the expand toggle). A long title, even an ordinary sentence, did not wrap. The step, the editor card and the panel's main column are grids with an `auto` column, which grows to the widest unbreakable content, so one long title widened every field in the editor past the window (300 px too wide at a 300 px panel; 1300 px with one long word). The "Saved “…” with N steps" note from the recording also stayed after edits, describing a copy that was no longer current.
+- **Change**:
+  - The step toggle wraps (`white-space: normal`, `overflow-wrap: anywhere`, so a URL or email breaks too).
+  - Safeguards: the panel's `main`, `.card`, the step list, each step and its body use one `minmax(0, 1fr)` column, and form controls get `max-width: 100%`, so any future unbreakable content wraps or scrolls inside its own box instead of widening the panel.
+  - The note is cleared as soon as the editor has unsaved edits, and stays cleared after saving (the editor's own status says what was saved).
+- **Tests**: `test/e2e/m2-recorder.spec.ts` (10-action scenario) edits a step after the recording, checks the note is gone, then at 300 px fills a long sentence and a 200-character word and checks the panel does not scroll sideways. Each assertion fails on the old code.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

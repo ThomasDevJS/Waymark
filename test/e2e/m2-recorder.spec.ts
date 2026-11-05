@@ -90,6 +90,23 @@ test('10-action scenario yields exactly the expected steps, recorded from the si
   expect(guide.steps.map((s) => `${s.kind}: ${s.title}`)).toEqual(expected);
   expect(guide.appOrigins).toEqual([site.main]);
   expect(guide.steps[1]!.url).toEqual({ kind: 'pattern', value: '/app/orders' });
+
+  // Editing makes the "Saved … with 10 steps" note stale: it goes away (D88).
+  await panel.bringToFront();
+  await panel.getByTestId('step-0-toggle').click();
+  await panel.getByTestId('step-0-title').fill('Edited title');
+  await expect(panel.getByTestId('saved')).toHaveCount(0);
+  await panel.getByTestId('save-guide').click();
+  await expect(panel.getByTestId('saved')).toHaveCount(0);
+
+  // A narrow panel never scrolls sideways, even with a long unbroken title (D88).
+  await panel.setViewportSize({ width: 300, height: 700 });
+  const overflow = () => panel.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await panel.getByTestId('step-0-title').fill('Click **Open the applicant record for the person you want to review today**');
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await panel.getByTestId('step-0-title').fill('x'.repeat(200));
+  await panel.getByTestId('guide-title-edit').fill('y'.repeat(200));
+  expect(await overflow()).toBeLessThanOrEqual(0);
 });
 
 test('no typed value is ever stored', async ({ context, ext, site }) => {
