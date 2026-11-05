@@ -132,6 +132,13 @@ export function createApp(options = {}, doc = document) {
   const search = h('search', { cls: 'searchbox' }, [
     h('input', { type: 'search', cls: 'searchinput', placeholder: 'Search orders', 'data-fx': 'search' }),
   ]);
+  // Enter adds the typed task and clears the field, like TodoMVC: no change event, no blur.
+  const quickAdd = h('input', { type: 'text', cls: 'quickadd', 'aria-label': 'New task', placeholder: 'Add a task', 'data-fx': 'quick-add' });
+  quickAdd.addEventListener('keydown', (e) => {
+    const input = /** @type {HTMLInputElement} */ (e.target);
+    if (/** @type {KeyboardEvent} */ (e).key === 'Enter' && input.value) input.value = '';
+  });
+  search.append(quickAdd);
 
   // ---------- profile form ----------
   const field = (/** @type {string} */ id, /** @type {string} */ text, /** @type {HTMLElement} */ control) =>
@@ -289,7 +296,44 @@ export function createApp(options = {}, doc = document) {
     h('a', { href: '/terms', cls: 'footlink', 'data-fx': 'ft-terms', text: T('Terms') }),
   ]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs]), table, cards, drafts].map(maybeWrap));
+  // A select that opens on mousedown behind a full-page backdrop (MUI): the mouseup lands on the
+  // backdrop, so the click goes to the common ancestor, <body>, not to the combobox.
+  const priority = h('div', { role: 'combobox', tabindex: '0', 'aria-expanded': 'false', 'aria-label': 'Priority', cls: 'combo prio', 'data-fx': 'dd-priority', text: T('Normal') });
+  priority.addEventListener('mousedown', () => {
+    const backdrop = doc.createElement('div');
+    backdrop.className = 'backdrop';
+    backdrop.setAttribute('style', 'position:fixed;inset:0;z-index:50;background:transparent');
+    backdrop.addEventListener('click', () => {
+      backdrop.remove();
+      priority.setAttribute('aria-expanded', 'false');
+    });
+    doc.body.append(backdrop);
+    priority.setAttribute('aria-expanded', 'true');
+  });
+  // An icon "button" that is a span with an id and a title around an <svg> (demoqa): a click
+  // lands on the <path>, which has nothing to find it by.
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const icon = doc.createElementNS(svgNs, 'svg');
+  icon.setAttribute('viewBox', '0 0 16 16');
+  icon.setAttribute('width', '16');
+  icon.setAttribute('height', '16');
+  const iconPath = doc.createElementNS(svgNs, 'path');
+  iconPath.setAttribute('d', 'M0 0h16v16H0z');
+  icon.append(iconPath);
+  const printIcon = h('span', { id: 'print-record', title: T('Print'), cls: 'iconspan', 'data-fx': 'icon-print' }, [icon]);
+  // A chart whose nodes are the click targets (not an icon): a click stays on the node.
+  const chartSvg = doc.createElementNS(svgNs, 'svg');
+  chartSvg.setAttribute('width', '240');
+  chartSvg.setAttribute('height', '90');
+  const node = doc.createElementNS(svgNs, 'g');
+  node.setAttribute('id', 'node-users');
+  const nodeBox = doc.createElementNS(svgNs, 'rect');
+  for (const [k, v] of [['x', '10'], ['y', '10'], ['width', '80'], ['height', '40']]) nodeBox.setAttribute(k, v);
+  node.append(nodeBox);
+  chartSvg.append(node);
+  const chart = h('div', { id: 'org-chart', cls: 'chart' }, [chartSvg]);
+
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 
