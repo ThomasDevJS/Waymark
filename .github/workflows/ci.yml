@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 
-# Fast checks and the end-to-end shards run in parallel (D51). The Playwright browser is cached
+# Fast checks and the end-to-end shards run in parallel (D52). The Playwright browser is cached
 # per Playwright version; the pnpm store is cached by setup-node.
 jobs:
   check:

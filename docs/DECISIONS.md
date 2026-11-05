@@ -366,7 +366,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Fix**: one shared `ExtensionHelper.message()` in `test/e2e/fixtures.ts` polls the page until it is the extension page and `document.readyState` is `complete`. No retries, skips or longer timeouts.
 - **After**: under load 99/99 (3 runs). CI keeps `retries: 1`. Its logs show no test marked flaky in the runs checked.
 
-### D51. CI: fast checks and two e2e shards in parallel; cached Playwright browser
+### D52. CI: fast checks and two e2e shards in parallel; cached Playwright browser
 - **Spec**: Tech stack, testing; Distribution (CI artifact).
 - **Before**: one job, about 4.5 minutes on a good day: setup and install 15 s, checks and builds 30 s, browser install 18 s (6 minutes once, when apt was slow), unit and browser tests 20 s, e2e 3.5 minutes.
 - **Change**:

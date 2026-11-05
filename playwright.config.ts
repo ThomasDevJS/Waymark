@@ -6,7 +6,7 @@ export default defineConfig({
   testDir: 'test/e2e',
   timeout: 60_000,
   workers: 1,
-  // Test-level sharding in CI (D51). One worker, so tests still run one at a time, in file order.
+  // Test-level sharding in CI (D52). One worker, so tests still run one at a time, in file order.
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
