@@ -695,6 +695,23 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - **Repeated asking**: each document is asked at most once a second (`checked` times on the board), and the 500 ms timer is cleared.
 - **Matcher**: unchanged. A real tie between two live frames still draws nothing.
 
+### D85. The on-page ? menu works with the production closed shadow root; tests can use it too
+*5 Nov 2026 · SPEC: Discovery and hints (launcher); Player and overlay ("Overlay", closed shadow root); issue #42*
+
+- **Finding** (Thomas, store-like build): the ? menu listed his guide, but a click closed the menu and nothing started.
+  - The menu closes on a press "outside" it, using a document `pointerdown` listener that checked `composedPath()` for the menu.
+  - In production the overlay's shadow root is closed, so from the document a press on a menu item only shows the overlay host. The press counted as outside, the menu closed on `pointerdown`, and the click never landed.
+  - Test builds use an open root, which hid this from every test.
+- **Change**:
+  - `pressInsideLauncher` counts a press anywhere in Waymark's overlay host as inside.
+  - The launcher never fails silently: an error from `launcher.start` stays in the menu as "Couldn’t start this guide: …" and is written to the debug log.
+- **Tests**:
+  - In test builds, a page URL with `waymark-test-closed` gets the production closed root.
+  - The launcher marks the first item's position (`launcher-item`), because tests cannot look inside a closed root.
+  - An e2e test opens the menu and starts a guide with the closed root. It fails with the old check (the guide never starts).
+  - A browser test pins down that a document listener sees only the host.
+- **Checked**: no other content code relies on seeing inside the overlay's root. Every other outside check uses `isOverlayPath` (the host).
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

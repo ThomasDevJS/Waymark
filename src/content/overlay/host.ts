@@ -44,7 +44,9 @@ export function overlayRoot(): ShadowRoot {
   host.setAttribute('popover', 'manual');
   host.style.cssText =
     'all: initial !important; display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; overflow: visible !important; pointer-events: none !important; z-index: 2147483647 !important;';
-  root = host.attachShadow({ mode: __WAYMARK_TEST__ ? 'open' : 'closed' });
+  // Test builds use an open root so tests can look inside, unless the page's URL asks for the
+  // production closed root (`waymark-test-closed` in the query), as the #42 e2e does.
+  root = host.attachShadow({ mode: __WAYMARK_TEST__ && !/[?&]waymark-test-closed\b/.test(location.search) ? 'open' : 'closed' });
   const style = document.createElement('style');
   style.textContent = THEME_CSS + BASE_CSS;
   const layer = document.createElement('div');
