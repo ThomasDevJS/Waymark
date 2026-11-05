@@ -50,6 +50,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - The ? launcher starts the chosen guide in the installed build. Before, a click closed the menu and nothing started. If a guide can't start, the menu now says why (D85, #45, fixes #42).
 - Each frame reports its search once per step. Before, frames re-sent their result in waves, which filled the debug log (D87, #48, fixes #36).
 - The team library's site, when it is allowed only to download the guide file, no longer runs Waymark or shows as allowed (D80, #23, fixes #21). The library is downloaded once per browser start, not twice (D81, #23, fixes #22).
+- In the editor, a long step title wraps instead of making the side panel scroll sideways, and the "Saved" note goes away once you edit again (D88, #53, fixes #52).
 - Move up / Move down in the editor no longer drop keyboard focus to the page (D131).
 - The tooltip's mute button can be pressed again in the same step to unmute; before, it kept the state from when the step was drawn (D106).
 
