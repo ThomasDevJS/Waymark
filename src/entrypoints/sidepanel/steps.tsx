@@ -26,16 +26,16 @@ export const KIND: Record<Step['kind'], { label: string; icon: IconName }> = {
 export function FlagNotes({ flags, testid }: { flags: Step['flags']; testid?: string }) {
   if (!flags?.length) return null;
   return (
-    <ul class="flag-notes" data-testid={testid}>
+    <div class="flag-notes" data-testid={testid}>
       {flags.map((f) => (
-        <li key={f}>
+        <p key={f}>
           <span class="badge warn">
             <Icon name="warn" />
             {FLAG_HELP[f].label}
           </span>{' '}
           <span class="small muted">{FLAG_HELP[f].help}</span>
-        </li>
+        </p>
       ))}
-    </ul>
+    </div>
   );
 }

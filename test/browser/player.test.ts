@@ -27,6 +27,7 @@ beforeEach(() => {
   advanced = 0;
 });
 afterEach(() => {
+  document.querySelectorAll('.backdrop').forEach((b) => b.remove());
   stop?.();
   stop = null;
   destroyOverlay();
@@ -40,6 +41,39 @@ describe('advance rules', () => {
     expect(advanced).toBe(0);
     await userEvent.click(q('tb-import'));
     expect(advanced).toBe(1);
+  });
+
+  it('click: a select that opens on mousedown behind a backdrop advances (the click goes to <body>)', async () => {
+    watch('click', [q('dd-priority')]);
+    await userEvent.click(q('dd-priority'));
+    expect(document.querySelector('.backdrop')).not.toBeNull();
+    expect(advanced).toBe(1);
+  });
+
+  it('click: pressing the target and dragging off it to cancel does not advance (review)', async () => {
+    watch('click', [q('tb-import')]);
+    await userEvent.dragAndDrop(q('tb-import'), document.querySelector('h1, p, main')!);
+    expect(advanced).toBe(0);
+  });
+
+  it('input: Ctrl, Meta or Alt+Enter is not the end of the step', async () => {
+    watch('input', [q('quick-add')]);
+    await userEvent.click(q('quick-add'));
+    await userEvent.keyboard('x{Control>}{Enter}{/Control}');
+    await userEvent.keyboard('{Alt>}{Enter}{/Alt}');
+    expect(advanced).toBe(0);
+  });
+
+  it('click: pressing elsewhere and releasing on the backdrop does not advance', async () => {
+    watch('click', [q('dd-priority')]);
+    await userEvent.click(q('dd-priority'));
+    document.querySelector('.backdrop')?.remove();
+    stop?.();
+    advanced = 0;
+    watch('click', [q('tb-import')]);
+    await userEvent.click(q('dd-priority')); // opens again; the click goes to <body>
+    expect(advanced).toBe(0);
+    document.querySelector('.backdrop')?.remove();
   });
 
   it("click on any tied candidate for instance 'any'", async () => {
@@ -57,6 +91,23 @@ describe('advance rules', () => {
     await userEvent.type(q('pf-first'), 'x');
     await userEvent.click(q('pf-last'));
     expect(advanced).toBe(1);
+  });
+
+  it('input: Enter in a field the app clears on Enter (TodoMVC); not Enter on an empty field', async () => {
+    watch('input', [q('quick-add')]);
+    await userEvent.click(q('quick-add'));
+    await userEvent.keyboard('{Enter}');
+    expect(advanced).toBe(0);
+    await userEvent.keyboard('Call mom{Enter}');
+    expect((q('quick-add') as HTMLInputElement).value).toBe('');
+    expect(advanced).toBe(1);
+  });
+
+  it('input: Enter in a textarea is a new line, not the end of the step', async () => {
+    watch('input', [q('pf-bio')]);
+    await userEvent.click(q('pf-bio'));
+    await userEvent.keyboard('line{Enter}');
+    expect(advanced).toBe(0);
   });
 
   it('select: change on a native select; click on a custom option', async () => {
