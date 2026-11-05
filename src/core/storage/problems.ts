@@ -37,3 +37,19 @@ export function addCompletion(guideId: string, at: string): Promise<void> {
     await chrome.storage.local.set({ [key]: all });
   });
 }
+
+/**
+ * The last time each guide was finished (D101), for the library's checkmark. Only guide ids and
+ * times leave storage; malformed entries are skipped.
+ */
+export async function lastCompletions(): Promise<Record<string, string>> {
+  const all = (await chrome.storage.local.get('completions')).completions as Record<string, unknown> | undefined;
+  const out: Record<string, string> = {};
+  if (!all || typeof all !== 'object') return out;
+  for (const [id, times] of Object.entries(all)) {
+    if (!Array.isArray(times)) continue;
+    const last = times[times.length - 1];
+    if (typeof last === 'string') out[id] = last;
+  }
+  return out;
+}

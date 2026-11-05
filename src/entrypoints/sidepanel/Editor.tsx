@@ -13,6 +13,9 @@ import type { TestResult } from '../../background/editor';
 import { Markdown } from './Markdown';
 import { Icon } from '../../ui/Icon';
 import { FlagNotes, KIND } from './steps';
+import { parseTags } from '../../core/discovery/tags';
+import { UNDO_MS } from '../../core/storage/trash';
+import { dismissScope, showToast, ToastSlot } from './Toast';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -24,6 +27,8 @@ const suggested = signal<Record<string, string>>({});
 const saving = signal(false);
 /** revisionId of the copy the draft was loaded from; Save is refused if it changed elsewhere. */
 const base = signal<string | null>(null);
+/** The tags field as typed ("a, b"); the draft holds the parsed list. */
+const tagsText = signal('');
 let pickTimer: ReturnType<typeof setTimeout> | undefined;
 
 function endPicking() {
@@ -59,6 +64,47 @@ function move(index: number, by: number) {
   });
 }
 
+/** A copy of a step right after it, with a new id (D100). */
+export function duplicateStepIn(steps: Step[], index: number): Step[] {
+  const s = steps[index];
+  if (!s) return steps;
+  const copy = steps.slice();
+  copy.splice(index + 1, 0, { ...structuredClone(s), id: newId() });
+  return copy;
+}
+
+/** Puts a deleted step back where it was (or at the end, if the list got shorter). */
+export function restoreStepIn(steps: Step[], step: Step, index: number): Step[] {
+  if (steps.some((x) => x.id === step.id)) return steps;
+  const copy = steps.slice();
+  copy.splice(Math.min(index, copy.length), 0, step);
+  return copy;
+}
+
+/** Deletes a step from the draft; the toast's Undo puts it back until the draft is saved or closed. */
+function deleteStep(index: number) {
+  const g = draft.value;
+  const step = g?.steps[index];
+  if (!g || !step) return;
+  const guideId = g.id;
+  setSteps((steps) => steps.filter((x) => x.id !== step.id));
+  showToast({
+    scope: 'editor',
+    text: `Deleted step ${index + 1}.`,
+    until: Date.now() + UNDO_MS,
+    focus: true,
+    testid: 'step-undo-toast',
+    fallbackFocus: () => document.getElementById('steps-heading'),
+    action: {
+      label: 'Undo',
+      run: () => {
+        if (draft.value?.id !== guideId) return;
+        setSteps((steps) => restoreStepIn(steps, step, index));
+      },
+    },
+  });
+}
+
 function insertNote(after: number) {
   setSteps((steps) => {
     const ref = steps[after] ?? steps[steps.length - 1];
@@ -89,7 +135,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       const g = await send('guide.get', { id: guideId });
       draft.value = g;
       base.value = g.revisionId;
+      tagsText.value = g.tags.join(', ');
     });
+    // A step's Undo belongs to this draft: it goes when the editor closes.
+    return () => dismissScope('editor');
   }, [guideId]);
 
   // Re-pick results arrive through session storage (the panel is a trusted context).
@@ -172,6 +221,22 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           }}
         />
       </label>
+      <label class="field">
+        <span class="label">
+          Tags <span class="hint">· separated by commas; the library filters by them</span>
+        </span>
+        <input
+          data-testid="guide-tags"
+          value={tagsText.value}
+          disabled={readOnly}
+          placeholder="e.g. billing, onboarding"
+          onInput={(e) => {
+            tagsText.value = (e.target as HTMLInputElement).value;
+            draft.value = { ...draft.value!, tags: parseTags(tagsText.value) };
+            dirty.value = true;
+          }}
+        />
+      </label>
       <div class="row">
         <span class="badge">Version {g.version}</span>
         <span class="badge">
@@ -181,7 +246,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {dirty.value && <span class="badge warn">Unsaved changes</span>}
       </div>
       {readOnly && <p class="small muted">Team guides are read-only. Use Duplicate in the list to edit your own copy.</p>}
-      <h3 class="section-label">
+      <h3 class="section-label" id="steps-heading" tabIndex={-1}>
         <Icon name="steps" />
         Steps
       </h3>
@@ -217,7 +282,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   aria-label={`Delete step ${i + 1}`}
                   title="Delete step"
                   disabled={readOnly}
-                  onClick={() => setSteps((steps) => steps.filter((x) => x.id !== s.id))}
+                  onClick={() => deleteStep(i)}
                 >
                   <Icon name="trash" />
                 </button>
@@ -329,6 +394,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   <Icon name="plus" />
                   Note after
                 </button>
+                <button type="button" class="ghost sm" data-testid={`step-${i}-duplicate`} aria-label={`Duplicate step ${i + 1}`} disabled={readOnly} onClick={() => setSteps((steps) => duplicateStepIn(steps, i))}>
+                  <Icon name="duplicate" />
+                  Duplicate
+                </button>
               </div>
               {isPicking && (
                 <p class="banner" role="status">
@@ -359,6 +428,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         </button>
       </div>
       <div class="editor-bar">
+        <ToastSlot scope="editor" />
         {error.value && (
           <p class="alert" role="alert">
             <Icon name="error" />

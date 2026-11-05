@@ -14,6 +14,8 @@ import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
+import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
+import { showToast, ToastSlot, toast } from './Toast';
 
 /** The guide index (D49): the list, search and "For this page" never need full guides. */
 const all = signal<GuideIndexEntry[]>([]);
@@ -26,14 +28,63 @@ const pending = signal<string[]>([]);
 const unticked = signal<Set<string>>(new Set());
 const message = signal<string | null>(null);
 const error = signal<string | null>(null);
+/** Guide id → when the learner last finished it (D101). */
+const completed = signal<Record<string, string>>({});
+/** Selected tag chips (D102): a guide must carry all of them. */
+const tagFilter = signal<string[]>([]);
+/** The guide whose "More" actions are open. */
+const moreOpen = signal<string | null>(null);
+/** "Start from step" choice per guide (0-based). */
+const startFrom = signal<Record<string, number>>({});
 
 async function load() {
   try {
     all.value = (await send('guide.list', {})).guides;
     pending.value = (await send('allow.pending', {})).origins;
+    completed.value = (await send('completions.list', {})).completed;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
+}
+
+/** A panel opened during the undo window shows the Undo toast again (D100). */
+async function resumeUndo() {
+  const items = (await send('trash.list', {}).catch(() => ({ items: [] }))).items;
+  const last = items[items.length - 1];
+  if (last && !toast.value) undoToast(last.id, last.title, last.undoUntil, false);
+}
+
+function undoToast(id: string, title: string, until: number, focus: boolean) {
+  showToast({
+    scope: 'library',
+    text: `Deleted “${title}”.`,
+    until,
+    focus,
+    testid: 'guide-undo-toast',
+    fallbackFocus: () => document.getElementById('all-label') ?? document.getElementById('for-page-label'),
+    action: {
+      label: 'Undo',
+      run: async () => {
+        const r = await attempt(() => send('guide.restore', { id }));
+        if (r && !r.ok) error.value = r.error ?? 'Could not undo.';
+        if (r?.ok) message.value = `Restored “${title}”.`;
+        await load();
+      },
+    },
+  });
+}
+
+/** Deletes at once; the guide waits in the trash for Undo (D100). */
+async function deleteGuide(g: Pick<GuideIndexEntry, 'id' | 'title'>) {
+  const r = await attempt(() => send('guide.delete', { id: g.id }));
+  if (!r) return;
+  const next = new Set(selected.value);
+  next.delete(g.id);
+  selected.value = next;
+  moreOpen.value = null;
+  message.value = null;
+  await load();
+  if (r.undoUntil) undoToast(g.id, g.title, r.undoUntil, true);
 }
 
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -109,20 +160,26 @@ export function deepLinkFor(g: Pick<Guide, 'id' | 'startUrl'>): string | null {
   return u.href;
 }
 
-export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string) => void }) {
+export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string, stepIndex?: number) => void }) {
   useEffect(() => {
-    void load();
+    void load().then(resumeUndo);
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes)) void load();
+      if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes || 'completions' in changes)) void load();
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
   const index = useMemo(() => buildSearch(all.value), [all.value]);
+  const chips = useMemo(() => tagChips(all.value), [all.value]);
+  // A chip whose last guide went away stops filtering.
+  const activeTags = tagFilter.value.filter((t) => chips.some((c) => c.tag.toLocaleLowerCase() === t.toLocaleLowerCase()));
   const ids = searchGuides(index, all.value, query.value);
   const byId = new Map(all.value.map((g) => [g.id, g]));
-  const results = ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g);
+  const results = withTags(
+    ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g),
+    activeTags,
+  );
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
 
@@ -142,61 +199,139 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     );
   };
 
-  const item = (g: GuideIndexEntry) => (
-    <li key={g.id} class="guide-item" data-testid={`guide-${g.id}`}>
-      <input
-        type="checkbox"
-        aria-label={`Select ${g.title} for export`}
-        checked={selected.value.has(g.id)}
-        onChange={(e) => {
-          const next = new Set(selected.value);
-          if ((e.target as HTMLInputElement).checked) next.add(g.id);
-          else next.delete(g.id);
-          selected.value = next;
-        }}
-      />
-      <div class="guide-main">
-        <span class="guide-title">{g.title}</span>
-        <span class="guide-meta">
-          {g.steps} {g.steps === 1 ? 'step' : 'steps'}
-          {g.source === 'library' && <span class="badge accent">Team</span>}
-        </span>
-      </div>
-      <div class="guide-actions">
-        <button type="button" class="ghost icon sm" data-testid={`link-${g.id}`} aria-label={`Copy link to ${g.title}`} title="Copy link: opening it offers this guide" onClick={() => copyLink(g)}>
-          <Icon name="link" />
-        </button>
-        {g.source === 'library' ? (
-          <button
-            type="button"
-            class="ghost icon sm"
-            data-testid={`duplicate-${g.id}`}
-            aria-label={`Duplicate ${g.title} to edit it`}
-            title="Duplicate to edit"
-            onClick={() => void attempt(async () => onEdit((await send('guide.duplicate', { id: g.id })).id))}
-          >
-            <Icon name="copy" />
-          </button>
-        ) : (
-          <button type="button" class="ghost icon sm" data-testid={`edit-${g.id}`} aria-label={`Edit ${g.title}`} title="Edit" onClick={() => onEdit(g.id)}>
-            <Icon name="edit" />
-          </button>
+  const item = (g: GuideIndexEntry) => {
+    const done = completed.value[g.id];
+    const open = moreOpen.value === g.id;
+    const from = startFrom.value[g.id] ?? 0;
+    const moreId = `more-${g.id}`;
+    return (
+      <li key={g.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`guide-${g.id}`}>
+        <div class="guide-row">
+          <input
+            type="checkbox"
+            aria-label={`Select ${g.title} for export`}
+            checked={selected.value.has(g.id)}
+            onChange={(e) => {
+              const next = new Set(selected.value);
+              if ((e.target as HTMLInputElement).checked) next.add(g.id);
+              else next.delete(g.id);
+              selected.value = next;
+            }}
+          />
+          <div class="guide-main">
+            <span class="guide-title">{g.title}</span>
+            <span class="guide-meta">
+              <span class="count">
+                {g.steps} {g.steps === 1 ? 'step' : 'steps'}
+              </span>
+              {done && (
+                <span class="badge success" data-testid={`completed-${g.id}`} title={`Finished ${new Date(done).toLocaleString()}`}>
+                  <Icon name="check" />
+                  Completed
+                </span>
+              )}
+              {g.source === 'library' && <span class="badge accent">Team</span>}
+            </span>
+          </div>
+          <div class="guide-actions">
+            <button type="button" class="ghost icon sm" data-testid={`link-${g.id}`} aria-label={`Copy link to ${g.title}`} title="Copy link: opening it offers this guide" onClick={() => copyLink(g)}>
+              <Icon name="link" />
+            </button>
+            {g.source === 'library' ? (
+              <button
+                type="button"
+                class="ghost icon sm"
+                data-testid={`duplicate-${g.id}`}
+                aria-label={`Duplicate ${g.title} to edit it`}
+                title="Duplicate to edit"
+                onClick={() => void attempt(async () => onEdit((await send('guide.duplicate', { id: g.id })).id))}
+              >
+                <Icon name="copy" />
+              </button>
+            ) : (
+              <button type="button" class="ghost icon sm" data-testid={`edit-${g.id}`} aria-label={`Edit ${g.title}`} title="Edit" onClick={() => onEdit(g.id)}>
+                <Icon name="edit" />
+              </button>
+            )}
+            <button
+              type="button"
+              class="ghost icon sm"
+              data-testid={`more-${g.id}`}
+              aria-label={`More actions for ${g.title}`}
+              title="More"
+              aria-expanded={open}
+              aria-controls={open ? moreId : undefined}
+              onClick={() => (moreOpen.value = open ? null : g.id)}
+            >
+              <Icon name="more" />
+            </button>
+            <button
+              type="button"
+              class="sm start"
+              data-testid={`start-${g.id}`}
+              disabled={tabId === null}
+              aria-label={`${done ? 'Restart' : 'Start'} ${g.title}`}
+              title={tabId === null ? 'Allow Waymark on this site to play guides' : undefined}
+              onClick={() => onStart(g.id)}
+            >
+              <Icon name={done ? 'restart' : 'play'} />
+              {done ? 'Restart' : 'Start'}
+            </button>
+          </div>
+        </div>
+        {open && (
+          <div class="guide-more" id={moreId} data-testid={`more-panel-${g.id}`}>
+            {g.steps > 1 && (
+              <div class="row nowrap">
+                <label class="inline-field grow">
+                  <span class="label">Start from</span>
+                  <select
+                    data-testid={`start-from-${g.id}`}
+                    value={String(from)}
+                    onChange={(e) => (startFrom.value = { ...startFrom.value, [g.id]: Number((e.target as HTMLSelectElement).value) })}
+                  >
+                    {stepChoices(g).map((c) => (
+                      <option key={c.index} value={String(c.index)}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" class="sm primary" data-testid={`start-step-${g.id}`} disabled={tabId === null} onClick={() => onStart(g.id, from)}>
+                  <Icon name="play" />
+                  Start from step {from + 1}
+                </button>
+              </div>
+            )}
+            <div class="toolbar">
+              {g.source === 'local' && (
+                <button
+                  type="button"
+                  class="sm"
+                  data-testid={`duplicate-guide-${g.id}`}
+                  onClick={() =>
+                    void attempt(async () => {
+                      const copy = await send('guide.duplicate', { id: g.id });
+                      moreOpen.value = null;
+                      message.value = `Made a copy: “${copy.title}”.`;
+                      await load();
+                    })
+                  }
+                >
+                  <Icon name="duplicate" />
+                  Duplicate
+                </button>
+              )}
+              <button type="button" class="sm danger" data-testid={`delete-${g.id}`} onClick={() => void deleteGuide(g)}>
+                <Icon name="trash" />
+                Delete
+              </button>
+            </div>
+          </div>
         )}
-        <button
-          type="button"
-          class="sm start"
-          data-testid={`start-${g.id}`}
-          disabled={tabId === null}
-          aria-label={`Start ${g.title}`}
-          title={tabId === null ? 'Allow Waymark on this site to play guides' : undefined}
-          onClick={() => onStart(g.id)}
-        >
-          <Icon name="play" />
-          Start
-        </button>
-      </div>
-    </li>
-  );
+      </li>
+    );
+  };
 
   const imp = importState.value;
   return (
@@ -304,6 +439,35 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           />
         </div>
       )}
+      {chips.length > 0 && (
+        <div class="chips" role="group" aria-label="Filter by tag" data-testid="tag-chips">
+          <Icon name="tag" />
+          {chips.map((c) => {
+            const on = activeTags.some((t) => t.toLocaleLowerCase() === c.tag.toLocaleLowerCase());
+            return (
+              <button
+                type="button"
+                key={c.tag}
+                class={`chip${on ? ' on' : ''}`}
+                aria-pressed={on}
+                data-testid={`tag-${c.tag}`}
+                onClick={() => (tagFilter.value = on ? activeTags.filter((t) => t.toLocaleLowerCase() !== c.tag.toLocaleLowerCase()) : [...activeTags, c.tag])}
+              >
+                {on && <Icon name="check" />}
+                {c.tag}
+                <span class="chip-count" aria-label={`${c.count} ${c.count === 1 ? 'guide' : 'guides'}`}>
+                  {c.count}
+                </span>
+              </button>
+            );
+          })}
+          {activeTags.length > 0 && (
+            <button type="button" class="ghost sm" data-testid="clear-tags" onClick={() => (tagFilter.value = [])}>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
       {forPage.length > 0 && (
         <section class="stack-sm" aria-labelledby="for-page-label">
           <h2 class="section-label" id="for-page-label">
@@ -326,11 +490,11 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             <ul class="guide-list" data-testid="all-guides">
               {others.map(item)}
             </ul>
-          ) : query.value ? (
-            <div class="empty">
+          ) : query.value || activeTags.length ? (
+            <div class="empty" data-testid="no-match">
               <Icon name="search" />
-              <strong>No guides match “{query.value}”</strong>
-              <span class="small">Search looks in titles, tags and step titles.</span>
+              <strong>{query.value ? `No guides match “${query.value}”` : 'No guides have all these tags'}</strong>
+              <span class="small">{activeTags.length ? `Filtered by ${activeTags.join(', ')}. ` : ''}Search looks in titles, tags and step titles.</span>
             </div>
           ) : !all.value.length ? (
             <div class="empty">
@@ -375,15 +539,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             class="danger push"
             data-testid="delete-selected"
             onClick={() => {
-              const id = [...selected.value][0]!;
-              const g = byId.get(id);
-              if (g && confirm(`Delete “${g.title}”? This cannot be undone.`)) {
-                void attempt(async () => {
-                  await send('guide.delete', { id });
-                  selected.value = new Set();
-                  await load();
-                });
-              }
+              const g = byId.get([...selected.value][0]!);
+              if (g) void deleteGuide(g);
             }}
           >
             <Icon name="trash" />
@@ -403,6 +560,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           {error.value}
         </p>
       )}
+      <ToastSlot scope="library" />
     </>
   );
 }

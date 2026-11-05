@@ -699,3 +699,30 @@ Only the look and the accessibility semantics change; every handler, advance rul
   - Test step on the page no longer flashes matcher internals ("Matched: roleName…"). It says "Found." or "Found, but fragile." and points to the side panel. "Not found" no longer repeats itself, and it says what to do.
   - Plurals ("1 step"); "Pack address" instead of "Library URL"; the same "…then press Start." and the same read-only sentence everywhere; no "Score" for authors; "Add note at end" next to "Note after". The Export hint is visible text, because a tooltip on a disabled button is unreachable.
   - Left as is, because e2e asserts them: "could not find that again" (pick banner), "Not recorded…" (pill) and the straight apostrophe in "Open a page of this guide's site…".
+
+### D100. Undo for deleted guides and steps
+*5 Nov 2026 · SPEC: Side panel; User flows (Edit); Data model ("Storage")*
+
+- **Guides**: Delete (the row's More menu, or Delete with one guide selected) removes the guide at once, without the old `confirm()` dialog, and a toast offers **Undo** for 8 seconds. In the same queued write the service worker copies the guide to `guides:trash` in `storage.local` (at most 20 entries; an entry is ignored and dropped once the undo window plus 2 s of slack is over). So nothing is lost when the panel closes: a panel opened during the window shows the toast again (`trash.list`, titles only), and Undo (`guide.restore`) works from it. Restore refuses after the window, and never overwrites a guide with the same id that came back meanwhile (an import or a library refresh). The trash is in `storage.local`, which content scripts cannot read (TRUSTED_CONTEXTS).
+- **Steps**: deleting a step in the editor shows the same toast in the editor's sticky bar; Undo puts the step back at its place in the draft. It is a draft change like any other, so closing the editor discards it with the rest of the unsaved edits; the stored guide still has the step until Save. The step toast goes when the editor closes.
+- **Toast**: one at a time, a polite live region that stays mounted. Focus moves to Undo, because the control that was pressed has gone; when the toast disappears with focus on it, focus goes to the list or Steps heading. Dismiss (×) is a separate button.
+- **Messages**: `guide.restore`, `trash.list` (extension pages only). `guide.delete` now answers `{ ok, undoUntil }`.
+
+### D101. Completed guides, Restart, and Start from step N
+*5 Nov 2026 · SPEC: User flows (Play, step 7: "completion is saved locally"); Side panel*
+
+- **Checkmark**: the library shows a green **Completed** badge on guides the learner has finished (the `completions` list the player already stores; `completions.list` sends only guide ids and the last time). A finished guide's Start button reads **Restart** (same action: start from step 1).
+- **Restart** in the "playing" card starts the run again from step 1 (it goes through `run.start`, so a learner on another page is offered the start page). When the run has finished, the card's Stop reads Close.
+- **Start from step N**: the row's More menu has a step picker (titles from the guide index, D49, so no full guide is read) and "Start from step N". `run.start` takes an optional `stepIndex` (0–499). The learner must be on that step's page: only the start page can be opened for them (D33, D36), so otherwise the panel says "Step N is on a page like `/x`. Open that page, then press Start."
+
+### D102. Tag filter chips, and tags in the editor
+*5 Nov 2026 · SPEC: Discovery ("Side panel": search over title, description, tags and step titles); Data model (`tags`)*
+
+- **Chips**: under the search box, one toggle chip per tag (`aria-pressed`), with its guide count, sorted by count, at most 30. Tags are compared case-insensitively. A guide must carry every selected tag, and the chips combine with the search. Clear resets them. A chip whose last guide went away stops filtering.
+- **Editor**: guides had `tags` in the data model and in packs, but no way to set them. The editor gets a Tags field (comma-separated; trimmed, de-duplicated, at most 50 of 100 characters, the schema's limits). Tags are already in the export review, so a pack never carries a tag the author didn't see.
+
+### D103. Duplicate guide and duplicate step
+*5 Nov 2026 · SPEC: Side panel; User flows (Edit)*
+
+- **Guide**: Duplicate was offered for team guides only. Local guides get it in the row's More menu: the same `guide.duplicate` (a new id and revision, "(copy)" in the title, `forkedFrom` set, version 1). The copy is not opened in the editor; the panel says "Made a copy: …".
+- **Step**: each step in the editor has Duplicate, which inserts a deep copy with a new step id right after it. The target is the same element, so the author usually edits the title or re-picks.

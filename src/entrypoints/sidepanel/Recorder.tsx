@@ -17,7 +17,7 @@ const noteOpen = signal(false);
 const error = signal<string | null>(null);
 const run = signal<RunView | null>(null);
 const editing = signal<string | null>(null);
-const needsStart = signal<{ guideId: string; startUrl: string; reachable: boolean; pattern: string } | null>(null);
+const needsStart = signal<{ guideId: string; startUrl: string; reachable: boolean; pattern: string; stepIndex?: number } | null>(null);
 
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   try {
@@ -34,10 +34,10 @@ async function refresh(tabId?: number | null) {
   if (tabId !== undefined && tabId !== null) run.value = (await attempt(() => send('run.state', { tabId }))) ?? null;
 }
 
-async function startGuide(tabId: number, guideId: string, openStart = false) {
-  const res = await attempt(() => send('run.start', { tabId, guideId, openStart }));
+async function startGuide(tabId: number, guideId: string, openStart = false, stepIndex?: number) {
+  const res = await attempt(() => send('run.start', { tabId, guideId, openStart, ...(stepIndex ? { stepIndex } : {}) }));
   if (!res) return;
-  if (res.status === 'needs-start') needsStart.value = { guideId, startUrl: res.startUrl, reachable: res.reachable, pattern: res.pattern };
+  if (res.status === 'needs-start') needsStart.value = { guideId, startUrl: res.startUrl, reachable: res.reachable, pattern: res.pattern, ...(res.stepIndex ? { stepIndex: res.stepIndex } : {}) };
   else {
     needsStart.value = null;
     await refresh(tabId);
@@ -129,10 +129,18 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
                 </span>
                 <strong class="truncate">{rv.guideTitle}</strong>
               </div>
-              <button type="button" data-testid="stop-run" onClick={() => tabId !== null && void attempt(async () => (await send('run.stop', { tabId }), await refresh(tabId)))}>
-                <Icon name="stop" />
-                Stop
-              </button>
+              <div class="row nowrap">
+                {rv.guideId && rv.status !== 'paused' && (
+                  <button type="button" class="ghost" data-testid="restart-run" aria-label={`Restart ${rv.guideTitle ?? 'the guide'} from step 1`} onClick={() => tabId !== null && void startGuide(tabId, rv.guideId!)}>
+                    <Icon name="restart" />
+                    Restart
+                  </button>
+                )}
+                <button type="button" data-testid="stop-run" onClick={() => tabId !== null && void attempt(async () => (await send('run.stop', { tabId }), await refresh(tabId)))}>
+                  <Icon name="stop" />
+                  {rv.status === 'finished' ? 'Close' : 'Stop'}
+                </button>
+              </div>
             </div>
             {rv.status === 'running' && rv.total > 0 && (
               <div class="meter" role="progressbar" aria-label="Guide progress" aria-valuemin={1} aria-valuemax={rv.total} aria-valuenow={rv.stepIndex + 1}>
@@ -153,7 +161,8 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
               </div>
             ) : (
               <span class="grow" data-testid="start-hint">
-                This guide starts on a page like <code>{needsStart.value.pattern}</code>. Open that page, then press Start.
+                {needsStart.value.stepIndex ? `Step ${needsStart.value.stepIndex + 1} is on a page like ` : 'This guide starts on a page like '}
+                <code>{needsStart.value.pattern}</code>. Open that page, then press Start.
               </span>
             )}
           </div>
@@ -183,7 +192,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           {errorBox}
         </section>
         <section class="card" aria-label="Guides">
-          <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id) => tabId !== null && void startGuide(tabId, id)} />
+          <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id, stepIndex) => tabId !== null && void startGuide(tabId, id, false, stepIndex)} />
         </section>
       </>
     );

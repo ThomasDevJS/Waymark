@@ -552,3 +552,85 @@ kbd {
   border-radius: 4px;
   padding: 0 4px;
 }
+
+/* ---------- chips (D102): toggle buttons that filter a list ---------- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.chips > svg.wm-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--wm-fg-muted);
+}
+button.chip {
+  min-height: 28px;
+  padding: 2px 10px;
+  gap: 4px;
+  border-radius: var(--wm-radius-pill);
+  font-size: var(--wm-text-xs);
+  background: var(--wm-surface);
+  color: var(--wm-fg);
+}
+button.chip svg.wm-icon {
+  width: 12px;
+  height: 12px;
+}
+button.chip.on {
+  background: var(--wm-accent-soft);
+  border-color: var(--wm-accent);
+  color: var(--wm-accent-text);
+}
+button.chip.on:hover:not(:disabled) {
+  background: var(--wm-accent-soft);
+}
+.chip-count {
+  color: var(--wm-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+button.chip.on .chip-count {
+  color: inherit;
+}
+
+/* ---------- toast (D100): a short message with an Undo action ---------- */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  padding: var(--wm-space-2) var(--wm-space-2) var(--wm-space-2) var(--wm-space-3);
+  border-radius: var(--wm-radius-md);
+  border: 1px solid var(--wm-border);
+  background: var(--wm-surface);
+  color: var(--wm-fg);
+  box-shadow: var(--wm-shadow-2);
+  font-size: var(--wm-text-sm);
+}
+.toast > svg.wm-icon {
+  color: var(--wm-fg-muted);
+  flex: none;
+}
+.toast > .grow {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: wm-toast-in var(--wm-fast) var(--wm-ease);
+  }
+}
+@keyframes wm-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (forced-colors: active) {
+  button.chip.on {
+    border-width: 2px;
+  }
+  .toast {
+    border-color: CanvasText;
+  }
+}
