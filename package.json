@@ -23,7 +23,8 @@
     "test:e2e:xvfb": "pnpm build:test && xvfb-run -a playwright test",
     "test:real": "bash scripts/test-real.sh",
     "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm build:test && pnpm check:manifest && pnpm test",
-    "demo": "node demo/serve.mjs"
+    "demo": "node demo/serve.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",

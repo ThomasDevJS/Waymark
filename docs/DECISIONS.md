@@ -509,7 +509,11 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - builds the production zip and publishes a GitHub Release titled "Waymark X.Y.Z" with the zip and its SHA-256 file. A version like `0.4.0-rc.1` is marked as a pre-release. Re-running the job for an existing release replaces its files and notes.
 - **Permissions**: the workflow has none by default (`permissions: {}`); only the release job gets `contents: write`, through the default `GITHUB_TOKEN`. No other token or secret.
 - **Cost**: one job of about 2 minutes per release. Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54).
-- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically): bump the version, add its `## [X.Y.Z]` section to `CHANGELOG.md`, merge to `main`, then `git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`.
+- **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
+- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
+  1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
+  2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
+  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
 
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
