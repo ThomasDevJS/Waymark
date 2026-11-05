@@ -712,6 +712,21 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - A browser test pins down that a document listener sees only the host.
 - **Checked**: no other content code relies on seeing inside the overlay's root. Every other outside check uses `isOverlayPath` (the host).
 
+### D86. Tests see the overlay's event paths the way the store build does
+*5 Nov 2026 · SPEC: Player and overlay ("Overlay": closed shadow root); issue #46, follow-up to D85*
+
+- **Finding**: the store build attaches the overlay's shadow root **closed**, and test builds attach it **open**, so tests can query inside it. The only behavior that differs between the two is `composedPath()` as seen by a listener outside the root. With a closed root it stops at the host; with an open root it includes the overlay's elements. #42 lived in that gap.
+- **Change**:
+  - `eventPath(e)` (`src/content/overlay/host.ts`) returns the path a listener outside the overlay sees in the store build. With an open root, it drops the root and the nodes inside it. Listeners attached inside the overlay keep the full path.
+  - All content code reads paths through `eventPath()`. An ESLint rule bans `composedPath()` in `src/content/**`; the one read is in `host.ts`.
+  - So every e2e test now runs the production behavior while still being able to look inside the overlay. Proof: with the #42 check restored, the ordinary open-root launcher e2e fails too.
+  - The closed-root e2e from D85 (`waymark-test-closed`) stays as a canary for the real thing.
+- **Why not make every test build closed**: Playwright cannot query inside a closed root. About 30 e2e checks would have to click by coordinates, and they would test the same thing `eventPath` now guarantees.
+- **Also checked**:
+  - `event.target` retargeting and `document.activeElement` are the same for open and closed roots.
+  - Code holds its own reference to the root and never reads `host.shadowRoot`, which is null when closed.
+  - Recorder and advance (`src/core`) call `composedPath()` themselves. They first return for any path through the host (`isOwnEvent`/`isOverlayPath`), so the overlay's insides never reach their logic.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

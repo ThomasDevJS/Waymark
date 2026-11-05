@@ -12,7 +12,7 @@ import { waitForMatch, STRONG } from '../core/matcher';
 import { NO_RUN } from '../core/player/run';
 import { roleWord, stepTitle } from '../core/text/templates';
 import type { TestResult } from '../background/editor';
-import { isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot } from './overlay/host';
+import { eventPath, isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot } from './overlay/host';
 import { PlayerUI, openModalDialog } from './player/ui';
 import { testMark } from './test-hooks';
 
@@ -51,8 +51,8 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   };
 
   const onMove = (e: Event) => {
-    if (isOverlayPath(e.composedPath())) return;
-    const t = resolveTargetFromPath(e.composedPath());
+    if (isOverlayPath(eventPath(e))) return;
+    const t = resolveTargetFromPath(eventPath(e));
     if (!t || !box) return;
     const r = pickFor(t).element.getBoundingClientRect();
     Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, display: 'block' });
@@ -60,10 +60,10 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
 
   // The click that picks must not reach the app (it would run the app's action).
   const block = (e: Event) => {
-    if (isOverlayPath(e.composedPath())) return;
+    if (isOverlayPath(eventPath(e))) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (e.type === 'click' && e.isTrusted) choose(e.composedPath());
+    if (e.type === 'click' && e.isTrusted) choose(eventPath(e));
   };
 
   const onKey = (e: KeyboardEvent) => {
