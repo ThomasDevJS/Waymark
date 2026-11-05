@@ -289,3 +289,52 @@ describe('skips keep the merge rules (issue #6 review)', () => {
     input.remove();
   });
 });
+
+describe('clickable regions (D82, #32)', () => {
+  const setup = () => {
+    rec?.stop();
+    rec = createRecorder({ emit: (op) => ops.push(op) });
+  };
+  const card = (attrs: Record<string, string>, ...kids: (Node | string)[]) => {
+    const d = document.createElement('div');
+    for (const [k, v] of Object.entries(attrs)) d.setAttribute(k, v);
+    d.style.cssText = 'cursor:pointer;width:140px;height:60px;display:inline-block';
+    d.append(...kids);
+    return d;
+  };
+  const title = (text: string) => Object.assign(document.createElement('div'), { textContent: text });
+
+  it('records a card with an id and a pointer cursor, named by the text clicked, not flagged', async () => {
+    setup();
+    const t = title('Unsafe Driving');
+    const c = card({ id: 'unsafe_driving-toggle' }, t, title('3'));
+    document.body.append(c);
+    await userEvent.click(t);
+    await settle();
+    expect(titles()).toEqual(['click: Click **Unsafe Driving**']);
+    expect(steps()[0]!.target?.id).toBe('unsafe_driving-toggle');
+    expect(steps()[0]!.flags ?? []).not.toContain('low-confidence');
+    c.remove();
+  });
+
+  it('keeps the old behavior when the card has nothing to find it by, holds a real control, or is huge', async () => {
+    setup();
+    const t1 = title('No id here');
+    const c1 = card({}, t1);
+    const t2 = title('Has a button');
+    const c2 = card({ id: 'with-button' }, t2, Object.assign(document.createElement('button'), { textContent: 'Go' }));
+    const t3 = title('Whole page');
+    const c3 = card({ id: 'huge' }, t3);
+    c3.style.cssText = 'cursor:pointer;width:100vw;height:100vh;display:block';
+    document.body.append(c1, c2, c3);
+    for (const t of [t1, t2, t3]) await userEvent.click(t);
+    await settle();
+    const s = steps();
+    expect(s.map((x) => x.target?.tag)).toEqual(['div', 'div', 'div']);
+    expect(s.map((x) => x.target?.id ?? null)).toEqual([null, null, null]);
+    expect(s.every((x) => x.flags?.includes('low-confidence'))).toBe(true);
+    c1.remove();
+    c2.remove();
+    c3.remove();
+  });
+});

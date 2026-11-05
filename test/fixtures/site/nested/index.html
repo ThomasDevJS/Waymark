@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Nested frames app</title>
+<style>body{margin:0;font:14px system-ui} nav{display:flex;gap:16px;padding:12px;background:#234} nav a{color:#fff} iframe{border:0;width:100%;height:900px;display:block}</style></head>
+<body>
+  <!-- Mirrors a dashboard whose top nav loads screens into a frame, with frames nested 3 deep (#32). -->
+  <nav class="navbar" role="navigation"><ul style="display:flex;gap:16px;list-style:none;margin:0;padding:0">
+    <li id="app_sub1"><a class="nav-link" href="#" data-screen="home.html">Home</a></li>
+    <li id="app_sub7"><a class="nav-link border-left" href="#" data-screen="csa.html">Safety</a></li>
+  </ul></nav>
+  <iframe id="action_frame" src="home.html"></iframe>
+  <script>
+    for (const a of document.querySelectorAll('[data-screen]')) a.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('action_frame').src = a.dataset.screen; });
+    document.documentElement.setAttribute('data-waymark-test-loaded', 'yes');
+  </script>
+</body>
+</html>

@@ -108,7 +108,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 | You see | It means | What to do |
 | --- | --- | --- |
 | "**Not recorded**" in the REC pill | You clicked something Waymark could never find again: no name, text, label or id (for example a long sentence, or a widget with no label). No step was added. | Click the real button, link or field instead, or **Add note** for that part. |
-| ⚠ **Hard to find** on a step | You clicked something that isn't a button, link or field (often plain text). It is harder to find again. | Delete the step if it wasn't needed, or **Re-pick element** to choose the real control. |
+| ⚠ **Hard to find** on a step | You clicked something that isn't a button, link or field (often plain text). It is harder to find again. (A clickable card that the page marks with an id is recorded as the card, without this warning.) | Delete the step if it wasn't needed, or **Re-pick element** to choose the real control. |
 | ⚠ **Drawing area** | The click was on a drawing area (chart, map). There is nothing inside it to point at. | Replace the step with a note step. |
 | ⚠ **Closed component** | The click was inside a closed web component that Waymark can't see into. It recorded the outer box. | **Test step**. If it is wrong, use a note step. |
 | "**Found, but fragile**" after **Test step** | It was found, but only one strong clue matched. A small app change may break it. | **Re-pick element**. If you own the app, add a `data-guide-id` attribute to that element. |

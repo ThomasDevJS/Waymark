@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Activity</title>
+<style>
+  body{margin:0;font:14px system-ui;padding:12px}
+  .cards{display:flex;gap:12px}
+  .card{border:1px solid #ccc;border-radius:6px;width:130px;cursor:pointer}
+  .card.active{border-color:#06c}
+  .card-body{padding:4px;text-align:center}
+  .title{color:#06c;font-weight:600}
+  .detail{display:none;margin-top:16px}
+  .detail.open{display:block}
+</style></head>
+<body>
+  <p id="loading">Loading…</p>
+  <div id="root"></div>
+  <script>
+    // Renders late (the "page did not load yet" part of #32), then wires the cards like a
+    // Bootstrap/jQuery app: the click handler is on the card <div>, not on a button or link.
+    const cats = [['unsafe_driving', 'Unsafe Driving'], ['crash', 'Crash Indicator'], ['vehicle_maint', 'Vehicle Maint.']];
+    const count = sessionStorage.getItem('count') ?? '3';
+    const delay = Number(new URLSearchParams(location.search).get('delay') ?? 1500);
+    function el(tag, attrs, ...kids) { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); e.append(...kids); return e; }
+    function render(activeId) {
+      const root = document.getElementById('root');
+      const cards = el('div', { class: 'cards' });
+      for (const [id, name] of cats) {
+        const card = el('div', { class: 'card basic-cat-info-card' + (id === activeId ? ' active' : ''), id: id + '-basic-cat-info-toggle' },
+          el('div', { class: 'card-body p-1 text-center' }, el('div', { class: 'title text-primary' }, name), el('div', { class: 'count' }, count)));
+        card.addEventListener('click', () => render(id));
+        cards.append(card);
+      }
+      const details = el('div', {});
+      for (const [id, name] of cats) {
+        // One detail panel per category, all rendered, hidden unless active: a same-text look-alike.
+        const d = el('div', { class: 'detail' + (id === activeId ? ' open' : ''), 'data-cat': id },
+          el('div', { class: 'title text-primary' }, name),
+          el('div', { class: 'btn-group', role: 'group', 'aria-label': 'Recent Violations Timeframe' },
+            ...['6 Months', '12 Months', '24 Months'].map((t) => { const b = el('button', { class: 'btn' }, t); b.addEventListener('click', () => b.classList.add('on')); return b; })));
+        details.append(d);
+      }
+      root.replaceChildren(cards, details);
+    }
+    setTimeout(() => { document.getElementById('loading').remove(); render(null); document.documentElement.setAttribute('data-waymark-test-activity', 'ready'); }, delay);
+  </script>
+</body>
+</html>

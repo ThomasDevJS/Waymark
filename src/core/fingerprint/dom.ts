@@ -237,6 +237,42 @@ export function resolveTargetFromPath(path: EventTarget[]): ResolvedTarget | nul
   return { element: first, lowConfidence: true };
 }
 
+/** A clickable region (D82) covers at most this share of the viewport. */
+export const MAX_REGION_SHARE = 0.25;
+/** ...and is found within this many levels above the clicked node. */
+const MAX_REGION_LEVELS = 6;
+/** Regions with more descendants than this are layout, not a control. */
+const MAX_REGION_NODES = 200;
+
+/**
+ * The clickable region a click on plain content landed in (D82): the outermost element above
+ * `start` that the page shows with a pointer cursor, when that region is small (a card, a tile,
+ * a row) and holds no real control of its own. Cursor is inherited, so the region is where the
+ * pointer starts. Null when there is no such region: then the click stays low-confidence.
+ * Needs layout and computed style (a real browser).
+ */
+export function clickableRegion(start: Element): Element | null {
+  const win = start.ownerDocument.defaultView;
+  if (!win) return null;
+  const pointer = (e: Element) => win.getComputedStyle(e).cursor === 'pointer';
+  const isRoot = (e: Element) => ['html', 'body'].includes(tagOf(e));
+  if (isRoot(start) || !pointer(start)) return null;
+  let top = start;
+  let up = composedParent(start);
+  for (let i = 0; up && !isRoot(up) && pointer(up); i++) {
+    if (i >= MAX_REGION_LEVELS) return null; // the pointer area goes on above what we look at
+    top = up;
+    up = composedParent(up);
+  }
+  if (up && isRoot(up) && pointer(up)) return null; // the whole page shows a pointer
+  const box = top.getBoundingClientRect();
+  if (box.width <= 0 || box.height <= 0 || box.width * box.height > MAX_REGION_SHARE * win.innerWidth * win.innerHeight) return null;
+  const inside = top.querySelectorAll('*');
+  if (inside.length > MAX_REGION_NODES) return null;
+  for (const e of Array.from(inside)) if (isInteractive(e) || tagOf(e) === 'label') return null;
+  return top;
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** An svg at most this big on both sides is an icon (D62). */
 const MAX_ICON_PX = 48;

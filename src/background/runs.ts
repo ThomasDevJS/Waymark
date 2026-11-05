@@ -97,8 +97,13 @@ async function endRun(tabId: number): Promise<void> {
  * stored spokenToken keeps it to once per step, even across service worker restarts (D41).
  */
 async function voiceSync(tabId: number): Promise<void> {
+  // A step on an element is read once some frame found it, not while its page or frame is still
+  // loading (#32). Note and navigate steps are read at once. The board is read before the queue
+  // (mutateRun) and is only a gate: a later winner report calls voiceSync again.
+  const board = await getBoard(tabId);
   const { run, out } = await mutateRun(tabId, (r) => {
     if (!r || r.status !== 'running' || r.spokenToken === r.stepToken) return false;
+    if (currentStep(r)?.target && !(board && board.stepToken === r.stepToken && board.winner)) return false;
     r.spokenToken = r.stepToken;
     return true;
   });
@@ -248,7 +253,10 @@ export const runHandlers: Handlers = {
       await chrome.storage.session.set({ [boardKey(tabId)]: board });
       return !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp;
     });
-    if (changed) await broadcast(tabId);
+    if (changed) {
+      await broadcast(tabId);
+      await voiceSync(tabId); // the step's element was just found: read it now (#32)
+    }
     return { ok: true };
   },
   'run.problem': async ({ stepId }, ctx: HandlerContext) => {

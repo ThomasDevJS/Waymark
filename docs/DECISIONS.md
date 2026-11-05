@@ -642,6 +642,30 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Finding** (issue #22): `onStartup` and `onInstalled` fetched the library immediately, and also set an alarm that fetched it again a minute later. Subscribing did the same.
 - **Change**: at browser start and install, the alarm (delay 1 minute) does the only fetch. After a fetch caused by subscribing, the next alarm waits a full period (`scheduleLibrary({ fetchedNow: true })`).
 
+## 2026-11-05 — Clickable cards and voice timing (issue #32)
+
+### D82. A click on plain content inside a clickable card records the card
+- **Spec**: Recorder, "Capture rules" (non-interactive clicks are low-confidence) and D24 ("revisit with pilot data").
+- **Finding** (issue #32, a real dashboard): a category card is a `<div>` with a click handler and a pointer cursor. A click on its title was recorded on the title, flagged ⚠ low-confidence. At playback only a click on that exact title counted, so a click on the card's count or padding did not advance.
+- **Change** (`clickableRegion` in `src/core/fingerprint/dom.ts`, used by the recorder and Re-pick):
+  - **When:** a click on content that is not a control.
+  - **What is promoted:** the outermost element above it that shows a pointer cursor. The cursor is inherited, so that is where the pointer starts.
+  - **Conditions for promotion:**
+    - within 6 levels;
+    - not `html`/`body`, and the page itself does not show a pointer;
+    - at most 25% of the viewport;
+    - no control or `<label>` inside, and at most 200 descendants;
+    - no control around it;
+    - a strong signal **other than its text** (id, test id, role + name, name, link). A card's text spans titles and live counts, so it is not used to decide.
+  - **Result:** the step targets the card, without the low-confidence flag, and is titled by the text clicked ("Click **Unsafe Driving**", not "… 3"). A click anywhere on the card advances.
+  - Otherwise nothing changes: the content stays the target, low-confidence (and D47 still drops it when it has no strong signal).
+- **Matcher**: unchanged. The card is found by its id, and a count that changes between recording and playback does not break the step (e2e).
+
+### D83. A step on an element is read aloud once it is found
+- **Spec**: Voiceover, "read each step once".
+- **Finding** (issue #32): after a click loaded a slow, nested frame, the next step was read while the frame was still loading, before anything was highlighted.
+- **Change**: `voiceSync` reads a step that has a target only when the frame board has a winner for it. A winner report (`run.match`) calls it again. Note and navigate steps are read at once, as before. A step that is never found is not read; the not-found card shows instead.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

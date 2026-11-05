@@ -4,7 +4,7 @@
  */
 import { send } from '../core/messaging/client';
 import type { ContentPush } from '../core/messaging/protocol';
-import { buildFingerprint, resolveTargetFromPath } from '../core/fingerprint';
+import { buildFingerprint, clickableRegion, ownText, resolveTargetFromPath } from '../core/fingerprint';
 import { hasStrongSignal } from '../core/matcher/signals';
 import { waitForMatch, STRONG } from '../core/matcher';
 import { NO_RUN } from '../core/player/run';
@@ -70,14 +70,25 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
       send('pick.abort', {}).catch(() => undefined);
       return;
     }
-    const fp = buildFingerprint(t.element, { framePath: framePath() });
+    let el = t.element;
+    let hint: string | undefined;
+    // Plain content inside a clickable card: pick the card when it can be found again (D82).
+    const region = t.lowConfidence ? clickableRegion(t.element) : null;
+    if (region) {
+      const rfp = buildFingerprint(region, { framePath: framePath() });
+      if (hasStrongSignal({ ...rfp, text: undefined })) {
+        hint = ownText(t.element);
+        el = region;
+      }
+    }
+    const fp = buildFingerprint(el, { framePath: framePath() });
     if (!hasStrongSignal(fp)) {
       // It could never be found again (issue #6): keep picking and say why.
       if (banner) banner.textContent = PICK_REJECTED;
       testMark('pick-rejected', fp.tag);
       return;
     }
-    const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? fp.itemLabel ?? roleWord(fp.role);
+    const name = hint ?? fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? fp.itemLabel ?? roleWord(fp.role);
     send('pick.result', { target: fp, title: stepTitle('click', { name }) }).catch(() => undefined);
     testMark('picked', fp.text ?? fp.accessibleName ?? fp.tag);
     stopPick();

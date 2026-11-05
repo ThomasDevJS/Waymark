@@ -10,7 +10,7 @@ import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
 import { buildFingerprint } from '../fingerprint/build';
 import { hasStrongSignal } from '../matcher/signals';
-import { composedParent, isInteractive, resolveTargetFromPath, tagOf } from '../fingerprint/dom';
+import { clickableRegion, composedParent, isInteractive, ownText, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
 import { safeLabel } from '../fingerprint/filters';
 import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
 import { stepUrlRule } from '../url/url';
@@ -49,6 +49,8 @@ interface Pending {
   /** Pointer position of the press (pending only). */
   x?: number;
   y?: number;
+  /** Name for the step title when the target is a clickable region (D82): the text clicked. */
+  name?: string;
 }
 
 interface LastStep {
@@ -95,6 +97,23 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   const nameFor = (el: Element, fp: ElementFingerprint) =>
     fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? safeLabel(el.getAttribute('title')) ?? fp.itemLabel ?? roleWord(fp.role);
 
+  /**
+   * The click target, where a click on plain content inside a clickable region (a card <div> with
+   * a click handler and a pointer cursor) records the region when it has something to find it by
+   * again (D82). Otherwise the content itself, low-confidence, as before.
+   */
+  const resolveTarget = (path: EventTarget[]): (ResolvedTarget & { fp?: ElementFingerprint; name?: string }) | null => {
+    const t = resolveTargetFromPath(path);
+    if (!t || !t.lowConfidence) return t;
+    const region = clickableRegion(t.element);
+    if (!region || hasInteractiveAncestor(region)) return t;
+    const fp = fpOf(region);
+    // Its own text spans the whole card (titles, counts, live data): it must be findable without it.
+    if (!hasStrongSignal({ ...fp, text: undefined })) return t;
+    const name = safeLabel(ownText(t.element)) ?? safeLabel(region.textContent?.replace(/\s+/g, ' ').trim() ?? null);
+    return { element: region, lowConfidence: false, fp, ...(name ? { name } : {}) };
+  };
+
   const flagsFor = (el: Element, lowConfidence: boolean): StepFlag[] | undefined => {
     const flags: StepFlag[] = [];
     if (lowConfidence) flags.push('low-confidence');
@@ -138,13 +157,13 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!trusted(e)) return;
     const path = e.composedPath();
     watchRoots(path);
-    const t = resolveTargetFromPath(path);
+    const t = resolveTarget(path);
     if (!t || t.lowConfidence) {
       pending = null;
       return;
     }
     const m = e as PointerEvent;
-    pending = { el: t.element, fp: fpOf(t.element), time: now(), path, x: m.clientX, y: m.clientY };
+    pending = { el: t.element, fp: t.fp ?? fpOf(t.element), time: now(), path, x: m.clientX, y: m.clientY, ...(t.name ? { name: t.name } : {}) };
   };
 
   const hasInteractiveAncestor = (el: Element) => {
@@ -157,7 +176,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if ((e as MouseEvent).detail > 1) return; // a double-click is one click step
     const path = e.composedPath();
     watchRoots(path);
-    let t = resolveTargetFromPath(path);
+    let t: (ResolvedTarget & { fp?: ElementFingerprint; name?: string }) | null = resolveTarget(path);
     if (!t) return;
     // Pressed on a control that opened something over itself (MUI's select opens on mousedown
     // behind a full-page backdrop): the mouseup lands on the backdrop, so the click goes to the
@@ -166,7 +185,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const m = e as MouseEvent;
     const atPress = !!pressed && pressed.x !== undefined && pressed.y !== undefined && Math.hypot(m.clientX - pressed.x, m.clientY - pressed.y) <= PRESS_SLOP_PX; // not a drag-off cancel
     if (t.lowConfidence && pressed && atPress && now() - pressed.time <= PENDING_LINK_MS && pressed.path.includes(t.element) && !path.includes(pressed.el)) {
-      t = { element: pressed.el, lowConfidence: false };
+      t = { element: pressed.el, lowConfidence: false, ...(pressed.name ? { name: pressed.name } : {}) };
     }
     const el = t.element;
     const tag = tagOf(el);
@@ -182,7 +201,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const releasedAtPress = !p || p.x === undefined || p.y === undefined || Math.hypot((e as MouseEvent).clientX - p.x, (e as MouseEvent).clientY - p.y) <= PRESS_SLOP_PX;
     const linked = p && now() - p.time <= PENDING_LINK_MS && (p.el === el || path.includes(p.el) || (p.path.includes(el) && releasedAtPress));
     if (p && linked) fp = p.fp;
-    else fp = fpOf(el);
+    else fp = t.fp ?? fpOf(el);
+    const hint = (p && linked ? p.name : undefined) ?? t.name;
 
     if (isTextField(el) || isNativeSelect(el)) {
       flushFieldClick(el);
@@ -211,7 +231,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       add('select', el, fp, chooseOptionTitle(fp.text ?? fp.accessibleName ?? 'the option'));
       return;
     }
-    add('click', el, fp, stepTitle('click', { name: nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
+    add('click', el, fp, stepTitle('click', { name: hint ?? nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
   };
 
   const onInput = (e: Event) => {
