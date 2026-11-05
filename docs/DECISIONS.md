@@ -558,6 +558,12 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Writing**: the `publish` job, still the only one with `contents: write`, creates the annotated tag through the API and then publishes the release as before. A tag made with the workflow's own token starts no second release run.
 - **Pushed tags** keep working unchanged.
 - **Inputs** are read through environment variables, never pasted into the script, and are validated before use.
+- **Independent review** (no blockers), fixes:
+  - **A failed publish after tagging no longer gets stuck.** A re-run of the run that made the tag may find it, if it points at the same commit. Before, re-running all jobs always failed, and re-running only the failed job worked only while the one-day artifact lasted.
+  - The input checks run before checkout.
+  - Error messages never repeat the input: a newline in it could start a workflow command.
+  - The concurrency group is the tag, so a pushed tag and a manual run for the same version can't publish at once.
+  - Docs say to give the release merge commit: `main`'s latest commit may be docs-only, with no CI run to wait for.
 
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
