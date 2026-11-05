@@ -11,7 +11,8 @@ import { dlog } from './debug';
 import { CircleQuestionMark, MapPin, Play } from 'lucide';
 import { buildSvg } from '../ui/svg';
 
-const CSS = `
+/** The launcher's styles (exported for the motion test, D134). */
+export const LAUNCHER_CSS = `
 .wm-launch { position: fixed; right: 16px; bottom: 16px; width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--wm-surface);
   background: var(--wm-accent); color: var(--wm-accent-fg); display: grid; place-items: center; padding: 0; margin: 0; pointer-events: auto; cursor: pointer;
   box-shadow: var(--wm-shadow-2); box-sizing: border-box; }
@@ -37,13 +38,24 @@ const CSS = `
 .wm-card .wm-primary svg { color: inherit; }
 .wm-text { margin: 0; overflow-wrap: anywhere; }
 .wm-note { font-size: 13px; color: var(--wm-fg-muted); margin: 8px; }
+/* Motion (D130, D134): transform and opacity only, and nothing moves under reduced motion. The
+   button pops in with a small spring, grows a little on hover and squeezes when pressed; the
+   menu and the deep-link offer rise in; rows and buttons press like the panel's (D131). */
+.wm-launch:active, .wm-card button:active { box-shadow: inset 0 1px 2px rgba(16, 24, 40, .18); }
 @media (prefers-reduced-motion: no-preference) {
-  .wm-launch { transition: transform 120ms var(--wm-ease), background-color 120ms; animation: wm-pop 200ms var(--wm-ease); }
+  .wm-launch { transition: transform var(--wm-dur-fast) var(--wm-ease-spring), background-color var(--wm-dur-fast) var(--wm-ease-standard), border-color var(--wm-dur-fast) var(--wm-ease-standard);
+    animation: wm-pop var(--wm-dur-slow) var(--wm-ease-spring); }
   .wm-launch:hover { transform: scale(1.06); }
-  .wm-card { animation: wm-rise 160ms var(--wm-ease); }
+  .wm-launch:active { transform: scale(.92); transition-duration: var(--wm-dur-press); }
+  .wm-card { animation: wm-rise var(--wm-dur-base) var(--wm-ease-enter); }
+  .wm-card button { transition: background-color var(--wm-dur-fast) var(--wm-ease-standard), transform var(--wm-dur-fast) var(--wm-ease-spring); }
+  .wm-card button:active { transform: scale(var(--wm-press-lg)); transition-duration: var(--wm-dur-press); }
+  .wm-row button:active, .wm-card .wm-primary:active { transform: scale(var(--wm-press)); }
+  .wm-launch:focus-visible, .wm-card button:focus-visible { animation: wm-focus-in var(--wm-dur-fast) var(--wm-ease-enter); }
 }
 @keyframes wm-pop { from { opacity: 0; scale: .6; } }
-@keyframes wm-rise { from { opacity: 0; translate: 0 6px; } }
+@keyframes wm-rise { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
+@keyframes wm-focus-in { from { outline-offset: 5px; outline-color: transparent; } }
 @media (forced-colors: active) { .wm-launch, .wm-card { border: 2px solid CanvasText; } }
 `;
 
@@ -110,7 +122,7 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     if (!root.querySelector('style[data-launcher]')) {
       const st = document.createElement('style');
       st.dataset.launcher = '';
-      st.textContent = CSS;
+      st.textContent = LAUNCHER_CSS;
       root.append(st);
     }
   };
