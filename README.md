@@ -61,6 +61,7 @@ pnpm test:browser    # Vitest browser mode in Chromium: matcher, robustness suit
 pnpm test:e2e:xvfb   # Playwright with the built extension, headed under Xvfb
 pnpm check:manifest  # no content_scripts, no host_permissions, no CDN code
 pnpm bench           # performance harness (not part of check)
+pnpm screens         # screenshots of every panel and on-page state, light and dark (D90)
 pnpm test:real       # opt-in: record and replay tasks on public demo apps (network + Xvfb; docs/RELIABILITY.md)
 pnpm fixture         # the fixture app at http://127.0.0.1:4173
 ```
@@ -82,6 +83,7 @@ The workflow then checks and builds the commit and publishes a GitHub Release wi
 src/entrypoints/   background (service worker), sidepanel, options, offscreen, waymark-content (unlisted content script)
 src/background/    service worker handlers: runs, recording, editor, discovery, voice, HD voice
 src/offscreen/     the optional HD voice engine (offscreen document)
+src/ui/            design tokens and shared components (D90)
 src/content/       content script runtime: recorder, player overlay, route watching, frame mapping, lifecycle
 src/core/          fingerprint, matcher, model (Zod), messaging, permissions, storage, sharing, voice, url, text
 test/unit/         Vitest + happy-dom
