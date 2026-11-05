@@ -14,7 +14,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 Waymark isn't in a store yet, so install it in developer mode. It works in Chrome and Edge (version 120 or later); other Chromium browsers are still being checked.
 
 1. **Download the zip:**
-   - **A release (recommended).** Open the repository's **Releases** page and download `waymark-X.Y.Z-chrome.zip` from the latest release. Each release has a `.sha256` file to check the download.
+   - **A release (recommended).** Open the repository's **Releases** page and download `waymark-X.Y.Z-chrome.zip` from the latest release. Each release has a `.sha256` file to check the download. While the repository is private, only people with access to it can see Releases and Actions.
    - **The latest `main` build.** Open **Actions → CI**, pick the newest green run on `main`, and download the `waymark-extension` artifact. Artifacts expire after 14 days.
 2. Unzip it into a folder you'll keep: the browser loads the extension from that folder.
 3. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
@@ -27,11 +27,11 @@ Testers: [docs/TESTING.md](docs/TESTING.md) walks through everything worth tryin
 
 1. Open a web app and click the Waymark toolbar icon. The side panel opens. Click **Allow on this site** to grant that site only.
 2. Name a new guide and press **Record**, then do the task in the app. Each step appears in the panel and in the on-page REC pill. Press **Stop** to save the guide.
-3. Click a step to edit its title or add a note. **Test step** shows what the player will spotlight, and **Re-pick** fixes a wrong element.
+3. Click a step to edit its title or add a note. **Test step** shows what the player will spotlight, and **Re-pick element** fixes a wrong element.
 4. Press **Start** next to a guide to play it. Do each highlighted action, or press **Next** on note steps, to move on. If you're not on the guide's first page, the panel offers **Open start page**.
    - Shortcuts: `Alt+.` next, `Alt+,` back (change them at `chrome://extensions/shortcuts`).
    - `Esc` in the tooltip exits.
-5. To share, use **Export** (with a review of everything in the pack), **Import**, or **Copy link**. Under **Settings** you'll find:
+5. To share, use **Export** (with a review of everything in the pack), **Import pack**, or **Copy link**. Under **Settings** (a button in the side panel) you'll find:
    - the voice per language, speed and auto-play;
    - the optional HD voice;
    - **Allow online voices**: off by default, because those voices send step text to the voice provider;
@@ -70,10 +70,9 @@ The e2e tests that grant site access need a display, because Chrome's permission
 **CI** (`.github/workflows/ci.yml`) runs on pull requests, on pushes to `main` and by hand. It skips docs-only changes, and its single summary check is **CI result** (D54).
 
 **Releases** (`.github/workflows/release.yml`):
-1. Bump `version` in `package.json`.
-2. Add a `## [X.Y.Z]` section to `CHANGELOG.md`.
-3. Merge to `main`.
-4. Push a tag `vX.Y.Z` on that commit.
+1. `pnpm release X.Y.Z` bumps the version in `package.json`, `CHANGELOG.md`, `docs/STATUS.md` and this README.
+2. Run `pnpm check`, open a PR and merge it to `main`.
+3. Push a tag `vX.Y.Z` on the merge commit.
 
 The workflow then checks and builds the commit and publishes a GitHub Release with the zip and the changelog notes (D56).
 
@@ -82,6 +81,7 @@ The workflow then checks and builds the commit and publishes a GitHub Release wi
 ```
 src/entrypoints/   background (service worker), sidepanel, options, offscreen, waymark-content (unlisted content script)
 src/background/    service worker handlers: runs, recording, editor, discovery, voice, HD voice
+src/offscreen/     the optional HD voice engine (offscreen document)
 src/content/       content script runtime: recorder, player overlay, route watching, frame mapping, lifecycle
 src/core/          fingerprint, matcher, model (Zod), messaging, permissions, storage, sharing, voice, url, text
 test/unit/         Vitest + happy-dom
