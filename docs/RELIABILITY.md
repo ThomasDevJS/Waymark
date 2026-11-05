@@ -11,12 +11,12 @@ Variants: **reload** (always), **narrow viewport**, and **different items** (ano
 
 ## Results
 
-Last full run: 2026-11-05, version 0.3.4. "Before" is the same harness on main at 0.2.2.
+Last full run: 2026-11-05, with D64 and D65. "Before" is the same harness on main at 0.2.2.
 
 | Site | Task | Steps | Before | After | Notes |
 | --- | --- | --- | --- | --- | --- |
 | TodoMVC React | add, complete, filter (hash routes), clear | 5 | 0/5 found, stuck on step 1 (×3 variants) | 5/5 (×2); different items 4/5 + 1 correct not-found | D60: the input step advances on Enter. D65: the toggle is "Check **Walk the dog**"; in another list it is not found, never another todo. |
-| TodoMVC Vue | same | 5 | not recordable | 5/5 (×2); different items 4/5 + 1 correct not-found | D65: the nameless toggle is named by its todo. |
+| TodoMVC Vue | same | 5 | not recordable | 5/5 (×2); different items 4/5 + 1 correct not-found | D65: the nameless toggle is named by its todo's label. |
 | TodoMVC Angular | same | 5 | not recordable | same as Vue | D65. |
 | the-internet | log in and out (form submit, full page loads) | 4 | 4/4 | 4/4 (×2) | |
 | the-internet | dynamic controls (late, re-labelled, enabled) | 3 | 3/3 | 3/3 (×2) | |
