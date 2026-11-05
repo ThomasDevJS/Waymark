@@ -161,8 +161,8 @@ test('editing: titles, notes, voice text, reorder, delete, a new note step and o
   await panel.getByTestId('step-0-add-note').click(); // note after step 1
   await panel.getByTestId('step-1-title').fill('Check the file name');
   // reorder: move Export up above the note, then back down (exercises both buttons)
-  await panel.getByTestId('step-2').getByRole('button', { name: 'Move up' }).click();
-  await panel.getByTestId('step-1').getByRole('button', { name: 'Move down' }).click();
+  await panel.getByTestId('step-2-up').click();
+  await panel.getByTestId('step-1-down').click();
   await panel.getByTestId('step-1-optional').check();
   await panel.getByTestId('save-guide').click();
   await expect(panel.getByTestId('editor-status')).toHaveText('Saved (version 2).');

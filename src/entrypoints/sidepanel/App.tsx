@@ -5,6 +5,7 @@ import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { Recorder } from './Recorder';
 import { Library } from './Library';
+import { Icon } from '../../ui/Icon';
 
 const tab = signal<TabInfo | null>(null);
 const error = signal<string | null>(null);
@@ -50,14 +51,18 @@ function LauncherToggle({ origin }: { origin: string }) {
     void send('site.settings.get', { origin }).then((r) => (launcherOn.value = r.launcher));
   }, [origin]);
   return (
-    <label class="row">
+    <label class="check small">
       <input
         type="checkbox"
+        role="switch"
+        class="switch"
         data-testid="launcher-toggle"
         checked={!!launcherOn.value}
         onChange={(e) => void send('site.settings.set', { origin, launcher: (e.target as HTMLInputElement).checked }).then((r) => (launcherOn.value = r.launcher))}
       />
-      Show the ? guide button on this site's pages
+      <span>
+        Show the <strong>?</strong> guide button on this site’s pages
+      </span>
     </label>
   );
 }
@@ -65,8 +70,55 @@ function LauncherToggle({ origin }: { origin: string }) {
 /** Guides stay visible (search, import, Allow) on sites Waymark is not allowed on yet. */
 function LibraryOnly() {
   return (
-    <section class="site" aria-label="Guides">
+    <section class="card" aria-label="Guides">
       <Library tabId={null} tabUrl={null} onEdit={() => undefined} onStart={() => undefined} />
+    </section>
+  );
+}
+
+function SiteCard({ t }: { t: TabInfo | null }) {
+  if (!t || !t.origin) {
+    return (
+      <section class="card site-card" aria-label="Site access">
+        <div class="empty">
+          <Icon name="globe" />
+          <strong>No web app in this tab</strong>
+          <span class="small">Open the web app you want to guide, then click the Waymark icon in the toolbar.</span>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section class="card site-card" aria-label="Site access">
+      <div class="card-head">
+        <div class="site-id">
+          <Icon name="globe" />
+          <span class="origin" data-testid="site-origin">
+            {t.origin}
+          </span>
+        </div>
+        {t.granted ? <span class="badge success">Allowed</span> : <span class="badge">Not allowed</span>}
+      </div>
+      {t.granted ? (
+        <>
+          <div class="row nowrap site-options">
+            <LauncherToggle origin={t.origin} />
+            <button type="button" class="ghost sm danger push" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
+              Remove access
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p class="small muted">Allow Waymark on this site to record and play guides here. It sees only the sites you allow.</p>
+          <div>
+            <button type="button" class="primary" data-testid="allow-site" onClick={() => void allow(t.origin!)}>
+              <Icon name="shield" />
+              Allow on this site
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -89,45 +141,27 @@ export function App() {
 
   const t = tab.value;
   return (
-    <main>
-      <div class="row">
-        <h1 class="grow">Waymark</h1>
-        <button type="button" data-testid="open-settings" onClick={() => void chrome.runtime.openOptionsPage()}>
-          Settings
+    <>
+      <header class="app-header">
+        <h1 class="brand">
+          <Icon name="pin" size={18} />
+          Waymark
+        </h1>
+        <button type="button" class="ghost icon" data-testid="open-settings" aria-label="Settings" title="Settings" onClick={() => void chrome.runtime.openOptionsPage()}>
+          <Icon name="settings" />
         </button>
-      </div>
-      {error.value && <p role="alert">{error.value}</p>}
-      <section class="site" aria-label="Site access">
-        {!t || !t.origin ? (
-          <p class="muted">Open a web app and click the Waymark toolbar icon to get started.</p>
-        ) : (
-          <>
-            <div class="origin" data-testid="site-origin">{t.origin}</div>
-            {t.granted ? (
-              <>
-                <p>Waymark is allowed on this site.</p>
-                <div>
-                  <button type="button" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
-                    Remove access
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p class="muted">Waymark needs access to this site to record and play guides.</p>
-                <div>
-                  <button type="button" class="primary" data-testid="allow-site" onClick={() => void allow(t.origin!)}>
-                    Allow on this site
-                  </button>
-                </div>
-              </>
-            )}
-          </>
+      </header>
+      <main>
+        {error.value && (
+          <p class="alert" role="alert">
+            <Icon name="error" />
+            {error.value}
+          </p>
         )}
-      </section>
-      {t?.granted && <LauncherToggle origin={t.origin!} />}
-      {(t?.granted || initialEdit) && <Recorder tabId={t?.tabId ?? null} tabUrl={t?.url ?? null} initialEdit={initialEdit} />}
-      {t && !t.granted && <LibraryOnly />}
-    </main>
+        <SiteCard t={t} />
+        {(t?.granted || initialEdit) && <Recorder tabId={t?.tabId ?? null} tabUrl={t?.url ?? null} initialEdit={initialEdit} />}
+        {t && !t.granted && <LibraryOnly />}
+      </main>
+    </>
   );
 }
