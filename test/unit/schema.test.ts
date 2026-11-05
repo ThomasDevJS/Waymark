@@ -48,6 +48,17 @@ describe('schemas', () => {
     expect(GuideSchema.safeParse({ ...guide(), schemaVersion: 2 }).success).toBe(false);
     expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 2, exportedAt: '', guides: [] }).success).toBe(false);
   });
+  it('keeps look-alike profiles (D64) and caps their size', () => {
+    const g = guide();
+    const t = g.steps[0]!.target as Record<string, unknown>;
+    t.lookalikes = [['ancestors', 'placeholder', 'roleName']];
+    const parsed = GuideSchema.safeParse(g);
+    expect(parsed.success && parsed.data.steps[0]!.target?.lookalikes).toEqual([['ancestors', 'placeholder', 'roleName']]);
+    t.lookalikes = Array.from({ length: 6 }, () => ['text']);
+    expect(GuideSchema.safeParse(g).success).toBe(false);
+    t.lookalikes = [['x'.repeat(33)]];
+    expect(GuideSchema.safeParse(g).success).toBe(false);
+  });
   it('caps steps per guide at 500', () => {
     const g = guide();
     g.steps = Array.from({ length: 501 }, () => g.steps[0]!);

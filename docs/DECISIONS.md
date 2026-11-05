@@ -489,6 +489,49 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Limits**: GitHub's `paths` filter looks at the first 300 files of a push only, so a huge docs-first push to `main` could skip CI; pull requests always go through the `changes` job. The `changes` job runs the PR's own copy of `scripts/ci-changes.mjs`, so a PR could declare itself docs-only, but a PR can already edit the workflow, and the token is read-only.
 - **Review** (independent): the gate failed open when the script crashed (no `pipefail` in the default shell) and `CI result` could miss a timed-out job; both fixed as above. The test now also checks that the `paths` list in ci.yml matches the script.
 
+### D55. GitHub Actions on their current Node 24 majors
+- **Spec**: Tech stack, testing (CI). Left open in D52's review.
+- **Change**: `actions/checkout` v4 → **v7**, `actions/setup-node` v4 → **v7**, `actions/cache` v4 → **v6** (in `.github/actions/playwright-browser`), `actions/upload-artifact` v4 → **v7**, `pnpm/action-setup` v4 → **v6**. Node 20 actions are deprecated on GitHub's runners; every one of these runs on `node24`.
+- **Verified** on 5 Nov 2026 in each action's own repository: the major tag exists (latest releases checkout v7.0.1, setup-node v7.1.0, cache v6.1.0, upload-artifact v7.0.2, action-setup v6.1.1), and its `action.yml` at that tag says `using: node24`.
+- **Breaking changes checked against this workflow**, none of which apply:
+  - checkout v6 keeps credentials in a separate file under `$RUNNER_TEMP`; v7 refuses fork code under `pull_request_target`/`workflow_run`, which we don't use.
+  - setup-node v6 caches pnpm only when asked (we set `cache: pnpm`); v7 drops the dummy `NODE_AUTH_TOKEN` (we set no `registry-url`).
+  - cache v5/v6 and upload-artifact v5–v7: Node 24 and ESM only; the inputs we use are unchanged.
+  - action-setup v5/v6 bootstraps pnpm with npm and then switches to the version pinned in `packageManager` (pnpm 10.28.0 here).
+- The project's own Node stays 22 (`node-version: 22`).
+
+### D56. Tagged versions become GitHub Releases
+- **Spec**: Distribution and cost (downloadable builds; $0).
+- **Change**: `.github/workflows/release.yml` runs when a tag `v*` is pushed.
+  - A **build** job (read-only) checks that:
+    - the tag is `v` plus the `package.json` version;
+    - it points at a commit on `main`;
+    - `CHANGELOG.md` has notes for that version (`scripts/changelog-notes.mjs`, unit-tested);
+    - the commit's CI run on `main` passed: the `check`, `e2e (1)` and `e2e (2)` check runs, latest attempt of each. It waits up to 12 minutes for a run still in progress.
+
+    It then runs typecheck, lint, the manifest and CDN guards (on the build that `pnpm zip` packs) and the unit tests, and uploads the zip, its SHA-256 file and the notes as a one-day artifact.
+  - A **publish** job, with no checkout and no install, downloads them and creates the GitHub Release "Waymark X.Y.Z". A version like `0.4.0-rc.1` is marked as a pre-release. Re-running it for an existing release replaces the files, title, notes and flags. GitHub marks the newest release as Latest; a patch to an older line would need `--latest=false`.
+- **Permissions**: none by default (`permissions: {}`). The build job has `contents: read` and `checks: read`. Only the publish job gets `contents: write`, through the default `GITHUB_TOKEN`, and it runs no project code. No other token or secret.
+- **Cost**: about 3 minutes per release (two jobs). Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54). A docs-only commit has no CI run to check, so tag the version bump's merge commit, which always has one.
+- **Review** (independent): CHANGELOG.md did not exist yet (added here, with every version so far); the guard checked a build that `pnpm zip` then rebuilt; CI on the tagged commit was assumed, not checked; the write job ran install scripts; re-runs kept a stale title and flags; the notes parser cut at `## ` inside code blocks and missed linked headings. All fixed, with tests for the parser.
+- **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
+- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
+  1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
+  2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
+  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
+
+### D57. The privacy policy is not hosted on GitHub Pages; the store listing is a draft
+- **Spec**: Permissions, privacy and security ("A one-page privacy policy (free on GitHub Pages) is required for the store listing"); Distribution and cost.
+- **Finding**: the repository is private on the GitHub Free plan, which has no GitHub Pages for private repositories.
+- **Change**: the policy is `docs/PRIVACY.md`, written against what the code does today (storage keys, the three optional network requests, the permissions). It lists free hosts for the public URL the store needs: a separate public repo with Pages, a public Gist, Cloudflare Pages or Netlify, Google Sites, Codeberg Pages. `docs/STORE.md` drafts the Chrome Web Store listing: descriptions, single purpose, a justification per permission, remote-code and data-use answers, the screenshot list, and the steps for a private (domain or group) listing.
+- **Open items** before submitting:
+  - a contact address in the policy;
+  - a host for the policy;
+  - the screenshots and promo tile (design lane);
+  - **an icon:** the manifest has no `icons` yet, and the store requires a 128×128 one.
+  - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
+- **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
@@ -513,6 +556,13 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Spec**: Element targeting, record step 2 (drop ids that look generated: `ember123`, long digit runs, …).
 - **Finding**: Angular Material's select was recorded with `id="mat-select-10"` and its option with `mat-option-51`. These counters change between page loads, so on replay the id and the CSS path built from it both failed. A perfect role + name match then scored 45 of 80 points (56, under the 60 threshold), and the step was not found on an unchanged page.
 - **Change**: ids, test ids and classes of the form `<library>-[words-]<number>[-…]` are generated, for the prefixes `mat`, `mdc`, `cdk`, `headlessui`, `downshift`, `react-select`, `react-aria`, `rc`, `mui`, `chakra` and `reach` (`mat-select-10`, `cdk-overlay-3`, `headlessui-menu-button-3`, `downshift-0-input`, `rc-tabs-0-tab-1`). Other `word-number` ids (`edit-record-2`, `step-1`) and Material's typography classes (`mat-display-1`, `mat-headline-2`) are kept.
+
+### D64. A unique match must beat every look-alike seen at record time
+- **Spec**: Element targeting, playback step 4 (score ≥ 60, a strong signal, a 15-point lead); Data model (new optional `ElementFingerprint.lookalikes`).
+- **Finding** (an intermittent wrong match on ant.design): about 3 s after load the docs site remounts the page. For about 1.5 s the "Select date" field of the Basic demo is gone while the same field of another demo, far down the page, is there. That field matched role + name, placeholder and landmarks (69 points). With no runner-up it passed every rule, and the step was drawn on the wrong field. At record time five fields shared that name, and only the CSS path told the target apart.
+- **Change**: at record time, for every other element with a strong signal, the fingerprint stores the non-positional signals it matched. Only maximal sets are kept (at most 5, most weight first). At playback, a unique match whose non-positional matched signals are all in one of those sets is refused with reason `lookalike`, and the wait loop keeps looking. The real target, once there, matches more (here the CSS path) and is found.
+- **Independent review**: look-alikes are stored **whatever their score, visibility or enabled state**. A look-alike under 60 at record time can pass 60 at playback on position and XPath once the target is gone. A look-alike in a hidden tab or collapsed demo can be shown later. Both were wrong matches in the first version and have regression tests (`test/browser/lookalikes.test.ts`). An **exact twin** (an element matching every non-positional signal the target has) is not stored, because it would refuse the target itself. MUI's docs keep a second, hidden alert dialog with the same title mounted, and its "Agree" made the real one unfindable. A visible twin is a repeated element (D5); a hidden one cannot be told apart by any signal. Record time scores the page once for both `matchCount` and the look-alikes.
+- **Cost and limits**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Look-alikes that are not in the DOM at record time (lazy or virtualised content) cannot be known, so the rule narrows the risk but does not close it. Fingerprints recorded without look-alikes (before D64) behave as before. Robustness set A: 519/520 found, 0 wrong. The one miss is the new fixture pair `date-basic` / `date-other` under `wrap` (ambiguous), which reproduces the Ant case.
 
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
