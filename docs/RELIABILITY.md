@@ -11,13 +11,13 @@ Variants: **reload** (always), **narrow viewport**, and **different items** (ano
 
 ## Results
 
-Last full run: 2026-11-05, version 0.3.3. "Before" is the same harness on main at 0.2.2.
+Last full run: 2026-11-05, version 0.3.4. "Before" is the same harness on main at 0.2.2.
 
 | Site | Task | Steps | Before | After | Notes |
 | --- | --- | --- | --- | --- | --- |
-| TodoMVC React | add, complete, filter (hash routes), clear | 5 | 0/5 found, stuck on step 1 (×3 variants) | 5/5 (×3 variants) | D60: the input step now advances on Enter. The toggle is `instance: 'any'` (shared test id, no name). |
-| TodoMVC Vue | same | 5 | not recordable | not recordable | The toggle has no name and no test id: since D47 it is not recorded (4 steps). Next fix. |
-| TodoMVC Angular | same | 5 | not recordable | not recordable | Same as Vue. |
+| TodoMVC React | add, complete, filter (hash routes), clear | 5 | 0/5 found, stuck on step 1 (×3 variants) | 5/5 (×2); different items 4/5 + 1 correct not-found | D60: the input step advances on Enter. D65: the toggle is "Check **Walk the dog**"; in another list it is not found, never another todo. |
+| TodoMVC Vue | same | 5 | not recordable | 5/5 (×2); different items 4/5 + 1 correct not-found | D65: the nameless toggle is named by its todo. |
+| TodoMVC Angular | same | 5 | not recordable | same as Vue | D65. |
 | the-internet | log in and out (form submit, full page loads) | 4 | 4/4 | 4/4 (×2) | |
 | the-internet | dynamic controls (late, re-labelled, enabled) | 3 | 3/3 | 3/3 (×2) | |
 | the-internet | sortable table with row actions | 2 | 2/2 | 2/2 (×2) | Row "edit" links are `any`. |
@@ -32,7 +32,7 @@ Last full run: 2026-11-05, version 0.3.3. "Before" is the same harness on main a
 | Ant Design (React) | date picker | 2 | **1 wrong** (intermittent) | 2/2 | ant.design remounts the page about 3 s after load; for about 1.5 s the only "Select date" field is a look-alike in another demo (taken in 4 of 6 runs before). D64 refuses it: 0 wrong in 21 runs since. The task now waits out the remount (which also closed the open calendar); the fixture tests cover the case. |
 | Angular Material | portaled select | 2 | 0/2 (not found) | 2/2 (×2) | D63: `mat-select-10` style ids are generated. |
 
-Tasks passing: **8 of 16 before, 14 of 16 after**. Wrong matches: **1 (intermittent) before, 0 after**. TodoMVC Vue and Angular show as "recorded 4 steps, expected 5" (next fix).
+Tasks passing: **8 of 16 before, 16 of 16 after**. Wrong matches: **1 (intermittent) before, 0 after**.
 
 ## Known limits
 
