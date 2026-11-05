@@ -51,6 +51,7 @@ export function startContent(): void {
       player.onRoute(change.url);
       send('route.report', {
         ...change,
+        at: Date.now(),
         title: document.title.slice(0, 500),
         ...(change.via === 'load' ? { timeOrigin: Math.round(performance.timeOrigin) } : {}),
       })
@@ -66,7 +67,7 @@ export function startContent(): void {
         .catch(() => undefined);
     }, (url) => {
       if (!contextAlive() || window !== window.top) return;
-      send('route.report', { url, via: 'leaving' }).catch(() => undefined);
+      send('route.report', { url, via: 'leaving', at: Date.now() }).catch(() => undefined);
     }),
   );
   disposers.push(watchContext(() => instance.dispose()));

@@ -16,7 +16,8 @@ import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
 import { stepUrlRule } from '../url/url';
 import { checkedState, isCheckLike, isCustomOption, isNativeCheck, isNativeSelect, isSensitiveField, isTextField, submitForm } from './classify';
 
-export type RecorderOp = { op: 'add'; step: Step } | { op: 'replace'; stepId: string; step: Step };
+/** `at`: when the action happened (ms since epoch), for the navigation rule (D67). */
+export type RecorderOp = { op: 'add'; step: Step; at?: number } | { op: 'replace'; stepId: string; step: Step; at?: number };
 
 export interface RecorderOptions {
   doc?: Document;
@@ -102,21 +103,24 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     return flags.length ? flags : undefined;
   };
 
-  const makeStep = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]): Step => {
-    const step: Step = { id: newId(), kind, title, url: stepUrlRule(doc.URL, opts.profile), target: fp, advance: 'action' };
+  /** The page and time of an action, taken when it happens (a handler may change the route). */
+  type When = { at: number; url: string };
+  const whenNow = (): When => ({ at: now(), url: doc.URL });
+  const makeStep = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when?: When): Step => {
+    const step: Step = { id: newId(), kind, title, url: stepUrlRule(when?.url ?? doc.URL, opts.profile), target: fp, advance: 'action' };
     if (flags) step.flags = flags;
     return step;
   };
 
-  const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[]) => {
+  const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when: When = whenNow()) => {
     if (!hasStrongSignal(fp)) {
       opts.onSkip?.('unfindable');
       last = { id: '', kind, el, time: now(), form: null, fp, skipped: true };
       return null;
     }
-    const step = makeStep(kind, el, fp, title, flags);
+    const step = makeStep(kind, el, fp, title, flags, when);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
-    opts.emit({ op: 'add', step });
+    opts.emit({ op: 'add', step, at: when.at });
     return step;
   };
 
@@ -193,10 +197,12 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       // A label click and the click it forwards to the control are one check step.
       if (sameTask.has(el)) return;
       markSameTask(el);
-      // Read the state after the app's own handlers ran (ARIA switches toggle in a click handler).
+      // Read the state after the app's own handlers ran (ARIA switches toggle in a click handler),
+      // but keep the page and time of the click: a handler may also change the route (D67).
+      const when = whenNow();
       const timer = setTimeout(() => {
         timers.delete(timer);
-        add('check', el, fp, stepTitle('check', { name: nameFor(el, fp), checked: checkedState(el) }, lang));
+        add('check', el, fp, stepTitle('check', { name: nameFor(el, fp), checked: checkedState(el) }, lang), undefined, when);
       }, 0);
       timers.add(timer);
       return;

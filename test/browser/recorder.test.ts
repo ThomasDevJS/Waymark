@@ -111,6 +111,22 @@ describe('merge rules', () => {
     expect(steps()[0]!.target?.id).toBe('print-record');
   });
 
+  it('a check step keeps the page and time of the click, even when its handler changes the route (D67 review)', async () => {
+    const sw = q('[aria-label="Dark mode"]');
+    const before = location.href;
+    sw.addEventListener('click', () => {
+      sw.setAttribute('aria-checked', 'true');
+      history.pushState({}, '', '/app/settings/dark');
+    });
+    const t0 = Date.now();
+    await userEvent.click(sw);
+    await settle();
+    history.replaceState({}, '', before);
+    const add = ops.find((o) => o.op === 'add');
+    expect(add?.op === 'add' && add.step.url.value).not.toContain('settings');
+    expect(add?.at).toBeGreaterThanOrEqual(t0);
+  });
+
   it('a native select records one select step with the visible option label', async () => {
     const select = q('#country') as HTMLSelectElement;
     select.focus();
