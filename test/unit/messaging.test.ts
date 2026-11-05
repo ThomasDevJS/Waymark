@@ -38,7 +38,7 @@ describe('allowlists', () => {
   });
 });
 
-describe('record sizes (D52)', () => {
+describe('record sizes (D53)', () => {
   const ext = { id: 'ext', url: 'chrome-extension://ext/sidepanel.html' };
   it('caps the entries of records extension pages send', () => {
     const many = (n: number, v: string) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, v]));

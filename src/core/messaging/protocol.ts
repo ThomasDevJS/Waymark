@@ -17,7 +17,7 @@ import type { Conflict } from '../sharing/pack';
 
 const url = z.string().max(4096);
 
-/** A record with at most `max` entries (Zod records have no size limit of their own; D52). */
+/** A record with at most `max` entries (Zod records have no size limit of their own; D53). */
 const boundedRecord = <V extends z.ZodType>(key: z.ZodString, value: V, max: number) =>
   z.record(key, value).refine((o) => Object.keys(o).length <= max, `at most ${max} entries`);
 
