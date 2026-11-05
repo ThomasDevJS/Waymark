@@ -103,7 +103,7 @@ function SiteCard({ t }: { t: TabInfo | null }) {
         <>
           <div class="row nowrap site-options">
             <LauncherToggle origin={t.origin} />
-            <button type="button" class="ghost sm push" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
+            <button type="button" class="ghost sm danger push" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
               Remove access
             </button>
           </div>

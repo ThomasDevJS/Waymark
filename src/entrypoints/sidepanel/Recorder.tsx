@@ -7,7 +7,7 @@ import { Markdown } from './Markdown';
 import { Editor } from './Editor';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
-import { FlagNotes } from './steps';
+import { FLAG_HELP, FlagNotes } from './steps';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
@@ -56,6 +56,14 @@ function openEditor(id: string, tabId: number | null) {
   editing.value = id;
 }
 
+/** What a screen reader hears when a step is recorded: its number, title and warning names. */
+export function lastStepAnnouncement(steps: RecordingState['steps']): string {
+  const s = steps[steps.length - 1];
+  if (!s) return '';
+  const flags = s.flags?.length ? `. Warning: ${s.flags.map((f) => FLAG_HELP[f].label).join(', ')}` : '';
+  return `Step ${steps.length}: ${s.title.replace(/\*\*?/g, '')}${flags}`;
+}
+
 export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null; tabUrl: string | null; initialEdit?: string | null }) {
   useEffect(() => {
     if (initialEdit) editing.value = initialEdit;
@@ -85,7 +93,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           <p class="banner success" role="status" data-testid="saved">
             <Icon name="check" />
             <span>
-              Saved “{saved.value.title}” with {saved.value.count} steps. Check the steps below, then press Save.
+              Saved “{saved.value.title}” with {saved.value.count} steps. Check the steps below; Save after any changes.
             </span>
           </p>
         )}
@@ -251,7 +259,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
       )}
       {errorBox}
       {r.steps.length ? (
-        <ol class="live-steps" data-testid="steps" aria-live="polite" aria-label="Recorded steps">
+        <ol class="live-steps" data-testid="steps" aria-label="Recorded steps">
           {r.steps.map((s, i) => (
             <li key={s.id} data-kind={s.kind}>
               <span class="num" aria-hidden="true">
@@ -267,8 +275,11 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           ))}
         </ol>
       ) : (
-        <ol class="live-steps" data-testid="steps" aria-live="polite" aria-label="Recorded steps" />
+        <ol class="live-steps" data-testid="steps" aria-label="Recorded steps" />
       )}
+      <p class="visually-hidden" aria-live="polite">
+        {lastStepAnnouncement(r.steps)}
+      </p>
       {!r.steps.length && (
         <div class="empty">
           <Icon name="crosshair" />

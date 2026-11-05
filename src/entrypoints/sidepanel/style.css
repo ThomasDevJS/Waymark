@@ -272,9 +272,6 @@ button.record .rec-dot {
   display: grid;
   gap: 2px;
 }
-.live-steps:empty {
-  display: none;
-}
 .live-steps > li {
   display: flex;
   gap: var(--wm-space-2);
@@ -397,7 +394,6 @@ button.record .rec-dot {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: -4px -4px -6px 0;
 }
 .step-head .num {
   background: var(--wm-accent-soft);

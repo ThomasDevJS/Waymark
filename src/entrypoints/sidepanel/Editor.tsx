@@ -158,7 +158,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
   };
 
   return (
-    <section class="card editor" aria-label="Guide editor">
+    <section class="card editor" aria-labelledby="editor-heading">
+      <h2 id="editor-heading">{readOnly ? 'Team guide' : 'Edit guide'}</h2>
       <label class="field">
         <span class="label">Guide title</span>
         <input
@@ -180,6 +181,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {dirty.value && <span class="badge warn">Unsaved changes</span>}
       </div>
       {readOnly && <p class="small muted">Team guides can’t be edited here. Close this, then use Duplicate in the list to get your own copy.</p>}
+      <h3 class="section-label">
+        <Icon name="steps" />
+        Steps
+      </h3>
       <ol class="edit-steps" aria-label="Steps">
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
@@ -199,10 +204,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                 </span>
                 {s.optional && <span class="badge">Optional</span>}
                 <span class="push" />
-                <button type="button" class="ghost icon sm" aria-label={`Move step ${i + 1} up`} title="Move up" disabled={readOnly || i === 0} onClick={() => move(i, -1)}>
+                <button type="button" class="ghost icon sm" data-testid={`step-${i}-up`} aria-label={`Move step ${i + 1} up`} title="Move up" disabled={readOnly || i === 0} onClick={() => move(i, -1)}>
                   <Icon name="arrow-up" />
                 </button>
-                <button type="button" class="ghost icon sm" aria-label={`Move step ${i + 1} down`} title="Move down" disabled={readOnly || i === g.steps.length - 1} onClick={() => move(i, 1)}>
+                <button type="button" class="ghost icon sm" data-testid={`step-${i}-down`} aria-label={`Move step ${i + 1} down`} title="Move down" disabled={readOnly || i === g.steps.length - 1} onClick={() => move(i, 1)}>
                   <Icon name="arrow-down" />
                 </button>
                 <button
@@ -217,10 +222,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   <Icon name="trash" />
                 </button>
               </div>
-              <h3 class="step-title" id={titleId}>
+              <h4 class="step-title" id={titleId}>
                 <span class="visually-hidden">Step {i + 1}: </span>
                 <Markdown text={s.title || 'Untitled step'} />
-              </h3>
+              </h4>
               <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
               <label class="field">
                 <span class="label">Title</span>
@@ -239,7 +244,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
               </label>
               <label class="field">
                 <span class="label">
-                  Voice text <span class="hint">· read aloud; empty reads the grey text</span>
+                  Voice text <span class="hint">· read aloud; leave empty to read the title and note</span>
                 </span>
                 <textarea
                   data-testid={`step-${i}-voice`}
@@ -333,7 +338,9 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   </span>
                 </p>
               )}
-              {t && <TestResultView t={t} testid={`step-${i}-test-result`} />}
+              <div role="status" class="test-result" data-testid={t ? `step-${i}-test-result` : undefined}>
+                {t && <TestResultView t={t} />}
+              </div>
               {suggested.value[s.id] && suggested.value[s.id] !== s.title && (
                 <div class="row">
                   <button type="button" class="sm" data-testid={`step-${i}-use-title`} onClick={() => patchStep(s.id, { title: suggested.value[s.id]! })}>
@@ -385,17 +392,33 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
   );
 }
 
+/** The matcher's signal names in plain words (src/core/matcher/signals.ts). */
+const CLUE: Record<string, string> = {
+  testId: 'test id',
+  id: 'id',
+  roleName: 'role and name',
+  text: 'text',
+  name: 'name',
+  href: 'link',
+  placeholder: 'placeholder',
+  css: 'CSS path',
+  ancestors: 'surroundings',
+  xpath: 'page position',
+  position: 'screen position',
+  're-picked': 'picked by you',
+};
+
 /** Test step feedback: found (with the clues that matched), fragile, or not found. */
-function TestResultView({ t, testid }: { t: TestResult | 'running'; testid: string }) {
+function TestResultView({ t }: { t: TestResult | 'running' }) {
   if (t === 'running')
     return (
-      <p class="status-text" data-testid={testid} role="status">
+      <p class="status-text">
         <Icon name="loader" /> Looking for the element…
       </p>
     );
   if (!t.found)
     return (
-      <div class="banner danger" data-testid={testid} role="status">
+      <div class="banner danger">
         <Icon name="error" />
         <span>
           <strong>Not found.</strong> {t.reason ?? 'Not found on this page.'}
@@ -403,7 +426,7 @@ function TestResultView({ t, testid }: { t: TestResult | 'running'; testid: stri
       </div>
     );
   return (
-    <div class={`banner ${t.fragile ? 'warn' : 'success'}`} data-testid={testid} role="status">
+    <div class={`banner ${t.fragile ? 'warn' : 'success'}`}>
       <Icon name={t.fragile ? 'warn' : 'check'} />
       <div class="stack-sm">
         <span>
@@ -414,7 +437,7 @@ function TestResultView({ t, testid }: { t: TestResult | 'running'; testid: stri
           <span class="visually-hidden">Matched: </span>
           {t.matched.map((m) => (
             <span key={m} class="badge">
-              {m}
+              {CLUE[m] ?? m}
             </span>
           ))}
         </span>

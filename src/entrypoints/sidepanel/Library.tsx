@@ -86,6 +86,14 @@ async function readFile(file: File) {
   importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])), origins: check.origins };
 }
 
+/** Moves focus into the import dialog when it opens, so keyboard and screen reader users land on it. */
+function focusOnMount(el: HTMLElement | null) {
+  if (el && !el.dataset.focused) {
+    el.dataset.focused = '1';
+    el.focus();
+  }
+}
+
 /** A link to the guide's start page that offers the guide (SPEC: Discovery, "Deep link"). */
 export function deepLinkFor(g: Pick<Guide, 'id' | 'startUrl'>): string | null {
   let u: URL;
@@ -227,7 +235,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       )}
       {imp && (
         <div class="card flat import" role="dialog" aria-labelledby="import-title" data-testid="import-dialog">
-          <h2 id="import-title">Import {imp.guides.length === 1 ? '1 guide' : `${imp.guides.length} guides`}</h2>
+          <h2 id="import-title" tabIndex={-1} ref={focusOnMount}>Import {imp.guides.length === 1 ? '1 guide' : `${imp.guides.length} guides`}</h2>
           <ul class="list">
             {imp.guides.map((g) => (
               <li key={g.id} class="list-item">
@@ -340,7 +348,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
           >
             <Icon name="download" />
-            Export{selected.value.size ? ` ${selected.value.size}` : ''}…
+            Export {selected.value.size ? `${selected.value.size} selected` : 'selected'}…
           </button>
         )}
         <label class="btn">
