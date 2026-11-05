@@ -125,8 +125,15 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
+/** True while the editor holds edits that are not saved (the recording shortcut must not drop them, D105). */
+export function editorHasUnsavedEdits(): boolean {
+  return dirty.value && !!draft.value;
+}
+
 export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: number | null; onClose: () => void }) {
   useEffect(() => {
+    // Back from a recording started with the shortcut: the unsaved draft of this guide is kept.
+    if (draft.value?.id === guideId && dirty.value) return () => dismissScope('editor');
     draft.value = null;
     dirty.value = false;
     status.value = null;
@@ -453,6 +460,9 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
             onClick={() => {
               if (picking.value && tabId !== null) void send('pick.cancel', { tabId });
               endPicking();
+              // Discarded: a later open of this guide loads the stored copy.
+              draft.value = null;
+              dirty.value = false;
               onClose();
             }}
           >

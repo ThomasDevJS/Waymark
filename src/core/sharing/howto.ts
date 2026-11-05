@@ -24,15 +24,37 @@ export function startOrigin(g: Pick<Guide, 'startUrl'>): string {
   }
 }
 
-const BARE_URL = /\b(?:https?:\/\/|www\.)[^\s<>()]+/gi;
+/**
+ * Addresses in any common form: a scheme with or without `//` (http, ftp, file, javascript,
+ * data, mailto…), a protocol-relative `//host`, `www.…`, and a bare host with a path
+ * (`jira.corp.example/browse/FIN-1`). A host without a path is left: it is a name, not a link.
+ */
+const URLISH = new RegExp(
+  [
+    String.raw`(?:[a-z][a-z0-9+.-]*:\/\/|\/\/)[^\s<>()]+`,
+    String.raw`\b(?:https?|ftp|file|mailto|javascript|data|tel|sms|ws|wss|blob):[^\s<>()]+`,
+    String.raw`\bwww\.[^\s<>()]+`,
+    String.raw`(?<![\w@./-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]+(?::\d+)?\/[^\s<>()]*`,
+  ].join('|'),
+  'gi',
+);
+const MD_LINK = /\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g;
 
-/** Removes addresses from text: the start origin's are cut to the origin, others go. */
+/**
+ * Removes addresses from raw text (before any markdown is parsed, so `_` or `*` inside an
+ * address cannot split it): the start origin's are cut to the origin, others are removed.
+ * Backslash escapes of `:`, `/` and `.` are undone first, so `https\://x` is an address too.
+ */
 export function stripUrls(text: string, origin: string): string {
   return text
-    .replace(BARE_URL, (m) => {
+    .replace(/\\([:/.])/g, '$1')
+    .replace(MD_LINK, '$1')
+    .replace(URLISH, (m) => {
+      const raw = m.replace(/\\/g, '');
+      const href = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : raw.startsWith('//') ? `https:${raw}` : `https://${raw}`;
       try {
-        const u = new URL(m.startsWith('www.') ? `https://${m}` : m);
-        return u.origin === origin ? origin : '[link removed]';
+        const u = new URL(href);
+        return origin && u.origin === origin ? origin : '[link removed]';
       } catch {
         return '[link removed]';
       }
@@ -40,14 +62,26 @@ export function stripUrls(text: string, origin: string): string {
     .replace(/[ \t]{2,}/g, ' ');
 }
 
-/** Tokens with links turned into their text, and addresses stripped from all text. */
-function clean(tokens: InlineToken[], origin: string): InlineToken[] {
+/** Links that survived as tokens (none should) become their text. */
+function clean(tokens: InlineToken[]): InlineToken[] {
   return tokens.map((t) => {
-    if (t.type === 'text') return { type: 'text', text: stripUrls(t.text, origin) };
-    if (t.type === 'link') return { type: 'text', text: stripUrls(t.text, origin) };
-    if (t.type === 'bold' || t.type === 'italic') return { ...t, children: clean(t.children, origin) };
+    if (t.type === 'link') return { type: 'text', text: t.text };
+    if (t.type === 'bold' || t.type === 'italic') return { ...t, children: clean(t.children) };
     return t;
   });
+}
+
+/** Text for Markdown: the subset's own characters, HTML, entities, code and table pipes escaped. */
+function mdText(s: string): string {
+  return escapeMd(s).replace(/([<>&`|~])/g, '\\$1');
+}
+
+/** A line that would start a heading, quote, list, rule or table is made plain text. */
+function mdLineStarts(s: string): string {
+  return s
+    .split('\n')
+    .map((line) => line.replace(/^(\s*)([#>+=-])/, '$1\\$2').replace(/^(\s*\d+)([.)])/, '$1\\$2'))
+    .join('\n');
 }
 
 function toMd(tokens: InlineToken[]): string {
@@ -55,7 +89,7 @@ function toMd(tokens: InlineToken[]): string {
     .map((t) => {
       switch (t.type) {
         case 'text':
-          return escapeMd(t.text);
+          return mdText(t.text);
         case 'br':
           return '\n';
         case 'bold':
@@ -63,7 +97,7 @@ function toMd(tokens: InlineToken[]): string {
         case 'italic':
           return `*${toMd(t.children)}*`;
         case 'link':
-          return escapeMd(t.text);
+          return mdText(t.text);
       }
     })
     .join('');
@@ -92,11 +126,11 @@ function toHtml(tokens: InlineToken[]): string {
     .join('');
 }
 
-/** A markdown-subset field (step title, note) as safe Markdown or HTML. */
-const inlineMd = (src: string, origin: string) => toMd(clean(parseInline(src), origin));
-const inlineHtml = (src: string, origin: string) => toHtml(clean(parseInline(src), origin));
+/** A markdown-subset field (step title, note) as safe Markdown or HTML: addresses go first. */
+const inlineMd = (src: string, origin: string) => mdLineStarts(toMd(clean(parseInline(stripUrls(src, origin)))));
+const inlineHtml = (src: string, origin: string) => toHtml(clean(parseInline(stripUrls(src, origin))));
 /** A plain-text field (guide title, description). */
-const plainMd = (src: string, origin: string) => escapeMd(stripUrls(src, origin));
+const plainMd = (src: string, origin: string) => mdLineStarts(mdText(stripUrls(src, origin)));
 const plainHtml = (src: string, origin: string) => escapeHtml(stripUrls(src, origin)).replace(/\n/g, '<br>');
 
 /** Markdown, one section per guide. */
@@ -209,6 +243,8 @@ export function looksLikeData(s: Pick<PackString, 'kind' | 'value'>): boolean {
   const words = s.value.replace(/[*_\\]/g, ' ').split(/\s+/).filter(Boolean);
   for (let i = 0; i < words.length; i++) {
     let chunk = '';
+    // One word longer than the filter's limit (an API key, a token) is data by the filter's own rule.
+    if (words[i]!.length > MAX_TEXT) return true;
     for (let j = i; j < Math.min(words.length, i + 4); j++) {
       chunk = chunk ? `${chunk} ${words[j]}` : words[j]!;
       if (chunk.length > MAX_TEXT) break;

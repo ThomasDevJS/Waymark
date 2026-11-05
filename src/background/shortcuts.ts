@@ -25,7 +25,20 @@ export function openPanelNow(tab: chrome.tabs.Tab | undefined): void {
   chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined);
 }
 
-export async function toggleRecording(tab: chrome.tabs.Tab | undefined, now = Date.now): Promise<ShortcutOutcome> {
+/**
+ * Presses are handled one after another, so a quick double press is start-then-stop, never two
+ * starts (the second of which would report "already running" while a recording runs). Like the
+ * write queue, this chain holds no state, only order.
+ */
+let tail: Promise<unknown> = Promise.resolve();
+
+export function toggleRecording(tab: chrome.tabs.Tab | undefined, now = Date.now): Promise<ShortcutOutcome> {
+  const run = tail.then(() => toggleNow(tab, now));
+  tail = run.catch(() => undefined);
+  return run;
+}
+
+async function toggleNow(tab: chrome.tabs.Tab | undefined, now: () => number): Promise<ShortcutOutcome> {
   let out: ShortcutOutcome;
   try {
     if (await getRecording()) {
@@ -40,6 +53,7 @@ export async function toggleRecording(tab: chrome.tabs.Tab | undefined, now = Da
   } catch (e) {
     out = { kind: 'error', message: e instanceof Error ? e.message : String(e), at: now() };
   }
+  if (tab?.windowId !== undefined) out.windowId = tab.windowId;
   await chrome.storage.session.set({ [SHORTCUT_KEY]: out });
   return out;
 }

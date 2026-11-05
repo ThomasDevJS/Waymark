@@ -3,7 +3,7 @@ import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
-import { Recorder } from './Recorder';
+import { Recorder, showStopped } from './Recorder';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
@@ -130,7 +130,11 @@ function SiteCard({ t }: { t: TabInfo | null }) {
 
 export function App() {
   // The recording shortcut was refused (for example on a site Waymark is not allowed on, D105).
-  useShortcutOutcome(['error', 'started'], (o) => (shortcutError.value = o.kind === 'error' ? o.message : null));
+  // Stopped: the editor opens (even if this tab's site is not allowed, it shows once one is).
+  useShortcutOutcome(['error', 'started', 'stopped'], (o) => {
+    shortcutError.value = o.kind === 'error' ? o.message : null;
+    if (o.kind === 'stopped') showStopped(o, tab.value?.tabId ?? null);
+  });
   useEffect(() => {
     void refresh();
     const onChange = () => void refresh();

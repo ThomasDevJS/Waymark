@@ -12,8 +12,13 @@ const handled = new Set<number>();
 
 export function useShortcutOutcome(kinds: ShortcutOutcome['kind'][], fn: (o: ShortcutOutcome) => void): void {
   useEffect(() => {
-    const take = (o: ShortcutOutcome | undefined) => {
+    // Only the side panel of the window the key was pressed in follows (one editor, not one per window).
+    const myWindow = chrome.windows?.getCurrent ? chrome.windows.getCurrent().then((w) => w.id, () => undefined) : Promise.resolve(undefined);
+    const take = async (o: ShortcutOutcome | undefined) => {
       if (!o || !kinds.includes(o.kind) || handled.has(o.at) || Date.now() - o.at > SHORTCUT_FRESH_MS) return;
+      const win = await myWindow;
+      if (o.windowId !== undefined && win !== undefined && o.windowId !== win) return;
+      if (handled.has(o.at)) return;
       handled.add(o.at);
       fn(o);
     };
@@ -22,7 +27,7 @@ export function useShortcutOutcome(kinds: ShortcutOutcome['kind'][], fn: (o: Sho
       .then((r) => take(r[SHORTCUT_KEY] as ShortcutOutcome | undefined))
       .catch(() => undefined);
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'session' && SHORTCUT_KEY in changes) take(changes[SHORTCUT_KEY]!.newValue as ShortcutOutcome | undefined);
+      if (area === 'session' && SHORTCUT_KEY in changes) void take(changes[SHORTCUT_KEY]!.newValue as ShortcutOutcome | undefined);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);

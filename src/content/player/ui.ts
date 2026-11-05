@@ -56,8 +56,8 @@ button.ghost { border-color: transparent; background: transparent; }
 button.ghost:hover { background: var(--wm-surface-hover); }
 button.icon { min-height: 28px; min-width: 28px; padding: 4px; justify-content: center; border-color: transparent; background: transparent; color: var(--wm-fg-muted); }
 button.icon:hover { background: var(--wm-surface-hover); color: var(--wm-fg); }
-button:disabled { opacity: .45; cursor: not-allowed; }
-button:disabled:hover { background: transparent; color: var(--wm-fg-muted); }
+button[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }
+button[aria-disabled='true']:hover { background: transparent; color: var(--wm-fg-muted); }
 button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
 button svg { width: 16px; height: 16px; flex: none; }
 a { color: var(--wm-accent-text); }
@@ -144,8 +144,8 @@ export class PlayerUI {
   private ring: HTMLElement | null = null;
   private tip: HTMLElement | null = null;
   private announcer: HTMLElement | null = null;
-  /** A keyboard user pressed this tooltip button; it gets focus back when the step is redrawn. */
-  private refocus: string | null = null;
+  /** A keyboard user pressed this tooltip button; it gets focus back when this step is redrawn. */
+  private refocus: { action: string; stepToken: string | null } | null = null;
   private stopAuto: (() => void) | null = null;
 
   constructor(private readonly h: UiHandlers) {}
@@ -228,10 +228,9 @@ export class PlayerUI {
     const arrowEl = el('div', 'arrow');
     layer.append(tip);
     this.tip = tip;
-    if (this.refocus) {
-      tip.querySelector<HTMLElement>(`[data-action="${this.refocus}"]`)?.focus();
-      this.refocus = null;
-    }
+    // Only for a redraw of the same step: a later step never pulls focus out of the page.
+    if (this.refocus?.stepToken === view.stepToken) tip.querySelector<HTMLElement>(`[data-action="${this.refocus.action}"]`)?.focus();
+    this.refocus = null;
     this.announce(`Step ${Math.min(view.stepIndex + 1, view.total)} of ${view.total}: ${plain(step.title)}`);
 
     if (!target) {
@@ -280,6 +279,7 @@ export class PlayerUI {
   }
 
   showCard(kind: Card, view: RunView): void {
+    this.refocus = null; // a Repeat that ended on a card: nothing to give focus back to
     this.clear();
     claimOverlay(this, () => this.clear());
     this.ensureStyle();
@@ -373,10 +373,13 @@ export class PlayerUI {
     const exit = this.iconButton(X, 'exit', 'Exit guide', this.h.exit);
     const { replayVoice, repeat: repeatStep } = this.h;
     if (view.step && view.status === 'running' && replayVoice && repeatStep) {
-      const replay = this.iconButton(Speech, 'replay-voice', 'Replay voice', replayVoice);
+      // Off while muted, but still focusable, so its label says why (aria-disabled, D94).
+      const replay = this.iconButton(Speech, 'replay-voice', 'Replay voice', () => {
+        if (!this.muted) replayVoice();
+      });
       const repeat = this.iconButton(RotateCcw, 'repeat', 'Repeat step', () => {
         // Only a keyboard user's focus comes back: a mouse press never takes focus (mousedown).
-        this.refocus = repeat.matches(':focus') ? 'repeat' : null;
+        this.refocus = repeat.matches(':focus') ? { action: 'repeat', stepToken: view.stepToken } : null;
         repeatStep();
       });
       head.append(repeat, replay);
@@ -403,7 +406,7 @@ export class PlayerUI {
     }
     const replay = scope.querySelector<HTMLButtonElement>('[data-action="replay-voice"]');
     if (replay) {
-      replay.disabled = muted;
+      replay.setAttribute('aria-disabled', String(muted));
       const label = muted ? 'Replay voice (voice is muted)' : 'Replay voice';
       replay.setAttribute('aria-label', label);
       replay.title = label;

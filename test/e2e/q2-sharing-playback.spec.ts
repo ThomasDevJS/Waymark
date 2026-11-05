@@ -151,9 +151,12 @@ test('the tooltip repeats the step and replays its voice', async ({ context, ext
   // step; the step is found again, scrolled back into view, drawn and read again.
   await app.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await app.waitForTimeout(500);
+  const draws = Number(await marker(app, 'draws'));
   await tooltip(app).locator('[data-action="repeat"]').focus();
   await app.keyboard.press('Enter');
   await expect.poll(() => marker(app, 'repeat')).toBe('1');
+  // Drawn again (a new spotlight), not just still drawn.
+  await expect.poll(async () => Number(await marker(app, 'draws'))).toBe(draws + 1);
   await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
   await expect.poll(spoken).toHaveLength(3);
   await expect(app.getByRole('button', { name: 'Import', exact: true })).toBeInViewport();
@@ -162,7 +165,8 @@ test('the tooltip repeats the step and replays its voice', async ({ context, ext
 
   // Muted: Replay voice is disabled and nothing is read.
   await tooltip(app).locator('[data-action="mute"]').click();
-  await expect(tooltip(app).locator('[data-action="replay-voice"]')).toBeDisabled();
+  await expect(tooltip(app).locator('[data-action="replay-voice"]')).toHaveAttribute('aria-disabled', 'true');
+  await tooltip(app).locator('[data-action="replay-voice"]').dispatchEvent('click'); // focusable, but does nothing
   await app.waitForTimeout(500);
   await tooltip(app).locator('[data-action="repeat"]').click();
   await expect.poll(() => marker(app, 'repeat')).toBe('2');
@@ -171,5 +175,5 @@ test('the tooltip repeats the step and replays its voice', async ({ context, ext
   // The mute toggle works again within the same step (it used to keep the state of its step).
   await tooltip(app).locator('[data-action="mute"]').click();
   await expect(tooltip(app).locator('[data-action="mute"]')).toHaveAttribute('aria-pressed', 'false');
-  await expect(tooltip(app).locator('[data-action="replay-voice"]')).toBeEnabled();
+  await expect(tooltip(app).locator('[data-action="replay-voice"]')).toHaveAttribute('aria-disabled', 'false');
 });

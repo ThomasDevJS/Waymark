@@ -30,13 +30,13 @@ describe('how-to export (D104)', () => {
     const md = howtoMarkdown([guide]);
     expect(md).toBe(
       [
-        '# Pay <a contractor> & more',
+        '# Pay \\<a contractor\\> \\& more',
         '',
         'For the \\*finance\\* team.',
         '',
         'Start at https://app.test',
         '',
-        '1. Click **Save** <script>x</script>',
+        '1. Click **Save** \\<script\\>x\\</script\\>',
         '',
         '   See the docs or https://app.test',
         '   then wait',
@@ -71,6 +71,54 @@ describe('how-to export (D104)', () => {
     expect(stripUrls('see www.other.test/page', 'https://app.test')).toBe('see [link removed]');
   });
 
+  it('addresses never leak through markdown, other schemes, bare hosts or escapes (review)', () => {
+    const o = 'https://app.test';
+    const leaks = [
+      'Open https://corp.example/reports/q3_customer_list_2026',
+      'https://**evil**.com/secret',
+      'https://*evil*.com/a',
+      'ftp://files.corp.example/x',
+      'file:///etc/passwd',
+      '//evil.com/secret',
+      'https:evil.com/secret',
+      'intranet.corp.example/admin/users/42',
+      'jira.corp.example/browse/FIN-1234',
+      'xhttps://evil.com/s',
+      'see_https://evil.com/s',
+      'https\\://evil.com/t',
+      'q3\\_list at https://corp.example/a\\_b\\_c',
+      '[docs](https://evil.com/p)',
+      'javascript:alert(1)',
+    ];
+    const secrets = /corp\.example|evil\.com|etc\/passwd|evil|alert/;
+    for (const text of leaks) {
+      const g = { ...guide, description: text, title: text, steps: [{ ...guide.steps[1]!, title: text, note: text }] };
+      for (const out of [howtoMarkdown([g]), howtoHtml([g])]) expect(out, text).not.toMatch(secrets);
+    }
+    expect(stripUrls('Help: https://app.test/help_page_1?q=1', o)).toBe('Help: https://app.test');
+  });
+
+  it('Markdown: raw HTML, entities and line starts cannot change the document (review)', () => {
+    const g = {
+      ...guide,
+      title: '# Fake',
+      description: '<img src=x>\n# Heading\n1. Fake step\n> quote\n---\n| a | b |\n&#104;ello `code`',
+      steps: [{ ...guide.steps[1]!, title: '- not a bullet', note: '## not a heading\n2) nope' }],
+    };
+    const md = howtoMarkdown([g]);
+    expect(md).toContain('# \\# Fake\n');
+    expect(md).toContain('\\<img src=x\\>');
+    expect(md).toContain('\n\\# Heading\n');
+    expect(md).toContain('\n1\\. Fake step\n');
+    expect(md).toContain('\n\\> quote\n');
+    expect(md).toContain('\n\\---\n');
+    expect(md).toContain('\\| a \\| b \\|');
+    expect(md).toContain('\\&#104;ello \\`code\\`');
+    expect(md).toContain('1. \\- not a bullet');
+    expect(md).toContain('   \\## not a heading\n   2\\) nope');
+    expect(md.match(/^#{1,2} /gm)).toEqual(['# ']);
+  });
+
   it('the review lists what the how-to holds, with the pack keys, so the same removals apply', () => {
     const strings = howtoStrings([guide]);
     expect(strings.map((s) => s.kind)).toEqual(['guide-title', 'description', 'site', 'step-title', 'note', 'step-title', 'note']);
@@ -92,6 +140,8 @@ describe('how-to export (D104)', () => {
     expect(looksLikeData({ kind: 'note', value: 'A long but harmless note that explains where the Save button is and what happens next when you press it.' })).toBe(false);
     expect(looksLikeData({ kind: 'step-title', value: 'Click **Save**' })).toBe(false);
     expect(looksLikeData({ kind: 'selector', value: 'INV-2039' })).toBe(false); // only text kinds
+    // A single long token (an API key) is data, even though no 4-word chunk fits in 80 characters (review).
+    expect(looksLikeData({ kind: 'note', value: `Use key sk_live_${'a1B2c3D4'.repeat(11)} here` })).toBe(true);
   });
 });
 
@@ -184,6 +234,14 @@ describe('recording shortcut (D105)', () => {
     expect(opened).toEqual([{ windowId: 2 }]);
     expect(onShortcut('next-step', tab)).toBe(false);
     await vi.waitFor(async () => expect((await session.get('recording')).recording).toBeDefined());
+  });
+
+  it('a quick double press is start then stop, never two starts; outcomes name the window (review)', async () => {
+    const { toggleRecording } = await import('../../src/background/shortcuts');
+    const tab = { id: 3, windowId: 2 } as chrome.tabs.Tab;
+    const [a, b] = await Promise.all([toggleRecording(tab), toggleRecording(tab)]);
+    expect(a).toMatchObject({ kind: 'started', windowId: 2 });
+    expect(b).toMatchObject({ kind: 'stopped', windowId: 2 });
   });
 
   it('a site Waymark is not allowed on is refused with the reason', async () => {

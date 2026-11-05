@@ -36,10 +36,15 @@ describe('tooltip controls (D106)', () => {
   });
 
   it('Replay voice is disabled and says why while muted', async () => {
-    const ui = new PlayerUI({ ...base, replayVoice() {}, repeat() {} });
+    let replays = 0;
+    const ui = new PlayerUI({ ...base, replayVoice: () => replays++, repeat() {} });
     ui.showStep(view({ muted: true }), null);
     await tick();
-    expect(btn('replay-voice')!.disabled).toBe(true);
+    btn('replay-voice')!.click(); // aria-disabled: Playwright would not press it, a user can
+    expect(replays).toBe(0);
+    // Still focusable, so the reason can be heard; a press does nothing (review).
+    expect(btn('replay-voice')!.disabled).toBe(false);
+    expect(btn('replay-voice')!.getAttribute('aria-disabled')).toBe('true');
     expect(btn('replay-voice')!.getAttribute('aria-label')).toBe('Replay voice (voice is muted)');
     ui.clear();
   });
@@ -52,11 +57,30 @@ describe('tooltip controls (D106)', () => {
     await userEvent.click(btn('mute')!);
     ui.setMuted(true); // the service worker's new view
     expect(btn('mute')!.getAttribute('aria-pressed')).toBe('true');
-    expect(btn('replay-voice')!.disabled).toBe(true);
+    expect(btn('replay-voice')!.getAttribute('aria-disabled')).toBe('true');
     await userEvent.click(btn('mute')!);
     expect(sent).toEqual([true, false]);
     ui.setMuted(false);
-    expect(btn('replay-voice')!.disabled).toBe(false);
+    expect(btn('replay-voice')!.getAttribute('aria-disabled')).toBe('false');
+    ui.clear();
+  });
+
+  it('focus returns only for a redraw of the same step, never on a later one (review)', async () => {
+    let ui: PlayerUI;
+    // Repeat ends on a card (not found), then the next step is drawn.
+    // eslint-disable-next-line prefer-const
+    ui = new PlayerUI({ ...base, replayVoice() {}, repeat: () => ui.showCard('not-found', view()) });
+    ui.showStep(view(), null);
+    await tick();
+    btn('repeat')!.focus();
+    await userEvent.keyboard('{Enter}');
+    const field = document.createElement('input');
+    document.body.append(field);
+    field.focus();
+    ui.showStep(view({ stepIndex: 1, stepToken: 't2' }), null);
+    await tick();
+    expect(document.activeElement).toBe(field);
+    field.remove();
     ui.clear();
   });
 

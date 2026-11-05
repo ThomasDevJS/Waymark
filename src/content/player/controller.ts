@@ -218,6 +218,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
       testSpot(target, v.stepIndex);
       testMark('player', `drawn:${v.stepIndex}`);
+      testMark('draws', String(Number(document.documentElement.getAttribute('data-waymark-test-draws') ?? 0) + 1));
       return;
     }
     // Another frame found the target: the top frame's off-track or not-found card goes away.
