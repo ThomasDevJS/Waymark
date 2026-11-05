@@ -48,7 +48,7 @@ for (const closed of [false, true]) {
       b = Object.assign(document.createElement('button'), { textContent: 'Export orders' });
       field = Object.assign(document.createElement('input'), { placeholder: 'Name' });
       a.style.cssText = 'position:absolute;left:40px;top:60px;width:80px;height:30px';
-      b.style.cssText = 'position:absolute;left:400px;top:300px;width:160px;height:40px';
+      b.style.cssText = 'position:absolute;left:400px;top:300px;width:100px;height:36px';
       field.style.cssText = 'position:absolute;left:40px;top:500px';
       document.body.append(a, b, field);
       ui = new PlayerUI(handlers);
@@ -78,12 +78,12 @@ for (const closed of [false, true]) {
       expect(anims).toHaveLength(1);
       const from = String((anims[0]!.effect as KeyframeEffect).getKeyframes()[0]!.transform);
       const [, sx, sy] = /^translate\(-360px, -240px\) scale\(([\d.]+), ([\d.]+)\)$/.exec(from) ?? [];
-      expect(Number(sx)).toBeCloseTo(92 / 172, 3); // holes have 6 px of padding
-      expect(Number(sy)).toBeCloseTo(42 / 52, 3);
+      expect(Number(sx)).toBeCloseTo(92 / 112, 3); // holes have 6 px of padding
+      expect(Number(sy)).toBeCloseTo(42 / 48, 3);
       // The dim's hole is already around the new target: it is never covered while the ring travels.
       const spot = root().querySelector('.spot')!;
       expect(spot.classList.contains('still')).toBe(true);
-      expect(box(spot)).toEqual({ x: 394, y: 294, w: 172, h: 52 });
+      expect(box(spot)).toEqual({ x: 394, y: 294, w: 112, h: 48 });
       finishAll();
       expect(box(r)).toEqual(box(spot)); // and the ring lands on it
     });
@@ -159,6 +159,57 @@ for (const closed of [false, true]) {
       expect(root().querySelector('.ripple')).toBeNull();
       // A press inside the tooltip (it can sit over the target's surroundings) draws nothing.
       root().querySelector<HTMLElement>('.tip [data-action="mute"]')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+      expect(root().querySelector('.ripple')).toBeNull();
+    });
+
+    it('a big size change slides the ring at its new size (a scaled border would cover the target)', () => {
+      const wide = Object.assign(document.createElement('div'), { textContent: 'toolbar' });
+      wide.style.cssText = 'position:absolute;left:20px;top:200px;width:1000px;height:40px';
+      document.body.append(wide);
+      try {
+        ui.showStep(view(step(wide, 'The toolbar', 'next'), 0), wide);
+        ui.showStep(view(step(a, 'Click Import'), 1), a);
+        const glides = ring().getAnimations().filter((x) => (x.effect as KeyframeEffect).getKeyframes()[0]!.transform);
+        expect(glides).toHaveLength(1);
+        expect(String((glides[0]!.effect as KeyframeEffect).getKeyframes()[0]!.transform)).toMatch(/^translate\([-\d.]+px, [-\d.]+px\)$/);
+      } finally {
+        wide.remove();
+      }
+    });
+
+    it('a target off screen (still to scroll in) gets the plain fade-in, not a glide from nothing', () => {
+      const far = Object.assign(document.createElement('button'), { textContent: 'Far' });
+      far.style.cssText = 'position:absolute;left:40px;top:-400px;width:80px;height:30px';
+      document.body.append(far);
+      try {
+        ui.showStep(view(step(a, 'A'), 0), a);
+        ui.showStep(view(step(far, 'Far'), 1), far);
+        expect(ring().classList.contains('glide')).toBe(false);
+        expect(root().querySelector('.spot')!.classList.contains('still')).toBe(false);
+      } finally {
+        far.remove();
+      }
+    });
+
+    it('the exit copy stays for its own animation, not until the first animation inside it ends', () => {
+      ui.showCard('done', view(step(a, 'A'), 3));
+      root().querySelector<HTMLElement>('.tip [data-action="close"]')!.click();
+      ui.clear();
+      const out = root().querySelector('.tip-out')!;
+      out.querySelector('svg')!.dispatchEvent(new AnimationEvent('animationend', { bubbles: true, animationName: 'wm-pop' }));
+      expect(root().querySelector('.tip-out')).not.toBeNull();
+    });
+
+    it('the same tutorial started again fills its bar from empty, not backwards from the done card', () => {
+      ui.showStep(view(step(a, 'A'), 3), a);
+      ui.showCard('done', view(step(a, 'A'), 3, { status: 'finished' }));
+      ui.showStep(view(step(a, 'A'), 0, { stepToken: 'again' }), a);
+      expect((root().querySelector('.tip .progress > span') as HTMLElement).getAnimations()).toHaveLength(0);
+    });
+
+    it('a right-button press does not ripple', () => {
+      ui.showStep(view(step(a, 'Click Import'), 0), a);
+      a.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2 }));
       expect(root().querySelector('.ripple')).toBeNull();
     });
 

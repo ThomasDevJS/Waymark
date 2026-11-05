@@ -17,6 +17,7 @@ import { bestSpeechVoice } from '../../core/voice/voice';
 import { presentSignals } from '../../core/matcher/signals';
 import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
+import { reducedMotion } from '../../ui/motion';
 
 /** Why the matcher gave up, in words, for the debug log (D110). */
 const NOT_FOUND_WHY: Record<string, string> = {
@@ -280,7 +281,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       const target = r.spotlight ?? r.tied.find((e) => isVisible(e)) ?? r.element;
       const rect = target.getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
-        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
       }
       ui.showStep(v, target, () => {
         // target removed or re-rendered: match again on the same step

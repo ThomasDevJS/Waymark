@@ -225,14 +225,13 @@ export class PlayerUI {
   private stopPress: (() => void) | null = null;
   /** The learner closed the guide: the tooltip that goes now leaves with a rise (D133). */
   private exiting = false;
+  private exitTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly exitGuide = () => {
     this.exiting = true;
-    try {
-      this.h.exit();
-    } finally {
-      // The run may end later (a message round trip): the next clear() still counts as the exit.
-      setTimeout(() => (this.exiting = false), 1000);
-    }
+    clearTimeout(this.exitTimer);
+    // The run may end a little later (a message round trip): a clear() until then is the exit.
+    this.exitTimer = setTimeout(() => (this.exiting = false), 1000);
+    this.h.exit();
   };
 
   constructor(private readonly h: UiHandlers) {}
@@ -363,7 +362,11 @@ export class PlayerUI {
       if (this.spot) Object.assign(this.spot.style, box);
       if (this.ring) {
         Object.assign(this.ring.style, box);
-        if (glideFrom) this.glide(this.ring, glideFrom, hole);
+        // Nothing to glide to yet (off screen, scrolling in): it fades in as on a first step.
+        if (glideFrom && !this.glide(this.ring, glideFrom, hole)) {
+          this.ring.classList.remove('glide');
+          this.spot?.classList.remove('still');
+        }
         glideFrom = null; // only the first draw glides; later updates follow the target
       }
       this.lastHole = { ...hole, run, token: view.stepToken, at: performance.now() };
@@ -404,6 +407,7 @@ export class PlayerUI {
     const tip = this.tooltipShell(view);
     tip.classList.add('centered');
     tip.dataset.card = kind;
+    this.lastProgress = null; // a guide started again (the same tutorial has the same run id) fills from empty
     const icon = el('div', 'badge-icon');
     const title = el('div', 'title');
     const note = el('div', 'note');
@@ -472,14 +476,26 @@ export class PlayerUI {
     for (const n of Array.from(overlayRoot().querySelectorAll('.tip-out'))) n.remove();
   }
 
-  /** The ring slides and resizes from the last step's box to this one (transform only, D133). */
-  private glide(ring: HTMLElement, from: Box, to: Box): void {
-    if (typeof ring.animate !== 'function' || !to.w || !to.h) return;
-    const dx = from.x - to.x;
-    const dy = from.y - to.y;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(from.w - to.w) < 1 && Math.abs(from.h - to.h) < 1) return;
-    ring.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${from.w / to.w}, ${from.h / to.h})` }, { transform: 'none' }], { duration: DUR.slow, easing: EASE.standard });
+  /**
+   * The ring slides and resizes from the last step's box to this one (transform only, D133).
+   * Scaling the ring scales its border and halo too, so it scales only between boxes of about
+   * the same size (×0.67–1.5); a bigger change (a toolbar, then an icon in it) slides the ring at
+   * its new size from the old box's centre, so no stretched border is painted over the target.
+   * Returns false when there was nothing to glide (the target is off screen, still scrolling in).
+   */
+  private glide(ring: HTMLElement, from: Box, to: Box): boolean {
+    if (typeof ring.animate !== 'function' || to.w < 1 || to.h < 1) return false;
+    const sx = from.w / to.w;
+    const sy = from.h / to.h;
+    const near = (r: number) => r >= 2 / 3 && r <= 1.5;
+    const scale = near(sx) && near(sy);
+    const dx = scale ? from.x - to.x : from.x + from.w / 2 - (to.x + to.w / 2);
+    const dy = scale ? from.y - to.y : from.y + from.h / 2 - (to.y + to.h / 2);
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(from.w - to.w) < 1 && Math.abs(from.h - to.h) < 1) return true;
+    const start = scale ? `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` : `translate(${dx}px, ${dy}px)`;
+    ring.animate([{ transform: start }, { transform: 'none' }], { duration: DUR.slow, easing: EASE.standard });
     countMotion('glide');
+    return true;
   }
 
   /**
@@ -503,7 +519,8 @@ export class PlayerUI {
       n.removeAttribute('data-testid');
     }
     const done = () => tip.remove();
-    tip.addEventListener('animationend', done, { once: true });
+    // Only its own end: the done card's tick and a focus ring end inside it too (and bubble).
+    tip.addEventListener('animationend', (e) => e.target === tip && done());
     setTimeout(done, DUR.fast + 80);
   }
 
@@ -515,7 +532,7 @@ export class PlayerUI {
   private watchPress(target: Element, step: NonNullable<RunView['step']>): void {
     if (step.advance !== 'action' || reducedMotion()) return;
     const onDown = (e: Event) => {
-      if (isOverlayPath(eventPath(e)) || !this.ring) return;
+      if ((e as PointerEvent).button > 0 || isOverlayPath(eventPath(e)) || !this.ring) return;
       const ripple = el('div', 'ripple');
       ripple.setAttribute('aria-hidden', 'true');
       for (const k of ['left', 'top', 'width', 'height'] as const) ripple.style[k] = this.ring.style[k];

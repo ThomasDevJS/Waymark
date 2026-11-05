@@ -27,7 +27,7 @@ const CSS = `
     animation: wm-rec-pulse 1.6s var(--wm-ease-exit) infinite; }
   .paused .dot::after { content: none; }
 }
-@keyframes wm-rec-pulse { from { opacity: .45; scale: 1; } to { opacity: 0; scale: 2.6; } }
+@keyframes wm-rec-pulse { from { opacity: .45; scale: 1; } to { opacity: 0; scale: 2; } }
 @keyframes wm-pill-in { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
 @media (forced-colors: active) { .pill { border: 1px solid CanvasText; } .dot { background: Mark; } }
 `;
