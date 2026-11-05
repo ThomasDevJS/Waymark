@@ -17,6 +17,8 @@ import { parseTags } from '../../core/discovery/tags';
 import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
+import { isShade } from '../../core/player/shade';
+import { SHADE_LABEL } from '../../ui/shadeCopy';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -287,6 +289,26 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
             dirty.value = true;
           }}
         />
+      </label>
+      <label class="field">
+        <span class="label">
+          Shade around the highlight <span class="hint">· for this guide. Learners who picked a shade in their Settings see theirs.</span>
+        </span>
+        <select
+          data-testid="guide-shade"
+          value={g.shade === 'lighter' || g.shade === 'darker' ? g.shade : ''}
+          disabled={readOnly}
+          onChange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            const { shade: _old, ...rest } = draft.value!;
+            draft.value = isShade(v) ? { ...rest, shade: v } : rest;
+            dirty.value = true;
+          }}
+        >
+          <option value="">Default (Medium)</option>
+          <option value="lighter">{SHADE_LABEL.lighter}</option>
+          <option value="darker">{SHADE_LABEL.darker}</option>
+        </select>
       </label>
       <div class="row">
         <span class="badge">

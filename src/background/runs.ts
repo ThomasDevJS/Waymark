@@ -16,6 +16,8 @@ import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from
 import { siteAllowed } from './site-access';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
+import { DEFAULT_SHADE, resolveShade } from '../core/player/shade';
+import { getPlayerSettings } from './player-settings';
 
 /** The origin of a page an entry names, so a page's own Copy log leaves out other sites (D111). */
 function originOf(url: string | undefined): string | null {
@@ -135,9 +137,10 @@ export async function viewFor(tabId: number | undefined, topUrl?: string): Promi
   } catch {
     pageOrigin = null;
   }
-  const view = { ...runView(run, await getBoard(tabId)), muted: (await getVoiceSettings()).muted };
+  const shade = resolveShade((await getPlayerSettings()).shade, run.guideSnapshot.shade);
+  const view = { ...runView(run, await getBoard(tabId)), muted: (await getVoiceSettings()).muted, shade };
   // On another site the content scripts learn only that a run exists, not which guide (D48).
-  if (!pageOrigin || !run.guideSnapshot.appOrigins.includes(pageOrigin)) return { ...view, guideId: null, guideTitle: null, appOrigins: [], step: null, stepToken: null, winner: null };
+  if (!pageOrigin || !run.guideSnapshot.appOrigins.includes(pageOrigin)) return { ...view, guideId: null, guideTitle: null, appOrigins: [], step: null, stepToken: null, winner: null, shade: DEFAULT_SHADE };
   return view;
 }
 
@@ -150,6 +153,12 @@ function broadcast(tabId: number): Promise<void> {
     const msg: ContentPush = { type: 'run.changed', payload: await viewFor(tabId) };
     chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
   });
+}
+
+/** Every tab with a run gets its view again: a global setting (mute, the shade) changed. */
+export async function broadcastAllRuns(): Promise<void> {
+  const all = await chrome.storage.session.get(null);
+  for (const key of Object.keys(all)) if (key.startsWith('run:')) await broadcast(Number(key.slice(4)));
 }
 
 /** Read-modify-write of one tab's run, serialized through the write queue. */
@@ -299,8 +308,7 @@ export const runHandlers: Handlers = {
     dlog('voice', muted ? 'voice.muted' : 'voice.unmuted', {});
     if (muted) stopSpeech('muted');
     // Mute is global: every tab with a run shows the new state.
-    const all = await chrome.storage.session.get(null);
-    for (const key of Object.keys(all)) if (key.startsWith('run:')) await broadcast(Number(key.slice(4)));
+    await broadcastAllRuns();
     return { ok: true };
   },
   // Replay voice / Repeat step from the tooltip (D106). Only the sender tab's own run, only its

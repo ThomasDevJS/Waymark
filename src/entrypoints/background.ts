@@ -19,10 +19,11 @@ import { setupPanelFallback } from '../background/panel-fallback';
 import { onShortcut } from '../background/shortcuts';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample, stopSpeech } from '../background/voice';
 import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
-import { carryRunToNewTab, dropRun, getRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
+import { broadcastAllRuns, carryRunToNewTab, dropRun, getRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 import { tutorialHandlers } from '../background/tutorials';
 import { debugHandlers, debugReady, debugTextForTab, dlog, onDebugTabRemoved } from '../background/debug';
 import { redactUrl } from '../core/debug/log';
+import { getPlayerSettings, setPlayerSettings } from '../background/player-settings';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -65,6 +66,13 @@ const handlers: Handlers = {
   'voice.test': async ({ lang }) => ({ ok: await speakSample(lang) }),
   'voice.settings.get': () => getVoiceSettings(),
   'voice.settings.set': ({ patch }) => setVoiceSettings(patch),
+  'player.settings.get': () => getPlayerSettings(),
+  'player.settings.set': async ({ patch }) => {
+    const next = await setPlayerSettings(patch);
+    // The shade is global: every page playing a guide redraws with it (D144).
+    await broadcastAllRuns();
+    return next;
+  },
   'hd.status': () => hdStatusForSettings(),
   'hd.enable': ({ added }) => hdEnable(added),
   'hd.remove': () => hdRemove(),

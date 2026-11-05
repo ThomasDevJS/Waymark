@@ -17,6 +17,8 @@ import type { StartResult } from '../../background/runs';
 import type { LibraryState } from '../../background/discovery';
 import type { Conflict } from '../sharing/pack';
 import { ContentEntrySchema, MAX_BATCH } from '../debug/log';
+import { LEARNER_SHADES } from '../player/shade';
+import type { PlayerSettings } from '../player/settings';
 
 const url = z.string().max(4096);
 
@@ -81,6 +83,9 @@ export const RequestSchemas = {
       })
       .partial(),
   }),
+  // Player settings (D144): the shade around the highlight, for every guide or per guide.
+  'player.settings.get': z.object({}),
+  'player.settings.set': z.object({ patch: z.object({ shade: z.enum(LEARNER_SHADES) }).partial() }),
   // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
   'hd.status': z.object({}),
   'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
@@ -180,6 +185,8 @@ export interface ResponseMap {
   'voice.test': { ok: boolean };
   'voice.settings.get': VoiceSettings;
   'voice.settings.set': VoiceSettings;
+  'player.settings.get': PlayerSettings;
+  'player.settings.set': PlayerSettings;
   'hd.status': HdStatus;
   'hd.enable': HdStatus;
   'hd.remove': HdStatus;
@@ -316,6 +323,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'voice.test',
   'voice.settings.get',
   'voice.settings.set',
+  'player.settings.get',
+  'player.settings.set',
   'hd.status',
   'hd.enable',
   'hd.remove',

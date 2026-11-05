@@ -9,6 +9,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ### Added
 - The first time a tutorial or an English guide starts reading, Waymark offers the HD voice once, on the Tutorial page or in the side panel: **Listen to a sample** (a short clip that ships with Waymark), **Download** (about 170 MB, in the background: the usual voice keeps reading and the next step switches to HD when it's ready) or **Not now**. Only for an English browser on a computer that looks fast enough; never at install (D140, D141, D143).
 - Tutorials are read with the HD voice once it's installed (D142).
+- Choose how dark the page around a highlighted step is: **Settings → Highlight** for every guide and tutorial (Follow each guide, Lighter, Medium, Darker), or per guide in the editor (**Shade around the highlight**), which is saved in the guide and travels in guide files. A learner's own choice wins over the guide's (D144–D147).
 
 ### Changed
 - The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).

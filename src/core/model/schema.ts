@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SHADES } from '../player/shade';
 
 /**
  * Data model (SPEC: Data model). Defined once in Zod and shared by recorder, player,
@@ -136,6 +137,12 @@ export const GuideSchema = z.object({
   version: z.number().int().nonnegative(),
   source: z.enum(['local', 'library']),
   updatedAt: shortStr(64),
+  /**
+   * The author's shade around the highlight (D144). Optional: older guides and files have none.
+   * A value this version doesn't know (from a newer Waymark) counts as not set, so the guide
+   * still imports.
+   */
+  shade: z.enum(SHADES).optional().catch(undefined),
 }).refine((g) => startUrlOk(g.startUrl, g.appOrigins), { message: 'the start URL is not on one of the guide sites', path: ['startUrl'] });
 export type Guide = z.infer<typeof GuideSchema>;
 

@@ -83,10 +83,17 @@ export async function startTutorial(t: Tutorial): Promise<void> {
   document.querySelector<HTMLFormElement>('[data-guide-id="practice-form"]')?.reset();
   playing.value = t;
   history.replaceState(null, '', `${location.pathname}?tutorial=${t.id}`);
-  const muted = await send('voice.settings.get', {}).then(
-    (s) => s.muted,
-    () => false,
-  );
+  const [muted, shade] = await Promise.all([
+    send('voice.settings.get', {}).then(
+      (s) => s.muted,
+      () => false,
+    ),
+    send('player.settings.get', {}).then(
+      (s) => s.shade,
+      () => 'guide' as const,
+    ),
+  ]);
+  player.setShade(shade);
   // Stopped, or another tutorial started, while the setting was read: don't start this one.
   if (playing.value !== t) return;
   requestAnimationFrame(() => {
@@ -360,12 +367,18 @@ export function Practice() {
       if (document.hasFocus()) player.command(name);
     };
     chrome.commands?.onCommand.addListener(onCommand);
+    // The shade setting changed in Settings: the drawn step follows it (D145).
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && 'playerSettings' in changes) player.setShade((changes.playerSettings!.newValue as { shade?: unknown } | undefined)?.shade);
+    };
+    chrome.storage.onChanged?.addListener(onStorage);
     // Closing the tab mid-step stops the tutorial's voice.
     const onHide = () => player.stop();
     addEventListener('pagehide', onHide);
     return () => {
       chrome.commands?.onCommand.removeListener(onCommand);
       removeEventListener('pagehide', onHide);
+      chrome.storage.onChanged?.removeListener(onStorage);
       player.stop();
     };
   }, []);

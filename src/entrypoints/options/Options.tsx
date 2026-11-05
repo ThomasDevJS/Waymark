@@ -17,6 +17,7 @@ import { languageName } from '../../core/text/names';
 import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
 import type { DebugStatus } from '../../core/messaging/protocol';
+import { ShadeSetting } from './Shade';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
@@ -245,6 +246,7 @@ export function sitePatternLabel(pattern: string): string {
 const SECTIONS = [
   ['voice', 'Voice'],
   ['hd-voice', 'HD voice'],
+  ['highlight', 'Highlight'],
   ['sites', 'Sites'],
   ['team-library', 'Team library'],
   ['problems', 'Problems'],
@@ -414,6 +416,9 @@ export function Options() {
 
           <HdVoice />
 
+          <Section id="highlight" title="Highlight" icon="crosshair">
+            <ShadeSetting />
+          </Section>
           <Section id="sites" title="Sites" icon="globe" badge={<span class="badge">{sites.value.length}</span>}>
             <p class="small muted">Waymark runs only on these sites. Allow a new one from the side panel while you’re on it.</p>
             {sites.value.length ? (

@@ -48,6 +48,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - Card: `src/ui/HdOffer.tsx` (Practice page beside the tutorial list, side panel under the playing card). Gate: `src/core/voice/offer.ts` (`shouldOfferHd`), answer in `ui:hdOffer`. Download: `src/ui/hdDownload.ts`, shared with Settings. Tutorials on HD: `speakHdFirst` in `src/background/voice.ts`. Sample: `public/hd-sample.ogg`, made by `scripts/hd-sample.mjs`.
 - Tests: `test/unit/hd-offer.test.ts`, `test/browser/hd-offer.test.ts`, the D142 block in `test/unit/hd-sw.test.ts`, e2e `test/e2e/h1-hd-offer.spec.ts` (test hook `test:hdOfferEnv` stands in for the navigator's language, cores and memory).
 
+## Highlight shade (D144–D147, issue #58)
+- Levels and precedence: `src/core/player/shade.ts` (no Zod, the content script imports it); learner setting: `src/core/player/settings.ts`, `src/background/player-settings.ts` (`player.settings.get/set`); the guide's optional `shade` in `GuideSchema`. The resolved level goes out in `viewFor` (`RunView.shade`). Drawing: `.spot[data-shade]` and the `--wm-scrim-lighter/-darker` tokens. UI: `options/Shade.tsx`, the editor's "Shade around the highlight". The Practice page follows Settings (`PracticePlayer.setShade`).
+- Tests: `test/unit/shade.test.ts`, `test/browser/shade.test.ts` (open and closed root), e2e `test/e2e/h2-shade.spec.ts` (test hook `data-waymark-test-shade` = `level|computed box-shadow`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

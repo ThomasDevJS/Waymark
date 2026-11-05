@@ -5,6 +5,7 @@
  */
 import type { Guide, RunState, Step } from '../model/schema';
 import { matchPath, routedPath, urlMatches } from '../url/url';
+import type { Shade } from './shade';
 
 export type RunOp = 'done' | 'next' | 'back' | 'skip' | 'exit';
 
@@ -113,6 +114,11 @@ export interface RunView {
   rev: number;
   /** Voice muted (a global setting, shown by the tooltip's toggle). */
   muted: boolean;
+  /**
+   * The shade around the highlight, already resolved for this run (D145): only the level, never
+   * the learner's settings or the guide's own field. Optional: older views have none.
+   */
+  shade?: Shade;
   /** Frame token chosen to draw the current step, or null while searching. */
   winner: string | null;
   /** 'not-found' once the top frame gave up and no frame found the target. */

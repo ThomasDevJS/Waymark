@@ -11,6 +11,7 @@ import { buildFingerprint } from '../../core/fingerprint/build';
 import { watchAdvance } from '../../core/player/advance';
 import { applyOp, startTutorial, tutorialView, type TutorialRun } from '../../core/tutorials/runner';
 import { missingFingerprint, toStep, type Tutorial } from '../../core/tutorials/tutorials';
+import { DEFAULT_SHADE, resolveShade, type Shade } from '../../core/player/shade';
 
 /** After an action, wait before the next step, as the player does (AFTER_ACTION_MS). */
 const AFTER_ACTION_MS = 300;
@@ -51,6 +52,8 @@ export class PracticePlayer {
    */
   private focusNext = false;
   private readonly ui: PlayerUI;
+  /** Tutorials follow the learner's shade from Settings (D145); they have none of their own. */
+  private shade: Shade = DEFAULT_SHADE;
 
   constructor(private readonly deps: PracticeDeps) {
     this.ui = new PlayerUI({
@@ -96,6 +99,16 @@ export class PracticePlayer {
       if (this.run.status === 'running' && s && (s.kind === 'note' || s.kind === 'input' || s.advance === 'next')) this.op('next');
     } else if (name === 'previous-step') this.op('back');
     else if (name === 'exit-guide') this.op('exit');
+  }
+
+  /** The learner's shade setting changed (or was read): applies to the drawn step at once. */
+  setShade(learner: unknown): void {
+    this.shade = resolveShade(learner, undefined);
+    this.ui.setShade(this.shade);
+  }
+
+  private view(run: TutorialRun) {
+    return { ...tutorialView(run), shade: this.shade };
   }
 
   start(tutorial: Tutorial, muted: boolean): void {
@@ -163,7 +176,7 @@ export class PracticePlayer {
   }
 
   private card(kind: 'done' | 'not-found' | 'off-track', run: TutorialRun): void {
-    this.ui.showCard(kind, tutorialView(run));
+    this.ui.showCard(kind, this.view(run));
     this.moveFocus(null);
     this.deps.onView?.(run, kind);
   }
@@ -175,7 +188,7 @@ export class PracticePlayer {
     this.ui.clear();
     const run = this.run;
     if (!run) return;
-    const view = tutorialView(run);
+    const view = this.view(run);
     if (run.status === 'finished') {
       this.deps.stopSpeech();
       this.card('done', run);

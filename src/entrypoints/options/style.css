@@ -138,3 +138,53 @@ html {
   font-size: var(--wm-text-md);
   font-weight: var(--wm-weight-bold);
 }
+
+/* Highlight shade (D144): a small picture of a page with one highlighted button. */
+.shade-setting {
+  display: grid;
+  gap: var(--wm-space-3);
+}
+.shade-preview {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  max-width: 260px;
+  padding: var(--wm-space-3);
+  overflow: hidden;
+  border: 1px solid var(--wm-border);
+  border-radius: var(--wm-radius-md);
+  background: var(--wm-surface-2);
+}
+.shade-preview-line {
+  height: 8px;
+  border-radius: var(--wm-radius-pill);
+  background: var(--wm-fg-muted);
+  opacity: 0.5;
+}
+.shade-preview-line.short {
+  width: 60%;
+}
+.shade-preview-hole {
+  position: relative;
+  z-index: 1;
+  justify-self: start;
+  padding: 2px 12px;
+  border-radius: var(--wm-radius-sm);
+  font-size: var(--wm-text-xs);
+  color: var(--wm-accent-fg);
+  background: var(--wm-accent);
+  outline: 2px solid var(--wm-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 999px var(--wm-scrim);
+}
+.shade-preview[data-shade='lighter'] .shade-preview-hole {
+  box-shadow: 0 0 0 999px var(--wm-scrim-lighter);
+}
+.shade-preview[data-shade='darker'] .shade-preview-hole {
+  box-shadow: 0 0 0 999px var(--wm-scrim-darker);
+}
+@media (forced-colors: active) {
+  .shade-preview-hole {
+    box-shadow: none;
+  }
+}
