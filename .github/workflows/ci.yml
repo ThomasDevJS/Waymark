@@ -1,8 +1,30 @@
 name: CI
 
+# Minute budget (D54): the repo is private on the Free plan (2,000 Actions minutes a month).
+# - Branch pushes no longer run CI on their own; pull requests do, so each push to a PR branch
+#   runs once instead of twice. Pushes to main run once more to publish the extension zip.
+# - A newer run for the same pull request or branch cancels the one in progress.
+# - Docs-only changes skip the check and e2e jobs. On main the `paths` filter below skips the
+#   run altogether. On pull requests the cheap `changes` job decides instead, so that the
+#   check jobs still report (a skipped job counts as passed for a required check) and the
+#   `CI result` job can be the one required check. The two lists must agree with
+#   scripts/ci-changes.mjs (test/unit/ci-changes.test.ts checks this).
 on:
   push:
+    branches: [main]
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - 'THIRD_PARTY_NOTICES.md' # copied into the build (wxt.config.ts)
   pull_request:
+  workflow_dispatch:
+
+# Superseded pull request runs are cancelled. Runs on main are not: each merge keeps its own zip
+# and its own green or red result (D54).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -10,7 +32,42 @@ permissions:
 # Fast checks and the end-to-end shards run in parallel (D52). The Playwright browser is cached
 # per Playwright version; the pnpm store is cached by setup-node.
 jobs:
+  changes:
+    # Pull requests only: is anything other than documentation changed? (D54)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - id: filter
+        shell: bash # adds pipefail, so a crash in the script fails the step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        # Renames count both names. If the file list can't be read, run everything.
+        run: |
+          if files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)'); then
+            printf '%s\n' "$files" | node scripts/ci-changes.mjs | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not list the pull request's files; running the full CI."
+            echo "code=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+          grep -q '^code=' "$GITHUB_OUTPUT"
+
   check:
+    needs: changes
+    # Skipped only on an explicit docs-only answer; runs when `changes` was skipped (push,
+    # manual run), found code changes, or gave no answer.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,18 +88,23 @@ jobs:
         # upload-artifact skips hidden folders such as .output, so the zip is copied out first.
         run: pnpm zip && mkdir -p artifacts && cp .output/waymark-*-chrome.zip artifacts/
       - name: Upload the extension zip (download it from this run's Artifacts)
+        # Main pushes and manual runs only: artifact storage on the Free plan is 500 MB (D54).
+        # Run the workflow by hand on a branch to get a zip for it.
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: waymark-extension
           path: artifacts/waymark-*-chrome.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
       - run: pnpm test:unit
       - uses: ./.github/actions/playwright-browser
       - name: Browser tests and robustness suite
         run: pnpm test:browser
 
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -72,3 +134,18 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+
+  result:
+    # The one check to require in branch protection (D54). It only starts when a job failed or
+    # ended cancelled (a timeout, say), and then fails; otherwise it is skipped, which counts as
+    # passed. So it costs no runner time on green and docs-only runs, and a skipped matrix job
+    # (whose check name is not `e2e (1)`) can never leave a required check waiting.
+    name: CI result
+    needs: [changes, check, e2e]
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: |
+          echo "changes=${{ needs.changes.result }} check=${{ needs.check.result }} e2e=${{ needs.e2e.result }}"
+          exit 1
