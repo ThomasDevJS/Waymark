@@ -126,9 +126,9 @@ The panel lists these too: **?** (Help) → **What the warnings mean**.
 - [ ] Open a deep link (**⋯ → Copy link**) on a page where the **?** button is on: the "Start the guide…?" card sits above the button, not under it.
 
 ### K. Built-in tutorials (issue #37)
-- [ ] In the panel, scroll to **Tutorials** (Built-in): five short guides. Press **Start** on **How Waymark works**. A new tab opens the practice page (Northwind Invoices, marked Practice) and the guide starts, with voice if it's on.
+- [ ] In the panel, scroll to **Tutorials** (Built-in): five short guides. Press **Start** on **How Waymark works**. A new tab opens the tutorial page (headed **Tutorial page**) and the guide starts, with voice if it's on.
 - [ ] Follow it: press **Next** on notes, click the highlighted **New invoice**, type a name and press **Next**, click **Send invoice**. The **Done!** card ends it. Nothing you typed is read aloud.
-- [ ] While **Record your first guide** points at **New invoice**, click **Invoices** in the practice app's top bar instead. After a few seconds a card says the step is on another page; **Go back** returns to it.
+- [ ] While **Record your first guide** points at **New invoice**, click **Invoices** in the tutorial page's top bar instead. After a few seconds a card says the step is on another page; **Go back** returns to it.
 - [ ] **What the warnings mean**: step 4 shows the real “can’t find this step” card. **Report broken step** explains what it does on your own guides; **Skip** goes on.
 - [ ] In the panel, press **Hide** on Tutorials: they're gone, also after reopening the panel. Help (**?**) → **Show the tutorials again** brings them back. The welcome's **Try a tutorial** opens the tour.
 - [ ] On an allowed site, open a tutorial's **⋯** and press **Copy to my guides**. It appears under your guides as “… (copy)”, made of note steps, on that site. On a site that isn't allowed, ⋯ says to allow Waymark first instead.

@@ -61,6 +61,15 @@ describe('practice page targets', () => {
     render(h(Practice, null), root);
     await tick();
     expect(root.textContent).toContain('Nothing here is real');
+    // Plainly a tutorial page: no made-up company or brand names (D89).
+    expect(root.querySelector('h1')!.textContent).toContain('Tutorial page');
+    expect(root.querySelector('h1')!.textContent).not.toContain('Practice');
+    root.querySelector<HTMLElement>('[data-guide-id="practice-nav-invoices"]')!.click();
+    await tick(20);
+    expect(root.textContent).toContain('Sample customer A');
+    for (const name of ['Northwind', 'Bakery', 'Lovelace', 'Babbage']) expect(root.textContent, name).not.toContain(name);
+    root.querySelector<HTMLElement>('[data-guide-id="practice-nav-dashboard"]')!.click();
+    await tick(20);
     await userEvent.click(root.querySelector<HTMLElement>('[data-testid="practice-start-tour"]')!);
     await tick(150);
     const tip = document.querySelector('waymark-overlay');

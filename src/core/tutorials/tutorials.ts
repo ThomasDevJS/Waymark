@@ -107,7 +107,7 @@ export function tutorialAsGuide(t: Tutorial, pageUrl: string, now = new Date()):
         id: newId(),
         kind: 'note' as const,
         title: 'About this draft',
-        note: `A copy of the Waymark tutorial “${t.title}”, to show how steps, notes and spoken text are written. Its steps were made for the practice page: edit them, or record your own steps on this site.`,
+        note: `A copy of the Waymark tutorial “${t.title}”, to show how steps, notes and spoken text are written. Its steps were made for the tutorial page: edit them, or record your own steps on this site.`,
         url: { kind: 'prefix' as const, value: '/' },
         advance: 'next' as const,
       },

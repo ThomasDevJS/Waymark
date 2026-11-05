@@ -205,6 +205,25 @@ describe('overlay drawing', () => {
     ui.clear();
   });
 
+  it('the done card is compact: no step count or bar, the check beside "Done!", one Close (D89)', async () => {
+    const target = q('tb-new');
+    const ui = new PlayerUI(handlers);
+    ui.showCard('done', view(stepFor('click', target)));
+    await new Promise((r) => requestAnimationFrame(r));
+    const tip = overlayHost()!.shadowRoot!.querySelector<HTMLElement>('.tip')!;
+    expect(tip.querySelector('.head')).toBeNull();
+    expect(tip.querySelector('.progress')).toBeNull();
+    expect(tip.querySelectorAll('button')).toHaveLength(1);
+    const icon = tip.querySelector('.badge-icon')!.getBoundingClientRect();
+    const title = tip.querySelector('.title')!.getBoundingClientRect();
+    const note = tip.querySelector('.note')!.getBoundingClientRect();
+    expect(icon.right).toBeLessThanOrEqual(title.left); // beside, not above
+    expect(icon.top).toBeLessThan(title.bottom);
+    expect(note.left).toBe(title.left);
+    expect(tip.getBoundingClientRect().height).toBeLessThan(130);
+    ui.clear();
+  });
+
   it('keeps a long tooltip inside a small viewport: its body scrolls (D93 review)', async () => {
     const target = q('tb-new');
     const ui = new PlayerUI(handlers);

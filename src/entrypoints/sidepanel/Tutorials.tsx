@@ -90,7 +90,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
           Hide
         </button>
       </div>
-      <p class="hint" id="tutorials-hide-hint">Short guides that teach Waymark. They play on a practice page, never on your sites. If you hide them, Help (?) brings them back.</p>
+      <p class="hint" id="tutorials-hide-hint">Short guides that teach Waymark. They play on a tutorial page, never on your sites. If you hide them, Help (?) brings them back.</p>
       <ul class="guide-list">
         {TUTORIALS.map((t) => {
           const open = moreOpen.value === t.id;
@@ -119,7 +119,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
                   >
                     <Icon name="more" />
                   </button>
-                  <button type="button" class="sm start" data-testid={`tutorial-start-${t.id}`} aria-label={`Start ${t.title} (opens the practice page)`} onClick={() => void openPractice(t.id)}>
+                  <button type="button" class="sm start" data-testid={`tutorial-start-${t.id}`} aria-label={`Start ${t.title} (opens the tutorial page)`} onClick={() => void openPractice(t.id)}>
                     <Icon name="play" />
                     Start
                   </button>

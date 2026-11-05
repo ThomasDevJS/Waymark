@@ -134,9 +134,9 @@ function Dashboard() {
 }
 
 const INVOICES = [
-  ['INV-1042', 'Ada’s Bakery', '€ 120.00', 'Paid'],
-  ['INV-1043', 'Lovelace & Co', '€ 860.50', 'Overdue'],
-  ['INV-1044', 'Babbage Tools', '€ 42.00', 'Draft'],
+  ['INV-1042', 'Sample customer A', '€ 120.00', 'Paid'],
+  ['INV-1043', 'Sample customer B', '€ 860.50', 'Overdue'],
+  ['INV-1044', 'Sample customer C', '€ 42.00', 'Draft'],
 ] as const;
 
 function Invoices() {
@@ -187,7 +187,7 @@ function NewInvoice() {
         }}
         onSubmit={(e) => {
           e.preventDefault();
-          sent.value = 'Invoice sent (practice only: nothing was sent).';
+          sent.value = 'Invoice sent (tutorial only: nothing was sent).';
           view.value = 'invoices';
         }}
       >
@@ -375,12 +375,11 @@ export function Practice() {
       <header class="practice-header">
         <h1 class="app-name">
           <span class="logo" aria-hidden="true">
-            N
+            T
           </span>
-          Northwind Invoices
-          <span class="badge warn">Practice</span>
+          Tutorial page
         </h1>
-        <nav aria-label="Practice app">
+        <nav aria-label="Tutorial page">
           {nav('dashboard', 'Dashboard')}
           {nav('invoices', 'Invoices')}
           {nav('new', 'New invoice')}
@@ -390,7 +389,7 @@ export function Practice() {
         <main class="stack">
           <p class="practice-note small">
             <Icon name="info" />
-            <span>This is a practice page inside Waymark. Nothing here is real, nothing you type is kept, and it never goes online.</span>
+            <span>This is Waymark’s tutorial page. Nothing here is real, nothing you type is kept, and it never goes online.</span>
           </p>
           {v === 'dashboard' && <Dashboard />}
           {v === 'invoices' && <Invoices />}

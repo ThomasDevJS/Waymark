@@ -31,8 +31,8 @@ test('the panel lists the tutorials; Start opens the practice page, which plays 
   await practice.waitForLoadState();
   expect(practice.url()).toBe(`chrome-extension://${extensionId}/practice.html?tutorial=tour`);
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
-  await expect(practice.locator('waymark-overlay .tip')).toContainText('Welcome to the practice page');
-  await expect.poll(spoken).toContainEqual(expect.stringContaining('speak:Welcome to the practice page.'));
+  await expect(practice.locator('waymark-overlay .tip')).toContainText('Welcome to the tutorial page');
+  await expect.poll(spoken).toContainEqual(expect.stringContaining('speak:Welcome to the tutorial page.'));
 
   // A note step: Next. A click step: the learner clicks the real button, and the guide moves on.
   await overlay(practice, 'next').click();

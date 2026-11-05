@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).
+
 ## [0.4.0] - 2026-11-05
 
 ### Added
