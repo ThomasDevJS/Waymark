@@ -11,6 +11,7 @@ import { useHd } from '../../core/voice/hd';
 import { HdVoice, hdStatus } from './HdVoice';
 import type { ComponentChildren } from 'preact';
 import { grantedSitePatterns } from '../../core/permissions/registration';
+import { fetchOnlyPatterns } from '../../background/site-access';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
@@ -57,8 +58,14 @@ async function subscribe() {
       readable = false;
     }
     if (!readable) {
-      const granted = await chrome.permissions.request({ origins: [originToMatchPattern(url.origin)] });
+      const pattern = originToMatchPattern(url.origin);
+      // A site the user already allowed stays a guide site. Otherwise the grant is only for
+      // fetching: mark it first, so the grant never registers the content script there (D80).
+      const already = await chrome.permissions.contains({ origins: [pattern] });
+      if (!already) await send('site.fetchOnly', { origin: url.origin, on: true });
+      const granted = await chrome.permissions.request({ origins: [pattern] });
       if (!granted) {
+        if (!already) await send('site.fetchOnly', { origin: url.origin, on: false });
         libraryError.value = 'Waymark needs access to the library site to read the pack.';
         return;
       }
@@ -110,7 +117,8 @@ const sitesError = signal<string | null>(null);
 const shortcuts = signal<Record<string, string>>({});
 async function loadSites() {
   const { origins = [] } = await chrome.permissions.getAll();
-  sites.value = grantedSitePatterns(origins);
+  // A library site granted only to fetch the pack is not a guide site (D80): leave it out.
+  sites.value = grantedSitePatterns(origins, await fetchOnlyPatterns());
 }
 
 async function removeSite(pattern: string) {

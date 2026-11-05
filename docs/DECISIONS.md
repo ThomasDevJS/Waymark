@@ -564,6 +564,53 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Independent review**: look-alikes are stored **whatever their score, visibility or enabled state**. A look-alike under 60 at record time can pass 60 at playback on position and XPath once the target is gone. A look-alike in a hidden tab or collapsed demo can be shown later. Both were wrong matches in the first version and have regression tests (`test/browser/lookalikes.test.ts`). An **exact twin** (an element matching every non-positional signal the target has) is not stored, because it would refuse the target itself. MUI's docs keep a second, hidden alert dialog with the same title mounted, and its "Agree" made the real one unfindable. A visible twin is a repeated element (D5); a hidden one cannot be told apart by any signal. Record time scores the page once for both `matchCount` and the look-alikes.
 - **Cost and limits**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Look-alikes that are not in the DOM at record time (lazy or virtualised content) cannot be known, so the rule narrows the risk but does not close it. Fingerprints recorded without look-alikes (before D64) behave as before. Robustness set A: 519/520 found, 0 wrong. The one miss is the new fixture pair `date-basic` / `date-other` under `wrap` (ambiguous), which reproduces the Ant case.
 
+### D65. A nameless control in a list item is named by the item's label
+- **Spec**: Element targeting, record step 2 and playback step 3 (signals and weights); Data model (new optional `ElementFingerprint.itemLabel`).
+- **Finding**: the todo toggles of TodoMVC in Vue and Angular are `<input type=checkbox class=toggle>` next to a `<label>` that is not linked to them. They have no name, text or test id, so since D47 a click on one is not recorded at all. In React they share a test id and were `instance: 'any'` ("check any todo"), and the title was "Check **the checkbox**". What the author meant is in the row: "Walk the dog".
+- **Change**: a **checkbox, radio or switch** with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field, and it must be **everything the item says**: the item's visible text, outside interactive elements, is exactly that label. Hidden parts are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong, not identifying. The step title uses it ("Check **Walk the dog**").
+- **Why so narrow** (two independent reviews; each case is a regression test in `test/browser/item-label.test.ts`). A label is identity only when it is the item's name, and status or context that moves between rows picked the wrong row:
+  - "Open" next to a named link in an issue list;
+  - an "Overdue" badge next to "Pay rent";
+  - a "Books" category heading over "Dune";
+  - a parent row taking a nested child's label.
+  So there is no item label when:
+  - the item has other visible text;
+  - a link in it has a name;
+  - it contains another item;
+  - anything in it is editable (typed text in rich-text task lists);
+  - the control is not a toggle. A nameless delete icon would otherwise be titled "Click **Walk the dog**".
+- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`). When the item is gone (another list), the other rows' toggles match only what record-time look-alikes matched (D64), so the result is not-found.
+- **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
+- **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
+
+## 2026-11-05 — Team library access and schedule (issues #21, #22)
+
+### D80. A library site granted only to fetch the pack is not a guide site
+- **Spec**: Sharing, "v1: library URL" (the library's site is requested when it sends no CORS headers), and Architecture, "Content script" (registered for granted sites).
+- **Finding** (issue #21): that grant also registered the content script on the library's site (for example `raw.githubusercontent.com`), and the panel called the site allowed.
+- **Change**:
+  - Settings marks the site "fetch-only" (`fetchOnlyOrigins` in `chrome.storage.local`, `src/background/site-access.ts`) before it asks for it. The mark comes first so the permission event never registers the script there. If the user denies the prompt, the mark is cleared. A site the user had already allowed is not marked.
+  - Fetch-only sites get no content script (`grantedSitePatterns(origins, exclude)`). The panel, recording, playback and the pending-Allow list all treat them as not allowed (`siteAllowed`).
+  - When the user clicks **Allow** on such a site, or ticks it in the one-click Allow, the panel sends `site.allowed`. That clears the mark, registers the script and injects it into open tabs. Chrome fires no permission event for an origin that is already granted, which is why the panel has to send this message.
+  - Unsubscribing, or moving the library to another site, gives back a permission that was held only for fetching.
+  - **Review fixes**:
+    - **Migration:** after an update, a granted library site that no stored guide uses is marked fetch-only. Subscriptions made before this change are covered.
+    - **Giving a permission back:** the permission is removed first, and the mark is cleared only once that succeeded. A failed removal never leaves an unmarked guide site behind.
+    - **Marking:** the service worker never marks a site that is already granted.
+    - **Clean-up at browser start:** fetch-only sites other than the current library's site are given back. This covers a subscription that never finished.
+    - **Injection:** `site.allowed` injects only into sites it actually un-marked, because a fresh grant is already injected by `permissions.onAdded`.
+  - The per-step `rec.step` check keeps the raw permission call. A fetch-only site has no content script, and an extra storage read there reordered a click and its route change in e2e. That ordering is a latent race in the recorder, reported to the real-sites lane.
+- **Limits**:
+  - A site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+  - If the library's site is also an HD-voice download host (D51), the two grants are not coordinated. Both hosts are expected to send CORS headers, so this should not come up.
+
+### D81. One library fetch per browser start
+- **Spec**: Sharing, "v1: library URL" (refreshed with `chrome.alarms`).
+- **Finding** (issue #22): `onStartup` and `onInstalled` fetched the library immediately, and also set an alarm that fetched it again a minute later. Subscribing did the same.
+- **Change**: at browser start and install, the alarm (delay 1 minute) does the only fetch. After a fetch caused by subscribing, the next alarm waits a full period (`scheduleLibrary({ fetchedNow: true })`).
+
+## 2026-11-05 — Design
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 
@@ -631,6 +678,7 @@ Only the look and the accessibility semantics change; every handler, advance rul
 - **Mark**: an original drawing: a white flag on a pole, planted at the end of a dotted path, on a blue rounded tile (`assets/brand/mark.svg`). At 16 px the path and the pole's foot would blur, so 16 px has its own simpler drawing (`mark-16.svg`). `node scripts/icons.mjs` renders `public/icon/{16,32,48,128}.png` with the Playwright Chromium; the PNGs are committed, so builds need no browser. WXT puts them in the manifest's `icons`, which the toolbar button uses too. The panel and Settings headers show the mark (`src/ui/Mark.tsx`) instead of a generic pin icon.
 - **No remote fonts or icons**: the system font stack only, and every icon is bundled.
 - **Copy**: one name per thing across the panel, Settings, the page and the docs. "Team guide" / "team library", not "library guide". "Select", not "Tick". "On the page". The recorder warnings are called "Hard to find", "Drawing area" and "Closed component" everywhere. Error text says what to do next ("Team guides are read-only. Duplicate the guide to edit your own copy."). `docs/TESTING.md` now uses the new labels: the welcome, the Allowed badge, Undo, Note after, the speaker and × buttons, Export n selected…, Import…, Copy as text, Settings → Sites, and the new warning names.
+- **Settings → Sites and D80**: the Sites list leaves out library sites that are granted only to fetch the pack (`fetchOnlyPatterns`), the same filter the service worker uses for the content script. A library site the user has also allowed for guides is still listed, with its note.
 - **Fixes from the independent review**:
   - Icons: the 128 px icon is a 96 px tile with 16 px of transparent padding, as the Chrome Web Store asks. 32 px uses the simple drawing too, because the dots read as specks. The small tile is a lighter blue (#3d6cf0), so it shows on dark toolbars.
   - Test step on the page no longer flashes matcher internals ("Matched: roleName…"). It says "Found." or "Found, but fragile." and points to the side panel. "Not found" no longer repeats itself, and it says what to do.

@@ -11,8 +11,9 @@ import { applyRunOp, currentStep, newTabContinuesRun, NO_RUN, onStartPage, runVi
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
-import { normalizePath, originToMatchPattern } from '../core/url/url';
+import { normalizePath } from '../core/url/url';
 import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from './voice';
+import { siteAllowed } from './site-access';
 
 const runKey = (tabId: number) => `run:${tabId}`;
 const boardKey = (tabId: number) => `match:${tabId}`;
@@ -139,7 +140,7 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
   const guide = await loadGuide(guideId);
   const url = await tabUrl(tabId);
   const origin = new URL(guide.startUrl).origin;
-  if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) throw new Error('Allow Waymark on this site first.');
+  if (!(await siteAllowed(origin))) throw new Error('Allow Waymark on this site first.');
   if (!url || !onStartPage(guide, url)) {
     // The stored start URL has no ids (D33); when the first page needs one, the learner has
     // to open it themselves (D36).
@@ -327,7 +328,7 @@ export async function endRunsOnRevokedSites(): Promise<void> {
     const url = await tabUrl(tabId);
     let ok = false;
     try {
-      ok = !!url && (await chrome.permissions.contains({ origins: [originToMatchPattern(new URL(url).origin)] }));
+      ok = !!url && (await siteAllowed(new URL(url).origin));
     } catch {
       ok = false;
     }
