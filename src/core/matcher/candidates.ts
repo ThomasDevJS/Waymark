@@ -1,7 +1,7 @@
 /** Candidate gathering (SPEC: Element targeting, "At playback" step 2). */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { cssEscape, getRole, nearestInteractive, openShadowRoots, rawAccessibleName, rawItemLabel, rawOwnText, tagOf } from '../fingerprint/dom';
+import { cssEscape, getRole, nearestInteractive, openShadowRoots, rawAccessibleName, rawOwnText, tagOf, ITEM_SELECTOR, itemName } from '../fingerprint/dom';
 import { GUIDE_ID_ATTR, resolveShadowPathAll, resolveXPath } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
 import { isSamePageHref, linkPath } from '../url/url';
@@ -71,9 +71,12 @@ export function gatherCandidates(
       add(qsa(root, sel).filter((e) => normText(rawOwnText(e)) === want));
     }
     if (fp.itemLabel) {
+      // One pass over the items whose name matches, then the controls inside them (D65).
       const want = normText(fp.itemLabel);
       const sel = fp.role ? `${cssEscape(fp.tag)}, ${roleSelector(fp.role)}` : cssEscape(fp.tag);
-      add(qsa(root, sel).filter((e) => normText(rawItemLabel(e)) === want));
+      for (const item of qsa(root, ITEM_SELECTOR)) {
+        if (normText(itemName(item)) === want) add(Array.from(item.querySelectorAll(sel)));
+      }
     }
     if (fp.placeholder) {
       const want = normText(fp.placeholder);

@@ -1,4 +1,4 @@
-/** Nameless controls in list items are named by the item's text (D56; TodoMVC Vue and Angular). */
+/** Nameless controls in list items are named by the item's label (D65; TodoMVC Vue and Angular). */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from 'vitest/browser';
 import { buildFingerprint } from '../../src/core/fingerprint';
@@ -36,6 +36,59 @@ describe('item label', () => {
     rowToggle.type = 'checkbox';
     q('row-edit').closest('tr')!.querySelector('td')!.append(rowToggle);
     expect(buildFingerprint(rowToggle).itemLabel).toBeUndefined(); // "#10234 Ada … $120.00" is data
+  });
+});
+
+describe('item label: review of D65', () => {
+  /** Test markup only (no user strings), parsed without innerHTML. */
+  const parse = (html: string) => document.importNode(new DOMParser().parseFromString(html, 'text/html').body.firstElementChild!, true);
+  const list = (rows: string[]) => {
+    const ul = parse(`<ul>${rows.join('')}</ul>`);
+    document.body.append(ul);
+    return ul;
+  };
+  afterEach(() => document.querySelectorAll('ul.review').forEach((u) => u.remove()));
+
+  it('status text next to a named link is not an item label (never the wrong row)', () => {
+    const ul = list([
+      '<li><input type="checkbox"><a href="/i/1">Fix bug</a><span>Open</span></li>',
+      '<li><input type="checkbox"><a href="/i/2">Add docs</a><span>Closed</span></li>',
+      '<li><input type="checkbox"><a href="/i/3">Ship it</a><span>Closed</span></li>',
+    ]);
+    ul.className = 'review';
+    const fp = buildFingerprint(ul.querySelector('input')!);
+    expect(fp.itemLabel).toBeUndefined();
+    ul.children[0]!.remove();
+    ul.children[0]!.querySelector('span')!.textContent = 'Open';
+    expect(matchOnce(document, fp).status).toBe('not-found');
+  });
+
+  it('plain status text in a row is not an item label; only a label or heading is', () => {
+    const ul = list(['<li><input type="checkbox"><span>Open</span></li>', '<li><input type="checkbox"><span>Closed</span></li>']);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBeUndefined();
+  });
+
+  it('rows that share a label are ambiguous, not interchangeable', () => {
+    const ul = list(['<li><input type="checkbox"><label>Same</label></li>', '<li><input type="checkbox"><label>Same</label></li>']);
+    ul.className = 'review';
+    const fp = buildFingerprint(ul.querySelector('input')!);
+    expect(fp.instance).toBe('unique');
+    expect(matchOnce(document, fp).status).toBe('not-found');
+  });
+
+  it('never reads text typed into a rich-text editor (task lists in contenteditable)', () => {
+    const host = parse('<div contenteditable="true"><ul><li><label><input type="checkbox"></label><label>call my lawyer</label></li></ul></div>');
+    document.body.append(host);
+    const fp = buildFingerprint(host.querySelector('input')!);
+    host.remove();
+    expect(JSON.stringify(fp)).not.toContain('lawyer');
+  });
+
+  it('text hidden by CSS is not part of the label', () => {
+    const ul = list(['<li><input type="checkbox"><label>Task<span style="display:none"> Saving…</span></label></li>']);
+    ul.className = 'review';
+    expect(buildFingerprint(ul.querySelector('input')!).itemLabel).toBe('Task');
   });
 });
 

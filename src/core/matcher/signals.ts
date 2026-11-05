@@ -49,7 +49,8 @@ export const POSITIONAL: ReadonlySet<SignalKey> = new Set<SignalKey>(['xpath', '
  * treated as interchangeable (instance 'any') only when they share one of these; a shared
  * `name` (a radio group, `commit` submit buttons) or link path is group-level (DECISIONS R5).
  */
-export const IDENTIFYING: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text', 'item']);
+// Not the item label: rows that share one are ambiguous, not interchangeable (D65 review).
+export const IDENTIFYING: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text']);
 
 /** Controls whose `name` attribute is shared by a group: radios, checkboxes and buttons. */
 const GROUP_NAME_INPUT_TYPES = new Set(['radio', 'checkbox', 'submit', 'button', 'reset', 'image']);

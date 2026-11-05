@@ -493,27 +493,24 @@ export function compareDocumentOrder(a: Element, b: Element): number {
   return ca.length - cb.length;
 }
 
-/** List items and table rows: their text names a nameless control inside them (D65). */
+/** List items and table rows: their label names a nameless control inside them (D65). */
 const ITEM_TAGS = new Set(['li', 'tr']);
 const ITEM_ROLES = new Set(['row', 'listitem', 'treeitem']);
+export const ITEM_SELECTOR = 'li, tr, [role="row"], [role="listitem"], [role="treeitem"]';
+const ITEM_NAME_SELECTOR = 'label, h1, h2, h3, h4, h5, h6, [role="heading"]';
 const MAX_ITEM_LEVELS = 4;
 
+/** The list item or row around an element, at most 4 levels up within its own root. */
 function itemOf(el: Element): Element | null {
-  let a = el.parentElement;
+  let a = el.parentElement; // stops at a shadow root: record and playback agree on that
   for (let i = 0; a && i < MAX_ITEM_LEVELS; i++, a = a.parentElement) {
     if (ITEM_TAGS.has(tagOf(a)) || ITEM_ROLES.has(explicitRole(a) ?? '')) return a;
   }
   return null;
 }
 
-/**
- * Raw visible text of the list item or table row around an element (at most 4 levels up),
- * leaving out the text of interactive elements in it: "Walk the dog" for a TodoMVC toggle.
- * Never field values.
- */
-export function rawItemLabel(el: Element): string | undefined {
-  const item = itemOf(el);
-  if (!item) return undefined;
+/** Visible text of an element, leaving out interactive elements, hidden parts and field values. */
+function plainVisibleText(root: Element): string {
   let out = '';
   const walk = (node: Node) => {
     for (let c = node.firstChild; c; c = c.nextSibling) {
@@ -522,18 +519,52 @@ export function rawItemLabel(el: Element): string | undefined {
         const ce = c as Element;
         const t = tagOf(ce);
         if (t === 'script' || t === 'style' || t === 'template' || NO_TEXT_TAGS.has(t)) continue;
-        if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden') || isInteractive(ce)) continue;
+        if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden') || isInteractive(ce) || !isVisible(ce)) continue;
         out += ' ';
         walk(ce);
         out += ' ';
       }
     }
   };
-  walk(item);
-  return cleanText(out) || undefined;
+  walk(root);
+  return cleanText(out);
 }
 
-/** Item label, or undefined when missing or data-like (a row of amounts, emails, ids). */
+/**
+ * The name an item gives itself: the text of its first visible label or heading that does not
+ * belong to another control. Status words, counts and other loose text in the row are not names.
+ */
+export function itemName(item: Element, owner?: Element): string | undefined {
+  for (const n of Array.from(item.querySelectorAll(ITEM_NAME_SELECTOR))) {
+    if (n.closest('a[href], button') && item.contains(n.closest('a[href], button'))) continue;
+    if (tagOf(n) === 'label') {
+      const control = labelControl(n);
+      if (control && control !== owner) continue; // it names another field
+    }
+    if (!isVisible(n)) continue;
+    const text = plainVisibleText(n);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+/**
+ * Raw item label of a nameless control (D65): its item's label or heading, e.g. "Walk the dog"
+ * for a TodoMVC toggle. None when another control in the item has a name (the row is named by
+ * that control, and what is left is status), and never inside an editable region (typed text).
+ */
+export function rawItemLabel(el: Element): string | undefined {
+  const item = itemOf(el);
+  if (!item) return undefined;
+  if ((item as HTMLElement).isContentEditable || (el as HTMLElement).isContentEditable) return undefined;
+  for (const c of Array.from(item.querySelectorAll('*'))) {
+    if (c === el || !isInteractive(c) || c.contains(el)) continue;
+    if (rawAccessibleName(c) || rawOwnText(c)) return undefined;
+  }
+  return itemName(item, el);
+}
+
+/** Item label, or undefined when missing or data-like. */
 export function itemLabel(el: Element): string | undefined {
   return safeLabel(rawItemLabel(el));
 }
