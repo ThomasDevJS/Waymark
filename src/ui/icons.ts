@@ -1,5 +1,5 @@
 /**
- * Icons (D90): Lucide (ISC), bundled. Only the icons listed here end up in the build. Icons are
+ * Icons (D91): Lucide (ISC), bundled. Only the icons listed here end up in the build. Icons are
  * built with DOM APIs (never innerHTML), so the same nodes work in Preact and in the overlay.
  * Every icon is decorative (aria-hidden); the control it sits in carries the label.
  */
@@ -46,6 +46,7 @@ import {
   X,
   type IconNode,
 } from 'lucide';
+import { buildSvg } from './svg';
 
 export const ICONS = {
   'arrow-down': ArrowDown,
@@ -92,32 +93,9 @@ export const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
+export { ICON_ATTRS } from './svg';
 
-/** The attributes every icon shares (Lucide's defaults). */
-export const ICON_ATTRS = {
-  xmlns: SVG_NS,
-  width: '16',
-  height: '16',
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  'stroke-width': '2',
-  'stroke-linecap': 'round',
-  'stroke-linejoin': 'round',
-  'aria-hidden': 'true',
-  focusable: 'false',
-} as const;
-
-/** An icon as an SVG element, for the overlay (no framework there). */
+/** An icon by name as an SVG element. */
 export function svgIcon(name: IconName, doc: Document = document): SVGSVGElement {
-  const svg = doc.createElementNS(SVG_NS, 'svg');
-  for (const [k, v] of Object.entries(ICON_ATTRS)) svg.setAttribute(k, v);
-  svg.setAttribute('class', `wm-icon wm-icon-${name}`);
-  for (const [tag, attrs] of ICONS[name]) {
-    const child = doc.createElementNS(SVG_NS, tag);
-    for (const [k, v] of Object.entries(attrs)) if (v !== undefined) child.setAttribute(k, String(v));
-    svg.append(child);
-  }
-  return svg;
+  return buildSvg(ICONS[name], `wm-icon wm-icon-${name}`, doc);
 }
