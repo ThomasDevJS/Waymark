@@ -36,15 +36,31 @@ export function recomputeWinner(b: MatchBoard): MatchBoard {
   return b;
 }
 
+/** A document is asked again at most this often (D84). */
+export const CHECK_GAP_MS = 1000;
+
 /**
- * Frames to ask whether they still exist (D84): with no winner, two or more frames that found the
- * element tie. A frame whose element (iframe) was removed and replaced by a new one (a new frameId)
- * never reports again, so its last report would block the new frame for good.
+ * Frames to ask whether they still exist (D84): two or more frames found the element, so a frame
+ * whose iframe was removed and replaced (a new frameId) may tie with its successor, or win alone
+ * (instance 'any' ties go to the lower frameId). It never reports again, so its last report would
+ * block the live frame for good. Documents asked in the last CHECK_GAP_MS are left out.
  */
-export function tiedDocs(b: MatchBoard): { key: string; doc: string }[] {
-  if (b.winner) return [];
+export function docsToCheck(b: MatchBoard, now: number): { key: string; doc: string }[] {
   const found = Object.entries(b.reports).filter(([, v]) => v.found && v.doc);
-  return found.length < 2 ? [] : found.map(([key, v]) => ({ key, doc: v.doc! }));
+  if (found.length < 2) return [];
+  return found.filter(([, v]) => !(b.checked?.[v.doc!] !== undefined && now - b.checked[v.doc!]! < CHECK_GAP_MS)).map(([key, v]) => ({ key, doc: v.doc! }));
+}
+
+/** Remembers when documents were asked, so a burst of reports asks each once. */
+export function markChecked(b: MatchBoard, docs: { doc: string }[], now: number): void {
+  b.checked = { ...(b.checked ?? {}) };
+  for (const d of docs) b.checked[d.doc] = now;
+}
+
+/** Drops every report of a document that said it is leaving (pagehide). */
+export function dropDoc(b: MatchBoard, doc: string): boolean {
+  const gone = Object.entries(b.reports).filter(([, v]) => v.doc === doc).map(([key]) => ({ key, doc }));
+  return dropGone(b, gone);
 }
 
 /** Drops the reports of documents that are gone, if they are still the same documents. */

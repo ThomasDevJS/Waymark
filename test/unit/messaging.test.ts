@@ -23,7 +23,7 @@ describe('sender classification', () => {
 
 describe('allowlists', () => {
   it('content scripts may send only their allowlisted types', () => {
-    expect([...CONTENT_ALLOWED].sort()).toEqual(['debug.copy', 'debug.log', 'deeplink.check', 'frame.claim', 'frame.nonce', 'frame.path', 'guide.forPage', 'launcher.start', 'pick.abort', 'pick.result', 'rec.step', 'route.report', 'run.advance', 'run.match', 'run.mute', 'run.problem', 'run.replay']);
+    expect([...CONTENT_ALLOWED].sort()).toEqual(['debug.copy', 'debug.log', 'deeplink.check', 'frame.claim', 'frame.nonce', 'frame.path', 'guide.forPage', 'launcher.start', 'pick.abort', 'pick.result', 'rec.step', 'route.report', 'run.advance', 'run.leave', 'run.match', 'run.mute', 'run.problem', 'run.replay']);
     expect(parseMessage({ type: 'route.report', payload: { url: 'https://a/', via: 'load' } }, content, ID)).toMatchObject({ ok: true, kind: 'content' });
     expect(parseMessage({ type: 'site.list', payload: {} }, content, ID)).toEqual({ ok: false, error: 'site.list not allowed from content' });
     expect(parseMessage({ type: 'tab.current', payload: {} }, content, ID)).toMatchObject({ ok: false });

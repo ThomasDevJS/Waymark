@@ -343,6 +343,13 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   };
   chrome.runtime.onMessage.addListener(onMessage);
 
+  // This document is going away (its iframe removed, or a navigation): its match reports must not
+  // block the frame that replaces it (D84). Only after this frame has reported for the step.
+  const onHide = () => {
+    if (searchDone) send('run.leave', {}).catch(() => undefined);
+  };
+  addEventListener('pagehide', onHide);
+
   // A Test step highlight took the overlay for a moment: draw the current step again.
   const offReleased = onOverlayReleased(ui, () => {
     const v = view;
@@ -374,6 +381,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     dispose() {
       offReleased();
       clearStep();
+      removeEventListener('pagehide', onHide);
       try {
         chrome.runtime.onMessage.removeListener(onMessage);
       } catch {

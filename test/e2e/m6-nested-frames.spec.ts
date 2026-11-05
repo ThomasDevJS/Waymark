@@ -74,11 +74,14 @@ test('a late, 3-deep nested frame: voice waits for the element; a click on the c
   await expect.poll(() => marker(app, 'player')).toBe('done');
 });
 
-test('a screen reopened in new frames: the old frame that is going away never blocks the new one (debug log of #32)', async ({ context, ext, site }) => {
+// Two orderings from real apps (D84): the old frame is replaced at once, or the new one loads
+// next to it and the old one is removed only after the new one found the element.
+for (const [name, query] of [['replaced at once', 'swap=600'], ['removed after the new one found the element', 'swap=600&keep=2500']] as const)
+test(`a screen reopened in new frames (${name}): the old frame never blocks the new one (#38)`, async ({ context, ext, site }) => {
   test.setTimeout(120_000);
   await ext.grant('http://127.0.0.1/*');
   const app = await context.newPage();
-  const url = `${site.main}/nested/index.html?swap=600`;
+  const url = `${site.main}/nested/index.html?${query}`;
   await app.goto(url);
   await expect.poll(() => marker(app, 'loaded')).toBe('yes');
   const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
@@ -102,7 +105,8 @@ test('a screen reopened in new frames: the old frame that is going away never bl
   await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
   const oldFrame = activity(app)!;
   await app.getByRole('link', { name: 'Safety' }).click();
-  await expect.poll(async () => (activity(app) && activity(app) !== oldFrame ? marker(activity(app)!, 'player') : null), { timeout: 15_000 }).toBe('drawn:1');
+  // Promptly: not only once the top frame gives up after 8 s and its report happens to recheck.
+  await expect.poll(async () => (activity(app) && activity(app) !== oldFrame ? marker(activity(app)!, 'player') : null), { timeout: 7_000 }).toBe('drawn:1');
   await activity(app)!.locator('#unsafe_driving-basic-cat-info-toggle .count').click();
   await expect.poll(() => marker(app, 'player')).toBe('done');
 });

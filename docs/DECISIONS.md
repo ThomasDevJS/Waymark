@@ -686,6 +686,13 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - Each board entry keeps the reporter's `sender.documentId`.
   - When found reports tie (no winner, two or more found), the service worker asks those documents `frame.alive` (`tabs.sendMessage` with `{ documentId }`). A gone document fails at once, while a live one answers `true`. An answer slower than 500 ms counts as alive, so a live frame is never dropped.
   - Gone documents' entries are removed, but only if the entry is still that document. The winner is then recomputed, and the change is broadcast and read aloud (D83).
+- **Independent review**: no wrong-winner path was found, but three gaps were. Each is now covered:
+  - **The old frame is removed only after the new one has found the element**, so both answer "alive". Two measures cover this:
+    - The content script sends `run.leave` on `pagehide`, and the service worker drops that document's own entries, whatever its lifecycle (it can only remove its own entries).
+    - While two or more found frames remain, they are asked again after 1.2, 2.5 and 5 s, guarded by the step token.
+    Before this, the board only recovered when another report happened to come in, typically 8 s later when the top frame gave up (e2e `?keep=2500` checks it now draws within 7 s).
+  - **A gone frame that wins outright**: in an `instance: 'any'` tie the lower frameId wins, or a gone frame can lead by the margin. Documents are now asked whenever two or more frames found the element, not only when no frame won.
+  - **Repeated asking**: each document is asked at most once a second (`checked` times on the board), and the 500 ms timer is cleared.
 - **Matcher**: unchanged. A real tie between two live frames still draws nothing.
 
 ## 2026-11-05 — Design
