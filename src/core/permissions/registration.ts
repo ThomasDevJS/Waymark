@@ -19,10 +19,13 @@ export interface RegistrationApi {
   };
 }
 
-/** Granted http(s) site patterns, sorted and de-duplicated. */
-export function grantedSitePatterns(origins: string[]): string[] {
+/**
+ * Granted http(s) site patterns, sorted and de-duplicated. `exclude`: sites granted for another
+ * reason, such as a library site granted only to fetch the pack (D80).
+ */
+export function grantedSitePatterns(origins: string[], exclude: readonly string[] = []): string[] {
   // HD voice download hosts are held only while the model downloads; they are not guide sites (D51).
-  const reserved = new Set<string>(HD_HOST_PATTERNS);
+  const reserved = new Set<string>([...HD_HOST_PATTERNS, ...exclude]);
   return [...new Set(origins.filter((o) => /^(https?|\*):\/\//.test(o) && !reserved.has(o)))].sort();
 }
 
@@ -43,9 +46,9 @@ function sameList(a: string[] = [], b: string[] = []): boolean {
 }
 
 /** Makes the registration match the granted sites exactly. Returns the registered match patterns. */
-export async function syncRegistrations(api: RegistrationApi): Promise<string[]> {
+export async function syncRegistrations(api: RegistrationApi, exclude: readonly string[] = []): Promise<string[]> {
   const { origins = [] } = await api.permissions.getAll();
-  const patterns = grantedSitePatterns(origins);
+  const patterns = grantedSitePatterns(origins, exclude);
   const existing = (await api.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] }))[0];
   if (!patterns.length) {
     if (existing) await api.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] });

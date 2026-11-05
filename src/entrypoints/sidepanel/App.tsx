@@ -30,7 +30,8 @@ async function refresh() {
 /** chrome.permissions.request needs the user's click, so the panel calls it itself (SPEC A4). */
 async function allow(origin: string) {
   try {
-    await chrome.permissions.request({ origins: [originToMatchPattern(origin)] });
+    // Already granted (a library site held only for fetching) still counts as the user's Allow (D80).
+    if (await chrome.permissions.request({ origins: [originToMatchPattern(origin)] })) await send('site.allowed', { origins: [origin] });
   } finally {
     await refresh();
   }

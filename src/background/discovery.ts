@@ -12,6 +12,7 @@ import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
 import { startRunInTab } from './runs';
+import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from './site-access';
 
 // ---------- toolbar badge ----------
 
@@ -73,10 +74,12 @@ export const MAX_PENDING_ALLOW = 50;
 
 async function grantedOrigin(o: string): Promise<boolean> {
   try {
-    return await chrome.permissions.contains({ origins: [originToMatchPattern(o)] });
+    originToMatchPattern(o);
   } catch {
     return true; // not a usable origin: never offer it
   }
+  // A library site granted only to fetch the pack is still offered (D80).
+  return siteAllowed(o);
 }
 const LIBRARY_KEY = 'library';
 export const LIBRARY_ALARM = 'library-refresh';
@@ -162,10 +165,36 @@ export async function refreshLibrary(): Promise<LibraryState> {
   }
 }
 
-export async function scheduleLibrary(): Promise<void> {
+/**
+ * The refresh alarm. Without `fetchedNow` the first refresh comes a minute from now (browser start,
+ * install); with it, the caller just fetched, so the next one waits a full period (D81).
+ */
+export async function scheduleLibrary(opts: { fetchedNow?: boolean } = {}): Promise<void> {
   const { url } = await libraryState();
-  if (url) await chrome.alarms.create(LIBRARY_ALARM, { periodInMinutes: LIBRARY_PERIOD_MIN, delayInMinutes: 1 });
+  const delayInMinutes = opts.fetchedNow ? LIBRARY_PERIOD_MIN : 1;
+  if (url) await chrome.alarms.create(LIBRARY_ALARM, { periodInMinutes: LIBRARY_PERIOD_MIN, delayInMinutes });
   else await chrome.alarms.clear(LIBRARY_ALARM);
+}
+
+/** Browser start and install: the alarm does the first fetch, a minute later; one fetch, not two (D81). */
+export function onBrowserStartLibrary(): Promise<void> {
+  return scheduleLibrary();
+}
+
+/** A library site granted only for fetching is given back when the library moves away from it (D80). */
+async function releaseFetchOnly(oldUrl: string | null, newUrl: string | null): Promise<void> {
+  if (!oldUrl) return;
+  let oldOrigin: string;
+  try {
+    oldOrigin = new URL(oldUrl).origin;
+    if (newUrl && new URL(newUrl).origin === oldOrigin) return;
+  } catch {
+    return;
+  }
+  const pattern = originToMatchPattern(oldOrigin);
+  if (!(await fetchOnlyPatterns()).includes(pattern)) return;
+  await setFetchOnly(oldOrigin, false);
+  await chrome.permissions.remove({ origins: [pattern] }).catch(() => false);
 }
 
 async function loadGuide(id: string): Promise<Guide | null> {
@@ -246,14 +275,28 @@ export const discoveryHandlers: Handlers = {
   'library.get': () => libraryState(),
   'library.set': async ({ url }) => {
     if (url !== null && !libraryUrlAllowed(url)) throw new Error('The library URL must start with https://');
+    const before = (await libraryState()).url;
     await setLibraryState({ url, lastError: null, ...(url === null ? { count: 0, lastFetchAt: null } : {}) });
     if (url === null) {
       // Unsubscribing removes the library guides.
       await enqueue(async () => writeGuides([], (await listGuides()).filter((g) => g.source === 'library').map((g) => g.id)));
       await updateAllBadges();
     }
-    await scheduleLibrary();
-    return url === null ? libraryState() : refreshLibrary();
+    await releaseFetchOnly(before, url);
+    if (url === null) {
+      await scheduleLibrary();
+      return libraryState();
+    }
+    const state = await refreshLibrary();
+    await scheduleLibrary({ fetchedNow: true });
+    return state;
+  },
+  // Options marks the library site before asking for it, so the grant never registers the
+  // content script there (D80); the panel clears the mark when the user allows the site.
+  'site.fetchOnly': async ({ origin, on }) => {
+    if (!isSiteOrigin(origin)) throw new Error('Not a site origin');
+    await setFetchOnly(origin, on);
+    return { ok: true };
   },
   'library.refresh': () => refreshLibrary(),
 

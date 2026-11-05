@@ -558,3 +558,20 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - control borders (WCAG 1.4.11, ≥3:1): 3.8 / 3.5 on surface, 3.4 / 3.2 on surface-2.
 - **Colour scheme on the page**: the overlay follows the browser's `prefers-color-scheme`, not the host page's colours. Every on-page surface (tooltip, cards, pill, launcher) is opaque with its own text colour, so it reads the same on a light or dark page; the screenshot harness shoots a dark browser on a light page as well.
 - **Screenshots**: `pnpm screens` (`test/screens/screens.spec.ts`, its own Playwright config, not in CI) records a guide on the demo app and shoots every panel, settings and on-page state, light and dark, plus 640×450 (200% zoom of 1280×900) and 375×667. The panel learns the site only from a toolbar click (activeTab), which a test can't make, so for the "not allowed" shot only, the page's `tab.current` answer is rewritten in the test. Shots go to `artifacts/screens/` (git-ignored); `scripts/shots.py` copies chosen light/dark pairs as small 256-colour PNGs into `docs/screenshots/<pr>/`.
+
+## 2026-11-05 — Team library access and schedule (issues #21, #22)
+
+### D80. A library site granted only to fetch the pack is not a guide site
+- **Spec**: Sharing, "v1: library URL" (the library's site is requested when it sends no CORS headers), and Architecture, "Content script" (registered for granted sites).
+- **Finding** (issue #21): that grant also registered the content script on the library's site (for example `raw.githubusercontent.com`), and the panel called the site allowed.
+- **Change**:
+  - Settings marks the site "fetch-only" (`fetchOnlyOrigins` in `chrome.storage.local`, `src/background/site-access.ts`) before it asks for it. The mark comes first so the permission event never registers the script there. If the user denies the prompt, the mark is cleared. A site the user had already allowed is not marked.
+  - Fetch-only sites get no content script (`grantedSitePatterns(origins, exclude)`). The panel, recording, playback and the pending-Allow list all treat them as not allowed (`siteAllowed`).
+  - When the user clicks **Allow** on such a site, or ticks it in the one-click Allow, the panel sends `site.allowed`. That clears the mark, registers the script and injects it into open tabs. Chrome fires no permission event for an origin that is already granted, which is why the panel has to send this message.
+  - Unsubscribing, or moving the library to another site, gives back a permission that was held only for fetching.
+- **Limit**: a site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+
+### D81. One library fetch per browser start
+- **Spec**: Sharing, "v1: library URL" (refreshed with `chrome.alarms`).
+- **Finding** (issue #22): `onStartup` and `onInstalled` fetched the library immediately, and also set an alarm that fetched it again a minute later. Subscribing did the same.
+- **Change**: at browser start and install, the alarm (delay 1 minute) does the only fetch. After a fetch caused by subscribing, the next alarm waits a full period (`scheduleLibrary({ fetchedNow: true })`).

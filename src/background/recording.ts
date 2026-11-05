@@ -2,6 +2,7 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { enqueue } from '../core/storage/queue';
+import { siteAllowed } from './site-access';
 import { writeGuide } from '../core/storage/guides';
 import { updateAllBadges, updateBadge } from './discovery';
 import type { Step } from '../core/model/schema';
@@ -17,7 +18,7 @@ import {
   type RecordingState,
   urlKey,
 } from '../core/recorder/session';
-import { originToMatchPattern, stepUrlRule } from '../core/url/url';
+import { stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
 
 const KEY = 'recording';
@@ -73,7 +74,7 @@ export function recorderStep(step: Step): Step | null {
 
 async function siteGranted(origin: string): Promise<boolean> {
   try {
-    return await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] });
+    return await siteAllowed(origin);
   } catch {
     return false;
   }
@@ -107,7 +108,7 @@ export const recordingHandlers: Handlers = {
   'rec.start': async ({ tabId, title }) => {
     const url = await tabUrl(tabId);
     if (!url || !/^https?:/.test(url)) throw new Error('Open a web page to record on.');
-    if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(url)] }))) throw new Error('Allow Waymark on this site first.');
+    if (!(await siteAllowed(new URL(url).origin))) throw new Error('Allow Waymark on this site first.');
     const state = await enqueue(async () => {
       if (await getRecording()) throw new Error('A recording is already running.');
       const s = startRecording(title, tabId, url);
