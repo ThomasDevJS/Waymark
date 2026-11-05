@@ -62,13 +62,17 @@ export class ExtensionHelper {
     const sw = await this.sw();
     const url = `chrome-extension://${this.extensionId}/sidepanel.html`;
     const [page] = await Promise.all([
-      this.context.waitForEvent('page'),
+      this.context.waitForEvent('page', { timeout: 15_000 }),
       sw.evaluate((u) => chrome.windows.create({ url: u, type: 'popup', focused: false }), url),
     ]);
-    await page.waitForFunction((u) => location.href.startsWith(u) && document.readyState === 'complete', url, { polling: 50 });
-    const r = await page.evaluate(([t, p]) => chrome.runtime.sendMessage({ type: t, payload: p }), [type, payload] as const);
-    await page.close();
-    if (!r.ok) throw new Error(r.error);
+    let r: { ok: boolean; data?: unknown; error?: string } | undefined;
+    try {
+      await page.waitForFunction((u) => location.href.startsWith(u) && document.readyState === 'complete', url, { polling: 50, timeout: 15_000 });
+      r = await page.evaluate(([t, p]) => chrome.runtime.sendMessage({ type: t, payload: p }), [type, payload] as const);
+    } finally {
+      await page.close();
+    }
+    if (!r?.ok) throw new Error(r?.error ?? `no reply to ${type}`);
     return r.data as T;
   }
 
