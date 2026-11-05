@@ -177,34 +177,36 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
   };
 }
 
-/**
- * Record-time uniqueness (SPEC record step 3): how many visible elements match every
- * non-positional signal of the fingerprint. More than one means a repeated element.
- */
-export function countIndistinguishable(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): number {
-  const present = presentSignals(fp).filter((k) => !POSITIONAL.has(k));
-  const scored = scoreAll(doc, fp, opts);
-  return scored.filter((s) => present.every((k) => s.matched.includes(k))).length;
-}
-
 /** At most this many look-alike profiles are stored per fingerprint. */
 export const MAX_LOOKALIKES = 5;
 
 /**
- * Record time (D55): for each other element that would be accepted on its own if the target
- * were missing (a strong signal and a score of 60 or more), the non-positional signals it
- * matched. Playback refuses a unique match that matched no more than one of these.
+ * Record time, in one scoring pass (SPEC record step 3; D55):
+ * - `count`: visible, enabled elements that match every non-positional signal (more than one
+ *   means a repeated element);
+ * - `lookalikes`: for every other element with a strong signal (visible or not, enabled or not:
+ *   a hidden tab or a collapsed demo can be shown later), the non-positional signals it matched.
+ *   Only maximal sets are kept (a set inside another refuses nothing more), most weight first.
+ * Playback refuses a unique match that matched no more than one of these sets. Score is not a
+ * filter: position and XPath can lift a weak look-alike over 60 once the target is gone.
  */
-export function recordLookalikes(doc: Document, fp: ElementFingerprint, target: Element, opts: MatchOptions = {}): string[][] {
-  const seen = new Set<string>();
-  for (const s of scoreAll(doc, fp, opts)) {
-    if (s.element === target || !s.strongMatched || s.score < ACCEPT_SCORE) continue;
-    seen.add(
-      s.matched
-        .filter((k) => !POSITIONAL.has(k))
-        .sort()
-        .join(','),
-    );
+export function recordTimeScan(doc: Document, fp: ElementFingerprint, target: Element, opts: MatchOptions = {}): { count: number; lookalikes: string[][] } {
+  const isVis = opts.isVisible ?? layoutVisible;
+  const base = opts.base ?? doc.URL;
+  const present = presentSignals(fp);
+  const core = present.filter((k) => !POSITIONAL.has(k));
+  const ctx = { profile: opts.profile, base, isVisible: isVis };
+  const all = gatherCandidates(doc, fp, { profile: opts.profile, base, isVisible: () => true }).map((el) => scoreCandidate(el, fp, ctx, present));
+  const shown = (s: Scored) => displayBox(s.element, isVis) !== null && isEnabled(s.element);
+  const count = all.filter((s) => shown(s) && core.every((k) => s.matched.includes(k))).length;
+  const sets = new Map<string, { keys: string[]; weight: number }>();
+  for (const s of all) {
+    if (s.element === target || !s.strongMatched) continue;
+    const keys = s.matched.filter((k) => !POSITIONAL.has(k)).sort();
+    sets.set(keys.join(','), { keys, weight: s.coreWeight });
   }
-  return [...seen].slice(0, MAX_LOOKALIKES).map((k) => k.split(',').filter(Boolean));
+  const list = [...sets.values()];
+  const maximal = list.filter((a) => !list.some((b) => b !== a && b.keys.length > a.keys.length && a.keys.every((k) => b.keys.includes(k))));
+  maximal.sort((a, b) => b.weight - a.weight);
+  return { count, lookalikes: maximal.slice(0, MAX_LOOKALIKES).map((x) => x.keys) };
 }

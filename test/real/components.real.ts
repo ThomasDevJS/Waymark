@@ -108,6 +108,9 @@ const tasks: Task[] = [
     prepare: async (p) => {
       await p.locator('#date-picker-demo-basic input').first().waitFor();
       await p.waitForLoadState('networkidle').catch(() => undefined);
+      // ant.design remounts the page a few seconds after load and closes an open calendar. The
+      // look-alike this remount exposed (D55) is covered by test/browser/lookalikes.test.ts.
+      await p.waitForTimeout(5000);
     },
     steps: [
       {
