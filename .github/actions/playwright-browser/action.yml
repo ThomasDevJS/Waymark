@@ -1,0 +1,19 @@
+name: Playwright Chromium
+description: Restores the Playwright browser from the cache (keyed by the Playwright version) or downloads it.
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      run: echo "playwright=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.version.outputs.playwright }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: pnpm exec playwright install --with-deps chromium
+    - if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: pnpm exec playwright install-deps chromium

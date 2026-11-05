@@ -355,3 +355,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - The minimatch advisory, which comes in through typescript-eslint and only affects lint. Fixing it needs a major-version override.
   - Entry caps on records that only extension pages can send.
 - Version 0.2.3.
+
+### D51. CI: fast checks and two e2e shards in parallel; cached Playwright browser
+- **Spec**: Tech stack, testing; Distribution (CI artifact).
+- **Before**: one job, about 4.5 minutes on a good day: setup and install 15 s, checks and builds 30 s, browser install 18 s (6 minutes once, when apt was slow), unit and browser tests 20 s, e2e 3.5 minutes.
+- **Change**:
+  - The **check** job runs typecheck, lint, both builds, the manifest guard, the zip artifact, and the unit and browser tests.
+  - Two **e2e** jobs each build the test extension and run half of the suite (`--shard=N/2`), in parallel with the check job. A failing shard uploads its own `test-results-N`.
+  - The Playwright browser is cached per Playwright version (`.github/actions/playwright-browser`); on a cache hit only its system packages are installed. The pnpm store was already cached by `setup-node`.
+- **Test-level sharding**: `fullyParallel: true` with one worker, so tests still run one at a time in file order, locally and in CI. Each shard was run on its own locally: shard 1 had 17 tests in 83 s, shard 2 had 16 in 115 s, both green. So no test depends on one that runs before it in another shard.
+- **Expected**: about 2.5 to 3 minutes per run (the slower shard plus its setup).
