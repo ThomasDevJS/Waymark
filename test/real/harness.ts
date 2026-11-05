@@ -12,9 +12,10 @@
  * `src/content/test-hooks.ts`), so "right element" is an identity check, not a geometry guess.
  */
 import type { BrowserContext, Frame, Locator, Page } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, marker, type ExtensionHelper } from '../e2e/fixtures';
+import { expect, marker, test as base, type ExtensionHelper } from '../e2e/fixtures';
 
 export interface StepSpec {
   /** What the learner does; used both to record and to replay. */
@@ -117,7 +118,9 @@ export async function recordTask(context: BrowserContext, ext: ExtensionHelper, 
   await msg(ext, 'rec.start', { tabId: await tabIdOf(ext, app), title: `${task.site}: ${task.task}` });
   await expect.poll(() => marker(app, 'recording')).toBe('on');
   for (const [i, s] of task.steps.entries()) {
-    await act(() => s.act(app)).catch((e: unknown) => {
+    await act(() => s.act(app)).catch(async (e: unknown) => {
+      mkdirSync(RESULTS_DIR, { recursive: true });
+      await app.screenshot({ path: join(RESULTS_DIR, `${slug(task.site)}--${slug(task.task)}--record-${i + 1}.png`) }).catch(() => undefined);
       throw new Error(`recording step ${i + 1}: ${String(e)}`);
     });
     await act(async () => s.settle?.(app)).catch(() => undefined);
@@ -233,13 +236,14 @@ export async function replayTask(context: BrowserContext, ext: ExtensionHelper, 
     await act(async () => s.settle?.(app)).catch(() => undefined);
     // the run must move on (or finish)
     const moved = await expect
-      .poll(async () => (await playerStates(app)).some((x) => x.state && x.state !== `drawn:${i}` && x.state !== 'idle' && !x.state.startsWith('elsewhere')), { timeout: 10_000 })
+      .poll(async () => (await playerStates(app)).some((x) => x.state === 'done' || Number(/:(\d+)$/.exec(x.state ?? '')?.[1] ?? -1) > i), { timeout: 10_000 })
       .toBe(true)
       .then(() => true)
       .catch(() => false);
     if (!moved) {
+      await app.screenshot({ path: join(RESULTS_DIR, `${slug(task.site)}--${slug(task.task)}--${slug(v.name)}--stuck-${i + 1}.png`) }).catch(() => undefined);
       outcomes.push('stuck');
-      details.push(`step ${i + 1}: drawn on the right element but did not advance`);
+      details.push(`step ${i + 1}: drawn on the right element but did not advance (${app.url()} ${JSON.stringify((await playerStates(app)).map((x) => x.state))})`);
       aborted = true;
       continue;
     }
@@ -335,3 +339,18 @@ export async function clickSpotOr(p: Page, group: Locator, authorChoice: Locator
   if (await spot.count()) await spot.first().click();
   else await authorChoice.click();
 }
+
+/**
+ * The e2e fixtures with a profile whose password manager is off: demo sites log in with public
+ * passwords, and Chrome's native "found in a data breach" modal would swallow all input.
+ */
+export const test = base.extend({
+  userDataDir: async ({}, use) => {
+    const dir = mkdtempSync(join(tmpdir(), 'waymark-real-'));
+    mkdirSync(join(dir, 'Default'), { recursive: true });
+    const prefs = { credentials_enable_service: false, profile: { password_manager_enabled: false, password_manager_leak_detection: false } };
+    writeFileSync(join(dir, 'Default', 'Preferences'), JSON.stringify(prefs));
+    await use(dir);
+    rmSync(dir, { recursive: true, force: true });
+  },
+});

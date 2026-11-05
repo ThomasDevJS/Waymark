@@ -2,12 +2,12 @@
  * Component libraries: portaled select menus, modal dialogs and a date picker in MUI (React),
  * Ant Design (React) and Angular Material.
  */
-import { canGrant, test } from '../e2e/fixtures';
+import { canGrant } from '../e2e/fixtures';
 import type { Page } from '@playwright/test';
-import { runTask, type Task } from './harness';
+import { runTask, type Task, test } from './harness';
 
 /** The alert dialog demo (another demo on the page is an always-open inline dialog). */
-const alertDialog = (p: Page) => p.getByRole('dialog', { name: /location service/ });
+const alertDialog = (p: Page) => p.locator('.MuiDialog-container').filter({ hasText: 'location service' });
 
 /** mui.com asks about cookies in a non-modal dialog: answer it so it is not in the way. */
 async function muiReady(p: Page, ready: () => Promise<void>) {
@@ -44,8 +44,8 @@ const tasks: Task[] = [
         settle: (p) => alertDialog(p).waitFor(),
       },
       {
-        act: (p) => alertDialog(p).getByRole('button', { name: 'Agree' }).click(),
-        target: (p) => alertDialog(p).getByRole('button', { name: 'Agree' }),
+        act: (p) => alertDialog(p).getByRole('button', { name: 'Agree', exact: true }).click(),
+        target: (p) => alertDialog(p).getByRole('button', { name: 'Agree', exact: true }),
         settle: (p) => alertDialog(p).waitFor({ state: 'detached' }),
       },
     ],
@@ -76,7 +76,12 @@ const tasks: Task[] = [
     task: 'portaled select in a form',
     origins: ['https://ant.design/*'],
     url: 'https://ant.design/components/form',
-    prepare: (p) => p.locator('#control-hooks_gender').waitFor({ state: 'attached' }),
+    prepare: async (p) => {
+      await p.locator('#form-demo-control-hooks .ant-select').first().waitFor();
+      await p.waitForLoadState('networkidle').catch(() => undefined);
+      // ant.design remounts the whole page a few seconds after load, closing an open dropdown.
+      await p.waitForTimeout(5000);
+    },
     steps: [
       {
         act: (p) => p.locator('#form-demo-control-hooks .ant-select').first().click(),
@@ -100,7 +105,10 @@ const tasks: Task[] = [
     task: 'date picker',
     origins: ['https://ant.design/*'],
     url: 'https://ant.design/components/date-picker',
-    prepare: (p) => p.locator('#date-picker-demo-basic input').first().waitFor(),
+    prepare: async (p) => {
+      await p.locator('#date-picker-demo-basic input').first().waitFor();
+      await p.waitForLoadState('networkidle').catch(() => undefined);
+    },
     steps: [
       {
         act: (p) => p.locator('#date-picker-demo-basic input').first().click(),

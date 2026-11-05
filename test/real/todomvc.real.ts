@@ -1,7 +1,7 @@
 /** TodoMVC in React, Vue and Angular: an input step, a list item toggle, hash-routed filters. */
 import type { Page } from '@playwright/test';
-import { canGrant, test } from '../e2e/fixtures';
-import { clickSpotOr, runTask, type Task } from './harness';
+import { canGrant } from '../e2e/fixtures';
+import { clickSpotOr, runTask, type Task, test } from './harness';
 
 test.skip(!canGrant, 'needs a headed browser under X (xvfb-run) to accept the permission dialog');
 

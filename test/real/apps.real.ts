@@ -3,8 +3,8 @@
  * hash routing, two buttons named Deposit) and demoqa's web table (React, row actions, a modal form).
  */
 import type { Page } from '@playwright/test';
-import { canGrant, test } from '../e2e/fixtures';
-import { clickSpotOr, runTask, type StepSpec, type Task } from './harness';
+import { canGrant } from '../e2e/fixtures';
+import { clickSpotOr, runTask, type StepSpec, type Task, test } from './harness';
 
 test.skip(!canGrant, 'needs a headed browser under X (xvfb-run) to accept the permission dialog');
 
@@ -46,8 +46,13 @@ const tasks: Task[] = [
       {
         act: (p) => p.locator('[data-test="add-to-cart-sauce-labs-backpack"]').click(),
         target: (p) => p.locator('[data-test="add-to-cart-sauce-labs-backpack"]'),
+        settle: (p) => p.locator('[data-test="remove-sauce-labs-backpack"]').waitFor(),
       },
-      { act: (p) => p.locator('[data-test="shopping-cart-link"]').click(), target: (p) => p.locator('[data-test="shopping-cart-link"]') },
+      {
+        act: (p) => p.locator('[data-test="shopping-cart-link"]').click(),
+        target: (p) => p.locator('[data-test="shopping-cart-link"]'),
+        settle: (p) => p.waitForURL('**/cart.html'),
+      },
       { act: (p) => p.locator('[data-test="checkout"]').click(), target: (p) => p.locator('[data-test="checkout"]') },
     ],
     variants: [
