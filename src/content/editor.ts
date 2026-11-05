@@ -73,7 +73,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
       testMark('pick-rejected', fp.tag);
       return;
     }
-    const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? roleWord(fp.role);
+    const name = fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? fp.itemLabel ?? roleWord(fp.role);
     send('pick.result', { target: fp, title: stepTitle('click', { name }) }).catch(() => undefined);
     testMark('picked', fp.text ?? fp.accessibleName ?? fp.tag);
     stopPick();

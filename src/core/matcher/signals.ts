@@ -5,7 +5,7 @@
  */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { displayBox, getRole, isVisible as layoutVisible, rawAccessibleName, rawOwnText, tagOf } from '../fingerprint/dom';
+import { displayBox, getRole, isVisible as layoutVisible, rawAccessibleName, rawItemLabel, rawOwnText, tagOf } from '../fingerprint/dom';
 import { buildAncestors, buildCssPath, buildXPath, landmarksEqual, GUIDE_ID_ATTR } from '../fingerprint/selectors';
 import { normText } from '../text/normalize';
 import { isSamePageHref, linkPath } from '../url/url';
@@ -15,6 +15,7 @@ export type SignalKey =
   | 'id'
   | 'roleName'
   | 'text'
+  | 'item'
   | 'name'
   | 'href'
   | 'placeholder'
@@ -28,6 +29,7 @@ export const WEIGHTS: Readonly<Record<SignalKey, number>> = {
   id: 25,
   roleName: 25,
   text: 20,
+  item: 20,
   name: 15,
   href: 10,
   placeholder: 10,
@@ -37,7 +39,7 @@ export const WEIGHTS: Readonly<Record<SignalKey, number>> = {
   position: 5,
 };
 
-export const STRONG: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text', 'name', 'href']);
+export const STRONG: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text', 'item', 'name', 'href']);
 
 /** Signals that only describe where an element is, not what it is. */
 export const POSITIONAL: ReadonlySet<SignalKey> = new Set<SignalKey>(['xpath', 'position']);
@@ -47,7 +49,7 @@ export const POSITIONAL: ReadonlySet<SignalKey> = new Set<SignalKey>(['xpath', '
  * treated as interchangeable (instance 'any') only when they share one of these; a shared
  * `name` (a radio group, `commit` submit buttons) or link path is group-level (DECISIONS R5).
  */
-export const IDENTIFYING: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text']);
+export const IDENTIFYING: ReadonlySet<SignalKey> = new Set<SignalKey>(['testId', 'id', 'roleName', 'text', 'item']);
 
 /** Controls whose `name` attribute is shared by a group: radios, checkboxes and buttons. */
 const GROUP_NAME_INPUT_TYPES = new Set(['radio', 'checkbox', 'submit', 'button', 'reset', 'image']);
@@ -84,6 +86,7 @@ export function presentSignals(fp: ElementFingerprint): SignalKey[] {
   if (fp.id) out.push('id');
   if (fp.role && fp.accessibleName) out.push('roleName');
   if (fp.text) out.push('text');
+  if (fp.itemLabel) out.push('item'); // a nameless control named by its list item (D65)
   if (fp.name || fp.value !== undefined) out.push('name'); // name, with value for radios/checkboxes
   if (fp.hrefPath) out.push('href');
   if (fp.placeholder) out.push('placeholder');
@@ -153,6 +156,8 @@ function signalMatches(key: SignalKey, el: Element, fp: ElementFingerprint, ctx:
       return getRole(el) === fp.role && normText(rawAccessibleName(el)) === normText(fp.accessibleName);
     case 'text':
       return normText(rawOwnText(el)) === normText(fp.text);
+    case 'item':
+      return normText(rawItemLabel(el)) === normText(fp.itemLabel);
     case 'name':
       return (
         (fp.name === undefined || el.getAttribute('name') === fp.name) &&

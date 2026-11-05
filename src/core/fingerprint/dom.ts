@@ -492,3 +492,48 @@ export function compareDocumentOrder(a: Element, b: Element): number {
   }
   return ca.length - cb.length;
 }
+
+/** List items and table rows: their text names a nameless control inside them (D65). */
+const ITEM_TAGS = new Set(['li', 'tr']);
+const ITEM_ROLES = new Set(['row', 'listitem', 'treeitem']);
+const MAX_ITEM_LEVELS = 4;
+
+function itemOf(el: Element): Element | null {
+  let a = el.parentElement;
+  for (let i = 0; a && i < MAX_ITEM_LEVELS; i++, a = a.parentElement) {
+    if (ITEM_TAGS.has(tagOf(a)) || ITEM_ROLES.has(explicitRole(a) ?? '')) return a;
+  }
+  return null;
+}
+
+/**
+ * Raw visible text of the list item or table row around an element (at most 4 levels up),
+ * leaving out the text of interactive elements in it: "Walk the dog" for a TodoMVC toggle.
+ * Never field values.
+ */
+export function rawItemLabel(el: Element): string | undefined {
+  const item = itemOf(el);
+  if (!item) return undefined;
+  let out = '';
+  const walk = (node: Node) => {
+    for (let c = node.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) out += c.nodeValue ?? '';
+      else if (c.nodeType === 1) {
+        const ce = c as Element;
+        const t = tagOf(ce);
+        if (t === 'script' || t === 'style' || t === 'template' || NO_TEXT_TAGS.has(t)) continue;
+        if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden') || isInteractive(ce)) continue;
+        out += ' ';
+        walk(ce);
+        out += ' ';
+      }
+    }
+  };
+  walk(item);
+  return cleanText(out) || undefined;
+}
+
+/** Item label, or undefined when missing or data-like (a row of amounts, emails, ids). */
+export function itemLabel(el: Element): string | undefined {
+  return safeLabel(rawItemLabel(el));
+}

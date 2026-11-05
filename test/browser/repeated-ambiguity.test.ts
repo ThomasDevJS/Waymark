@@ -93,6 +93,8 @@ describe('ambiguity returns not-found', () => {
       // told apart only by their container's id, in the CSS path (D55; ant.design date pickers)
       ['date-basic', 'date-other'],
       ['date-other', 'date-basic'],
+      // nameless toggles told apart by their list item's text (D65)
+      ['todo-dog', 'todo-milk'],
     ] as const) {
       const keys = render({ remove: [k] });
       const r = matchOnce(document, fps.get(k)!);
