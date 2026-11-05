@@ -75,8 +75,16 @@ test('a deleted guide can be restored with Undo, even from a panel opened after 
   await expect(panel.getByTestId('guide-undo-toast')).toBeVisible();
   await expect(panel.getByTestId('guide-undo-toast')).toHaveCount(0, { timeout: 12_000 });
   await expect.poll(async () => (await ext.message<{ items: unknown[] }>('trash.list', {})).items).toEqual([]);
-  // The deleted guide is gone from disk too, not only hidden.
-  expect(await (await ext.sw()).evaluate(async () => Object.keys(await chrome.storage.local.get('guides:trash')))).toEqual([]);
+  // The deleted guide is gone from disk too, once the 2 s restore grace is over (trash.list purges).
+  await expect
+    .poll(
+      async () => {
+        await ext.message('trash.list', {});
+        return (await ext.sw()).evaluate(async () => Object.keys(await chrome.storage.local.get('guides:trash')));
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual([]);
 });
 
 test('duplicate a guide and a step; tags filter the library', async ({ context, ext, site, extensionId }) => {
