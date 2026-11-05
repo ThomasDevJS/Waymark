@@ -11,14 +11,16 @@ import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 import { editorHandlers, endPick } from '../background/editor';
-import { discoveryHandlers, LIBRARY_ALARM, refreshLibrary, scheduleLibrary, updateAllBadges, updateBadge } from '../background/discovery';
+import { discoveryHandlers, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
+import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site-access';
+import { isSiteOrigin } from '../core/model/schema';
 import { rebuildIndex } from '../core/storage/guides';
 import { setupPanelFallback } from '../background/panel-fallback';
 import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample } from '../background/voice';
 import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
 import { carryRunToNewTab, dropRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 
-const sync = () => enqueue(() => syncRegistrations(chrome));
+const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
 async function tabInfo(windowId?: number, tabId?: number) {
   const query: chrome.tabs.QueryInfo = windowId === undefined ? { active: true, lastFocusedWindow: true } : { active: true, windowId };
@@ -33,7 +35,7 @@ async function tabInfo(windowId?: number, tabId?: number) {
       if (u.protocol === 'http:' || u.protocol === 'https:') {
         origin = u.origin;
         grantable = true;
-        granted = await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] });
+        granted = await siteAllowed(origin);
       }
     } catch {
       // not a URL we handle
@@ -69,6 +71,18 @@ const handlers: Handlers = {
     return { origins: grantedSitePatterns(origins), registered: regs.flatMap((r) => r.matches ?? []) };
   },
   'site.sync': async () => ({ registered: await sync() }),
+  // The user allowed these sites (panel). A library site granted only for fetching becomes a
+  // guide site now: no permission event fires for it, so register and inject here (D80).
+  'site.allowed': async ({ origins }) => {
+    const marked = await fetchOnlyPatterns();
+    // Only sites that were fetch-only: a fresh grant is already handled by permissions.onAdded,
+    // and injecting twice would restart the content script in open tabs.
+    const sites = origins.filter((o) => isSiteOrigin(o) && marked.includes(originToMatchPattern(o)));
+    for (const o of sites) await setFetchOnly(o, false);
+    const registered = await sync();
+    if (sites.length) await injectIntoOpenTabs(sites.map(originToMatchPattern).filter((p) => registered.includes(p)));
+    return { registered };
+  },
   'route.report': async (payload, ctx) => {
     if (__WAYMARK_TEST__ && ctx.tabId !== undefined && ctx.frameId === 0 && payload.via !== 'leaving') {
       await chrome.storage.session.set({ [`test:route:${ctx.tabId}`]: payload.url });
@@ -117,17 +131,18 @@ export default defineBackground(() => {
   void chrome.storage.session.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
   void (chrome.storage.local as chrome.storage.StorageArea).setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
 
-  chrome.runtime.onInstalled.addListener(async () => {
+  chrome.runtime.onInstalled.addListener(async (details) => {
     await rebuildIndex();
-    await scheduleLibrary();
-    void refreshLibrary();
+    // Subscribed before fetch-only marks existed: mark the library site now (D80).
+    if (details.reason === 'update') await migrateLibraryFetchOnly();
+    await onBrowserStartLibrary();
     const patterns = await sync();
     // After install or update, already-open tabs of granted sites get the new script.
     await injectIntoOpenTabs(patterns);
   });
   chrome.runtime.onStartup.addListener(() => {
     void sync();
-    void scheduleLibrary().then(() => refreshLibrary());
+    void onBrowserStartLibrary();
   });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === LIBRARY_ALARM) void refreshLibrary();
@@ -140,7 +155,7 @@ export default defineBackground(() => {
 
   chrome.permissions.onAdded.addListener(async (added) => {
     await sync();
-    await injectIntoOpenTabs(grantedSitePatterns(added.origins ?? []));
+    await injectIntoOpenTabs(grantedSitePatterns(added.origins ?? [], await fetchOnlyPatterns()));
   });
   chrome.permissions.onRemoved.addListener(() => {
     void sync();

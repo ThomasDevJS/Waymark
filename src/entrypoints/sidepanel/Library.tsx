@@ -65,7 +65,10 @@ async function allowAll() {
   if (!origins.length) return;
   const ok = await chrome.permissions.request({ origins: origins.map(originToMatchPattern) }).catch(() => false);
   // Unticked sites count as "Not now".
-  if (ok) await send('allow.dismiss', {});
+  if (ok) {
+    await send('site.allowed', { origins });
+    await send('allow.dismiss', {});
+  }
   unticked.value = new Set();
   await load();
 }
