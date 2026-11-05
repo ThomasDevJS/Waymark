@@ -49,6 +49,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 
 ## Running and debugging tests
 - `pnpm check`: typecheck, lint, both builds, manifest guard, unit (happy-dom) and browser-mode Vitest. Run it before every push (see CLAUDE.md).
+- `pnpm screens`: screenshots of every panel, settings and on-page state, light and dark, into `artifacts/screens/` (D90). Not part of `pnpm check`; run it for UI changes and compare with a set made before the change (`SHOTS=before pnpm screens`).
 - `pnpm bench`: the performance harness (`test/perf/`, 500 guides of 50 steps through the service worker paths). Not part of `pnpm check`; run it when touching storage, the index, badges or search (D49).
 - **Demo app for manual testing:** `pnpm demo` serves `demo/` at http://localhost:8080 (see `demo/README.md`).
 - `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (31 tests, about 3 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).
