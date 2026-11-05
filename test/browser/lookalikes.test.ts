@@ -48,6 +48,17 @@ describe('look-alikes the record-time rule must still see', () => {
     expect(r.status === 'found' ? r.matched : r.status).toBe('not-found');
   });
 
+  it('a hidden exact twin (a second demo kept mounted) does not block the target (MUI)', () => {
+    mount([
+      ['main', 'demo', ''],
+      ['main', 'demo', 'display:none'], // same id, same everything: only visibility differs
+    ]);
+    const el = host.querySelector('main input')!;
+    const fp = buildFingerprint(el);
+    const r = matchOnce(document, fp);
+    expect(r.status === 'found' && r.element).toBe(el);
+  });
+
   it('the target itself is still found when nothing changed', () => {
     mount([
       ['main', 'demo-basic', ''],
