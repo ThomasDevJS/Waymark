@@ -8,6 +8,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ### Added
 - Each version is published on the repository's Releases page, with the extension zip, its SHA-256 checksum and the notes from this file (D56).
+- A privacy policy ([docs/PRIVACY.md](docs/PRIVACY.md)) that says exactly what Waymark stores and what can leave your device, and a draft Chrome Web Store listing ([docs/STORE.md](docs/STORE.md)) (D57).
+- A new README: what Waymark is, how to install it from a release, and a quick start.
 
 ### For developers
 - CI runs once per change instead of twice, cancels superseded pull request runs and skips docs-only changes, to stay within the Free plan's Actions minutes (D54).
