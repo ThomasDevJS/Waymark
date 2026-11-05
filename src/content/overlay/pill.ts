@@ -18,13 +18,17 @@ const CSS = `
 .last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .pill.notice { border-radius: 14px; }
 .pill.notice .last { color: var(--wm-warn); font-weight: 500; white-space: normal; text-overflow: clip; }
+/* REC (D133): a soft halo grows out of the dot and fades every 1.6 s, on its own layer
+   (transform and opacity), instead of a blink. Off while paused and under reduced motion. */
+.dot { position: relative; }
 @media (prefers-reduced-motion: no-preference) {
-  .pill { animation: wm-pill-in 180ms var(--wm-ease); }
-  .dot { animation: wm-blink 1.5s ease-in-out infinite; }
-  .paused .dot { animation: none; }
+  .pill { animation: wm-pill-in var(--wm-dur-base) var(--wm-ease-enter); }
+  .dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--wm-rec);
+    animation: wm-rec-pulse 1.6s var(--wm-ease-exit) infinite; }
+  .paused .dot::after { content: none; }
 }
-@keyframes wm-blink { 50% { opacity: .35; } }
-@keyframes wm-pill-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes wm-rec-pulse { from { opacity: .45; scale: 1; } to { opacity: 0; scale: 2; } }
+@keyframes wm-pill-in { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
 @media (forced-colors: active) { .pill { border: 1px solid CanvasText; } .dot { background: Mark; } }
 `;
 

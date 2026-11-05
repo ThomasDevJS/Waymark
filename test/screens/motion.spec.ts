@@ -12,27 +12,25 @@ import { expect, test, type ExtensionHelper } from '../e2e/fixtures';
 const OUT = join(process.cwd(), 'artifacts', 'screens', process.env.SHOTS ?? 'current');
 const TIMES = [0, 40, 80, 120, 180, 240];
 
+/** Every animation in the page and in the overlay's shadow root (document.getAnimations() leaves shadow trees out). */
+const ALL = `[...document.getAnimations(), ...(document.querySelector('waymark-overlay')?.shadowRoot?.getAnimations() ?? [])]`;
+
 /** Pauses every running animation (shadow roots included) and shoots it at each time. */
 export async function frames(page: Page, name: string, area: Locator | (() => Promise<{ x: number; y: number; width: number; height: number }>), times = TIMES): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
+  await page.evaluate(`${ALL}.forEach((a) => a.pause())`);
   const box = typeof area === 'function' ? await area() : await area.boundingBox();
   if (!box) throw new Error(`nothing to shoot for ${name}`);
   const pad = 12;
   const vp = page.viewportSize()!;
   const clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(vp.width, box.width + 2 * pad), height: Math.min(vp.height, box.height + 2 * pad) };
   for (const t of times) {
-    await page.evaluate((ms) => {
-      for (const a of document.getAnimations()) {
-        // Infinite ones (spinners, the REC halo) keep their own time.
-        const timing = a.effect?.getComputedTiming();
-        if (timing && timing.endTime !== Infinity) a.currentTime = ms;
-      }
-    }, t);
+    // Endless ones (spinners, the REC halo) keep their own time.
+    await page.evaluate(`${ALL}.forEach((a) => { if (a.effect?.getComputedTiming().endTime !== Infinity) a.currentTime = ${t}; })`);
     await page.screenshot({ path: join(OUT, `motion-${name}-${String(t).padStart(3, '0')}.png`), clip, animations: 'allow' });
   }
   // finish() throws on endless ones (a spinner, the REC halo).
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.effect?.getComputedTiming().endTime !== Infinity && a.finish()));
+  await page.evaluate(`${ALL}.forEach((a) => a.effect?.getComputedTiming().endTime !== Infinity && a.finish())`);
 }
 
 async function seedGuide(ext: ExtensionHelper): Promise<string> {
@@ -77,4 +75,27 @@ test('panel motion frames: fold, reorder, toast, Saved tick', async ({ context, 
   await page.getByTestId('save-guide').click();
   await expect(page.getByTestId('editor-status')).toBeVisible();
   await frames(page, 'saved', page.getByTestId('editor-status'));
+});
+
+test('player motion frames: click registered, glide, tooltip in and out (Practice page)', async ({ context, extensionId }) => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'light' });
+  await page.goto(`chrome-extension://${extensionId}/practice.html?tutorial=tour`);
+  const mark = () => page.evaluate(() => document.documentElement.getAttribute('data-waymark-test-practice'));
+  await expect.poll(mark).toBe('drawn:0');
+  await page.locator('waymark-overlay [data-action="next"]').click();
+  await expect.poll(mark).toBe('drawn:1');
+  await page.waitForTimeout(400);
+  // Step 2 is "click New invoice": the press ripples, the step moves on to the customer field.
+  const from = (await page.locator('[data-guide-id="practice-new-invoice"]').boundingBox())!;
+  await page.locator('[data-guide-id="practice-new-invoice"]').click();
+  await expect.poll(mark).toBe('drawn:2');
+  const to = (await page.locator('[data-guide-id="practice-customer"]').boundingBox())!;
+  const tip = (await page.locator('waymark-overlay .tip').boundingBox())!;
+  const x = Math.min(from.x, to.x, tip.x);
+  const y = Math.min(from.y, to.y, tip.y);
+  const r = Math.max(from.x + from.width, to.x + to.width, tip.x + tip.width);
+  const b = Math.max(from.y + from.height, to.y + to.height, tip.y + tip.height);
+  await frames(page, 'advance', async () => ({ x: x - 20, y: y - 20, width: r - x + 40, height: b - y + 40 }));
 });

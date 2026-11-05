@@ -15,13 +15,28 @@ export const EASE = {
   spring: 'cubic-bezier(0.34, 1.45, 0.64, 1)',
 } as const;
 
-/** True when the user asked for less motion (or there is no way to tell, e.g. happy-dom). */
+const watched = new WeakMap<Window, { reduced: boolean }>();
+
+/**
+ * True when the user asked for less motion (or there is no way to tell, e.g. happy-dom). The
+ * media query is created once per window and its answer kept up to date by its change event:
+ * calling matchMedia() on every step, between DOM changes, made Chromium flush style and layout
+ * (the bench showed long tasks on the host page, D133).
+ */
 export function reducedMotion(win: Window = window): boolean {
-  try {
-    return typeof win.matchMedia !== 'function' || win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return true;
+  let w = watched.get(win);
+  if (!w) {
+    try {
+      if (typeof win.matchMedia !== 'function') return true;
+      const mql = win.matchMedia('(prefers-reduced-motion: reduce)');
+      const state = { reduced: mql.matches };
+      mql.addEventListener?.('change', (e) => (state.reduced = e.matches));
+      watched.set(win, (w = state));
+    } catch {
+      return true;
+    }
   }
+  return w.reduced;
 }
 
 /** True when this element can run Web Animations (happy-dom and old engines can't). */

@@ -11,7 +11,8 @@
  * Clicks are real mouse clicks, so hover, press and release feedback run too. The window after
  * each click (250–350 ms) covers the animation (≤ 240 ms) plus the render, with little idle.
  * Each scenario runs with motion on and again with reduced motion (nothing moves) as the control.
- * A table goes to stdout and to artifacts/motion/bench.md (JSON beside it).
+ * A table goes to stdout and to artifacts/motion/bench.md (JSON beside it). MOTION_DUMP=1 also
+ * prints the spotlight's long animation frames split into script, rendering and layout time.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +49,21 @@ async function startRecording(page: Page): Promise<void> {
     long.observe({ type: 'longtask' });
     mb.obs.push(long);
     try {
-      const loaf = new PerformanceObserver((l) => l.getEntries().forEach((e) => mb.loaf.push({ duration: e.duration, blocking: (e as unknown as { blockingDuration: number }).blockingDuration ?? 0 })));
+      const loaf = new PerformanceObserver((l) =>
+        l.getEntries().forEach((e) => {
+          const x = e as unknown as { blockingDuration: number; renderStart: number; styleAndLayoutStart: number; scripts: { invoker: string; duration: number; forcedStyleAndLayoutDuration: number }[] };
+          mb.loaf.push({
+            duration: e.duration,
+            blocking: x.blockingDuration ?? 0,
+            // Where the frame's time went: scripts, then rendering (style, layout, paint).
+            script: (x.renderStart || e.startTime + e.duration) - e.startTime,
+            render: e.startTime + e.duration - (x.renderStart || e.startTime + e.duration),
+            layout: x.styleAndLayoutStart ? e.startTime + e.duration - x.styleAndLayoutStart : 0,
+            forced: (x.scripts ?? []).reduce((t, sc) => t + (sc.forcedStyleAndLayoutDuration ?? 0), 0),
+            top: (x.scripts ?? []).sort((a, b) => b.duration - a.duration)[0]?.invoker ?? '',
+          } as never);
+        }),
+      );
       loaf.observe({ type: 'long-animation-frame' });
       mb.obs.push(loaf);
     } catch {
@@ -188,6 +203,7 @@ for (const mode of ['motion', 'reduced'] as const) {
     }
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-waymark-test-practice'))).toBe('drawn:0');
     (results.spotlight ??= {} as Record<Mode, ReturnType<typeof stats>>)[mode] = stats(glide);
+    if (process.env.MOTION_DUMP) console.log(JSON.stringify(glide.loaf));
   });
 }
 
