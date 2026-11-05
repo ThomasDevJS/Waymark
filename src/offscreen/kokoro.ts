@@ -1,6 +1,6 @@
 /**
  * Kokoro-82M (Apache-2.0) through transformers.js and onnxruntime-web, all bundled in the
- * extension (D47). The model files are downloaded once from the official repository at a pinned
+ * extension (D51). The model files are downloaded once from the official repository at a pinned
  * revision, checked against their SHA-256, and kept in Cache Storage; loading never uses the
  * network. The steps that turn phonemes into audio follow kokoro-js (Apache-2.0).
  */
@@ -13,7 +13,7 @@ import { splitSentences } from './text';
 export type Phonemizer = (text: string) => Promise<string>;
 
 // Set at once on import: ONNX Runtime must never fall back to its default CDN location for the
-// WebAssembly. load() sets the real extension path before any session exists (D47).
+// WebAssembly. load() sets the real extension path before any session exists (D51).
 env.backends.onnx.wasm!.wasmPaths = '/ort/';
 
 const SAMPLE_RATE = 24000;

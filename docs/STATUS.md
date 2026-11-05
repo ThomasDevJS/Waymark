@@ -1,6 +1,6 @@
 # Waymark status and handoff
 
-As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D47 are mine, R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
+As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D48 and D51 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D51: HD voice), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
 
 ## What works today
 | Area | State | Main code |
@@ -9,13 +9,14 @@ As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for 
 | Fingerprint and matcher (M1) | Normalized weighted score, the strong-signal rule, unique margin, instance `any`, wait loop, frame winner. Robustness suite: 480/480 on mutation set A, 0 wrong matches. | `src/core/fingerprint/*`, `src/core/matcher/*` |
 | Recorder (M2) | Capture and merge rules; navigation, including slow loads (D21, D34); frames; privacy guards; live list; REC pill and badge. | `src/core/recorder/recorder.ts`, `src/core/recorder/session.ts`, `src/background/recording.ts` |
 | Player (M3) | Top-layer overlay, also inside modal dialogs. Spotlight, Floating UI tooltip, advance rules, runs across pages and tabs, not-found / off-track / done cards, Report broken step, keyboard commands. | `src/content/player/*`, `src/core/player/*`, `src/background/runs.ts` |
-| Editor and voice (M4) | Edit, reorder, delete and note steps; Test step; Re-pick. `chrome.tts` reads each step once, on-device voices only by default, with a mute toggle and a `speechSynthesis` fallback. The best voice is picked automatically (D46). Optional HD voice: Kokoro-82M on the device in an offscreen document, with a GPL-free English G2P over the misaki lexicon (D47). | `src/entrypoints/sidepanel/Editor.tsx`, `src/content/editor.ts`, `src/background/{editor,voice,hd}.ts`, `src/offscreen/*`, `src/core/voice/g2p/*` |
+| Editor and voice (M4) | Edit, reorder, delete and note steps; Test step; Re-pick. `chrome.tts` reads each step once, on-device voices only by default, with a mute toggle and a `speechSynthesis` fallback. The best voice is picked automatically (D46). Optional HD voice: Kokoro-82M on the device in an offscreen document, with a GPL-free English G2P over the misaki lexicon (D51). | `src/entrypoints/sidepanel/Editor.tsx`, `src/content/editor.ts`, `src/background/{editor,voice,hd}.ts`, `src/offscreen/*`, `src/core/voice/g2p/*` |
 | Discovery and sharing (M5) | Badge count; "For this page" and MiniSearch; the `?` launcher; deep links and Copy link; export review; pack import with the spec's rules; library URL on `chrome.alarms`; first-run Allow; Problems list. | `src/background/discovery.ts`, `src/core/sharing/*`, `src/core/discovery/*`, `src/content/launcher.ts`, `src/entrypoints/sidepanel/{Library,ExportReview}.tsx`, `src/entrypoints/options/Options.tsx` |
-| M6 (partial) | Popup fallback without `chrome.sidePanel` (D43); version 0.2.0 (now 0.3.0, D46, D47); CI uploads the production zip as the `waymark-extension` artifact. | `src/background/panel-fallback.ts`, `.github/workflows/ci.yml` |
+| M6 (partial) | Popup fallback without `chrome.sidePanel` (D43); version 0.2.0 (now 0.3.0: D46, D47, D48, D51); CI uploads the production zip as the `waymark-extension` artifact. | `src/background/panel-fallback.ts`, `.github/workflows/ci.yml` |
 
 Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BROWSERS.md` and pilot guides. Phase 2 has not been started.
 
 ## Known limitations (deliberate)
+- **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.
 - **D24:** elements with only `cursor: pointer` or `tabindex` are not treated as interactive. Revisit with pilot data.
 - **D33 + D36:** the start URL drops ids, so for first pages like `/orders/:id` the panel asks the learner to open the page themselves.
@@ -23,7 +24,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - No strict spotlight mode. Analytics and Phase 2 are out of scope.
 
 ## Manual checks still pending
-1. Voice is audible in Chrome and Edge (M4); CI only spies on `chrome.tts`. HD voice (D47) on real laptops: download, speed check, sound; CI uses a stub engine.
+1. Voice is audible in Chrome and Edge (M4); CI only spies on `chrome.tts`. HD voice (D51) on real laptops: download, speed check, sound; CI uses a stub engine.
 2. Load unpacked in Chrome and Edge (M0); the M6 browser matrix (Brave, Opera, Vivaldi, Arc) goes into `docs/BROWSERS.md`.
 3. Leftover-script cleanup after an extension update (D11). Chromium leaves a command-line-loaded extension disabled after a reload, so e2e can't cover it.
 4. Popup fallback in a browser that really has no side panel (Opera, Arc).
@@ -48,6 +49,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 
 ## Running and debugging tests
 - `pnpm check`: typecheck, lint, both builds, manifest guard, unit (happy-dom) and browser-mode Vitest. Run it before every push (see CLAUDE.md).
+- **Demo app for manual testing:** `pnpm demo` serves `demo/` at http://localhost:8080 (see `demo/README.md`).
 - `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (31 tests, about 3 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).
   - One file: `xvfb-run -a npx playwright test m3`. One test: `-g "name"`.
   - After changing `src/`, rebuild first with `pnpm build:test`; e2e tests use the built extension.

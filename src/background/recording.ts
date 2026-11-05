@@ -18,6 +18,7 @@ import {
   urlKey,
 } from '../core/recorder/session';
 import { originToMatchPattern, stepUrlRule } from '../core/url/url';
+import { withoutLinks } from '../core/text/markdown';
 
 const KEY = 'recording';
 
@@ -65,7 +66,7 @@ const RECORDER_KINDS = new Set<Step['kind']>(['click', 'input', 'select', 'check
 /** Keeps only what the recorder produces: no notes, voice text or placement from a page. */
 export function recorderStep(step: Step): Step | null {
   if (!RECORDER_KINDS.has(step.kind) || !step.target) return null;
-  const out: Step = { id: step.id, kind: step.kind, title: step.title, url: step.url, target: step.target, advance: 'action' };
+  const out: Step = { id: step.id, kind: step.kind, title: withoutLinks(step.title), url: step.url, target: step.target, advance: 'action' };
   if (step.flags?.length) out.flags = step.flags;
   return out;
 }

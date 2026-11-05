@@ -1,5 +1,5 @@
 /**
- * The HD voice offscreen document (D47): runs the on-device model and plays its audio. The
+ * The HD voice offscreen document (D51): runs the on-device model and plays its audio. The
  * service worker creates it when HD voice is used and closes it when idle. It talks only to
  * the service worker: requests are checked for target, sender and shape.
  */

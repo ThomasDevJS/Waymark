@@ -1,6 +1,6 @@
 # Third-party notices
 
-Waymark bundles the open-source code below, and its optional HD voice downloads the model data below. Nothing here is GPL-licensed: the HD voice does not use eSpeak NG (D47).
+Waymark bundles the open-source code below, and its optional HD voice downloads the model data below. Nothing here is GPL-licensed: the HD voice does not use eSpeak NG (D51).
 
 ## Bundled in the extension
 

@@ -1,5 +1,5 @@
 /**
- * HD voice in the service worker (D47), with chrome faked: when it speaks with the HD voice,
+ * HD voice in the service worker (D51), with chrome faked: when it speaks with the HD voice,
  * when it falls back to chrome.tts, what it sends the offscreen document, and opt-in / remove.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +40,7 @@ function fakeChrome() {
   return {
     tts: { getVoices: (cb: (v: chrome.tts.TtsVoice[]) => void) => cb([{ voiceName: 'Samantha', lang: 'en-US', remote: false }]), speak: ttsSpeak, stop: vi.fn() },
     storage: { local: area(() => local), session: area(() => session) },
-    tabs: { get: vi.fn(async (id: number) => ({ id, active: true, windowId: 1 })), sendMessage: vi.fn(async () => undefined) },
+    tabs: { get: vi.fn(async (id: number) => ({ id, active: true, windowId: 1, url: 'https://app.test/orders' })), sendMessage: vi.fn(async () => undefined) },
     windows: { getLastFocused: vi.fn(async () => ({ id: 1 })) },
     offscreen: {
       Reason: { AUDIO_PLAYBACK: 'AUDIO_PLAYBACK', WORKERS: 'WORKERS' },
@@ -126,6 +126,15 @@ describe('speaking a step', () => {
     expect(stop.type).toBe('hd.stop');
     // The stop carries the speak's own time: it cancels that speak, never a newer step's.
     expect(stop.at).toBe(speaks()[0]!.at);
+  });
+
+  it("the HD voice, like the system voice, never reads a step on a site that is not the guide's (D48)", async () => {
+    local.hdStatus = ready;
+    chrome.tabs.get = vi.fn(async (id: number) => ({ id, active: true, windowId: 1, url: 'https://elsewhere.test/' })) as never;
+    const { speakCurrentStep } = await import('../../src/background/voice');
+    await speakCurrentStep(7, startRun(guide('en')));
+    expect(speaks()).toEqual([]);
+    expect(ttsSpeak).not.toHaveBeenCalled();
   });
 
   it('a cancelled HD speak (a newer step or a stop replaced it) says nothing: no system voice', async () => {

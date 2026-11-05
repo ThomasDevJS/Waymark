@@ -1,5 +1,5 @@
 /**
- * The GPL-free English G2P for the HD voice (D47). The lexicon here is a handful of entries
+ * The GPL-free English G2P for the HD voice (D51). The lexicon here is a handful of entries
  * copied from misaki's us_gold.json / us_silver.json (Apache-2.0, hexgrad/misaki).
  */
 import { describe, expect, it } from 'vitest';

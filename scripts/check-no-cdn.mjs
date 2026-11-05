@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CI guard (D47): no script in the built extension may name a code CDN. MV3 forbids remote
+// CI guard (D51): no script in the built extension may name a code CDN. MV3 forbids remote
 // code, and 'wasm-unsafe-eval' would let a fetched remote .wasm compile.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

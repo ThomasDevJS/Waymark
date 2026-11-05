@@ -1,5 +1,5 @@
 /**
- * HD voice (D47): an optional neural voice (Kokoro-82M, Apache-2.0) that runs on the device in
+ * HD voice (D51): an optional neural voice (Kokoro-82M, Apache-2.0) that runs on the device in
  * an offscreen document. Pure policy and constants only; no chrome.* calls here.
  */
 import { z } from 'zod';

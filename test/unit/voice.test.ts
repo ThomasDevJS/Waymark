@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bestSpeechVoice, DEFAULT_VOICE_SETTINGS, isHighQuality, pickVoice, rankVoices, usableVoices, voiceTextFor } from '../../src/core/voice/voice';
+import { bestSpeechVoice, isHighQuality, pickVoice, rankVoices, usableVoices, voiceTextFor } from '../../src/core/voice/voice';
+import { DEFAULT_VOICE_SETTINGS } from '../../src/core/voice/settings';
 import type { Step } from '../../src/core/model/schema';
 
 const step = (extra: Partial<Step> = {}): Step => ({ id: 's', kind: 'click', title: 'Click **Save**', url: { kind: 'pattern', value: '/' }, advance: 'action', ...extra });

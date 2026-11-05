@@ -1,5 +1,5 @@
 /**
- * Messages from the service worker to the HD voice offscreen document (D47). runtime.sendMessage
+ * Messages from the service worker to the HD voice offscreen document (D51). runtime.sendMessage
  * also reaches extension pages and content scripts can send runtime messages too, so the
  * offscreen document checks the target, the sender (only the service worker) and the shape.
  */

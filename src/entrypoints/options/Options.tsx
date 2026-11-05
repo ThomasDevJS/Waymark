@@ -1,7 +1,8 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
-import { isHighQuality, pickVoice, primaryLang, rankVoices, type VoiceSettings } from '../../core/voice/voice';
+import { isHighQuality, pickVoice, primaryLang, rankVoices } from '../../core/voice/voice';
+import type { VoiceSettings } from '../../core/voice/settings';
 import { originToMatchPattern } from '../../core/url/url';
 import type { LibraryState } from '../../background/discovery';
 import type { Problem } from '../../core/storage/problems';

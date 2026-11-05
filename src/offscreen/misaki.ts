@@ -1,6 +1,6 @@
 /**
  * The phonemizer for the HD voice: the misaki lexicon (Apache-2.0), downloaded with the model
- * and read from the cache, with Waymark's G2P (D47). No eSpeak NG, so no GPL code ships.
+ * and read from the cache, with Waymark's G2P (D51). No eSpeak NG, so no GPL code ships.
  */
 import { G2P, type LexEntry } from '../core/voice/g2p';
 import { HD_CACHE, HD_LEXICON_URLS } from '../core/voice/hd';

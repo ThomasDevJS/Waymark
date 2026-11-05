@@ -344,7 +344,7 @@ Voice and step text are free: the browser's on-device voices read each step, and
 - Automatic voice (D46): unless the user picked one, use the best usable voice for the `lang`: names with Natural, Neural, Enhanced or Premium first (remote ones among them first, when online voices are allowed), then on-device over remote, then the guide's region (else the browser's), then the browser's list order. The `speechSynthesis` fallback ranks the same way, without the user's choice (settings never reach content scripts). Settings shows the voice in use and how to install better voices on the user's OS.
 - Speech stops on step change, Back, Exit, or mute (`chrome.tts.stop`).
 - Fallback where `chrome.tts` is missing: `speechSynthesis` in the content script, unlocked by the learner's Start click.
-- **HD voice (optional, D47).** A neural voice that runs on the device: Kokoro-82M (Apache-2.0) through transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. It is off by default and English only.
+- **HD voice (optional, D51).** A neural voice that runs on the device: Kokoro-82M (Apache-2.0) through transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. It is off by default and English only.
   - Settings turns it on. That click requests the download hosts. The model (fp16, 163 MB) and the misaki English lexicon (6 MB) download once from their official hosts, pinned to a revision and checked by SHA-256, into Cache Storage. Then the host permissions are released.
   - Text becomes phonemes with Waymark's own G2P over the misaki lexicon (word forms, compounds, spelled acronyms, numbers, then letter rules). No eSpeak NG, so no GPL code ships.
   - The next step's audio is generated while the current one plays. A step waits at most 4 s for its HD audio, then the system voice reads it. If the engine fails, the system voice is used too.
@@ -413,12 +413,12 @@ Waymark asks for access one site at a time, stores no page content beyond elemen
 | `activeTab` | Read the current tab's URL after a toolbar click, before the site is granted | None |
 | `tts` | Voiceover | None |
 | `alarms` | Library refresh every 6 hours; closing the idle HD voice document | None |
-| `offscreen` | HD voice: runs the voice model and plays its audio (D47) | None |
+| `offscreen` | HD voice: runs the voice model and plays its audio (D51) | None |
 | `optional_host_permissions`: `https://*/*`, `http://*/*` | Requested per site with `chrome.permissions.request`, from a click in the side panel | Shown only when a site is requested |
 
 Not requested: `tabs`, `webNavigation`, `history`, `<all_urls>` at install. Granted sites already expose their own tab URLs, which is all the badge needs.
 
-HD voice (D47) requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*` from the click that turns it on, and releases them when the download ends. Waymark never runs its content script on those two hosts.
+HD voice (D51) requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*` from the click that turns it on, and releases them when the download ends. Waymark never runs its content script on those two hosts.
 
 **Privacy**
 
@@ -431,7 +431,7 @@ HD voice (D47) requests `https://huggingface.co/*` and `https://raw.githubuserco
 
 **Security**
 
-- Manifest V3 with no remote code: every script is bundled, including the HD voice's WebAssembly. The extension pages' CSP adds only `'wasm-unsafe-eval'`, and the pages are cross-origin isolated (COEP `require-corp`, COOP `same-origin`) so the model can use threads (D47). The downloaded model is data, checked by SHA-256.
+- Manifest V3 with no remote code: every script is bundled, including the HD voice's WebAssembly. The extension pages' CSP adds only `'wasm-unsafe-eval'`, and the pages are cross-origin isolated (COEP `require-corp`, COOP `same-origin`) so the model can use threads (D51). The downloaded model is data, checked by SHA-256.
 - Notes render through an allow-list: bold, italic, line breaks, and `https:` links that open in a new tab with `rel="noopener noreferrer"`. User strings never reach `innerHTML`.
 - Packs and library files are untrusted; see the import rules.
 - Only `chrome.runtime` messaging between parts, with an allowlist per sender type. A content script (a sender with `sender.tab`) may send only `rec.step` while its tab is recording, `run.advance`, route reports and `guide.forPage`.

@@ -68,6 +68,16 @@ test('an author fixes a wrong match by re-picking, and the fixed guide plays on 
   let appSawClick = false;
   await app.exposeFunction('__appClicked', () => (appSawClick = true));
   await app.evaluate(() => document.getElementById('app-root')?.addEventListener('click', () => (window as unknown as { __appClicked(): void }).__appClicked()));
+  // A target Waymark could never find again is refused, and picking goes on (issue #6).
+  await app.evaluate(() => {
+    const p = document.createElement('p');
+    p.textContent = 'You have 3 overdue invoices this month. This sentence is plain text, not a button.';
+    document.getElementById('app-root')?.prepend(p);
+  });
+  await app.getByText('You have 3 overdue invoices this month.').click();
+  await expect.poll(() => marker(app, 'pick-rejected')).toBe('p');
+  expect(await marker(app, 'picking')).toBe('on');
+  await expect(app.locator('waymark-overlay .pick-banner')).toContainText('could not find that again');
   await app.getByRole('button', { name: 'CSV' }).click();
   await expect.poll(() => marker(app, 'picking')).toBe('off');
   expect(appSawClick).toBe(false);

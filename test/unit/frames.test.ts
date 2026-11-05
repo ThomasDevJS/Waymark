@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { claimNonce, framePathFor, issueNonce, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
+import { claimNonce, framePathFor, issueNonce, MAX_MAPPED_FRAMES, MAX_PENDING_NONCES, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
 import { pickWinnerFrame } from '../../src/core/matcher/frames';
 
-function memKV(): KV {
-  const m = new Map<string, unknown>();
+function memKV(m = new Map<string, unknown>()): KV {
   return {
     get: async <T,>(k: string) => m.get(k) as T | undefined,
     set: async (k, v) => void m.set(k, structuredClone(v)),
@@ -27,13 +26,39 @@ describe('frame nonce registry', () => {
   it('rejects reused, foreign-tab, expired and self claims', async () => {
     const kv = memKV();
     const n = await issueNonce(kv, 7, 0, 'iframe.a');
-    expect(await claimNonce(kv, n, 8, 11)).toBe(false); // other tab (and consumed)
-    expect(await claimNonce(kv, n, 7, 11)).toBe(false); // reused
+    expect(await claimNonce(kv, n, 8, 11)).toBe(false); // other tab: unknown there, and not burnt
+    expect(await claimNonce(kv, n, 7, 11)).toBe(true);
+    expect(await claimNonce(kv, n, 7, 12)).toBe(false); // reused
     const old = await issueNonce(kv, 7, 0, 'iframe.a', Date.now() - NONCE_TTL_MS - 1);
     expect(await claimNonce(kv, old, 7, 11)).toBe(false);
     const self = await issueNonce(kv, 7, 5, 'iframe.a');
     expect(await claimNonce(kv, self, 7, 5)).toBe(false);
     expect(await claimNonce(kv, 'made-up', 7, 11)).toBe(false);
+  });
+  // D48: a page can make its iframes post "hello" in a loop; every hello asks for a nonce.
+  it('keeps pending nonces bounded per tab and drops expired ones', async () => {
+    const m = new Map<string, unknown>();
+    const kv = memKV(m);
+    const first = await issueNonce(kv, 7, 0, 'iframe.a');
+    let last = '';
+    for (let i = 0; i < 2000; i++) last = await issueNonce(kv, 7, 0, 'iframe.' + 'x'.repeat(500));
+    const size = JSON.stringify([...m.entries()]).length;
+    expect(m.size).toBeLessThanOrEqual(2);
+    expect(size).toBeLessThan(MAX_PENDING_NONCES * 700);
+    expect(await claimNonce(kv, first, 7, 11)).toBe(false); // pushed out by newer ones
+    expect(await claimNonce(kv, last, 7, 11)).toBe(true); // the newest still works
+    // Expired nonces are swept on the next issue.
+    await issueNonce(kv, 9, 0, 'iframe.a', Date.now() - NONCE_TTL_MS - 1);
+    await issueNonce(kv, 9, 0, 'iframe.b');
+    expect(Object.keys(m.get('nonces:9') as object)).toHaveLength(1);
+  });
+  it('keeps the frame map bounded when a page churns iframes (D48)', async () => {
+    const m = new Map<string, unknown>();
+    const kv = memKV(m);
+    for (let f = 1; f <= 1000; f++) expect(await claimNonce(kv, await issueNonce(kv, 7, 0, 'iframe.' + 'y'.repeat(1000)), 7, f)).toBe(true);
+    const map = m.get('frames:7') as Record<string, unknown>;
+    expect(Object.keys(map)).toHaveLength(MAX_MAPPED_FRAMES);
+    expect(framePathFor(map as never, 1000)).not.toBeNull(); // the newest frames stay mapped
   });
   it('detects cycles', () => {
     expect(framePathFor({ '1': { parentFrameId: 2, selector: 'a' }, '2': { parentFrameId: 1, selector: 'b' } }, 1)).toBeNull();

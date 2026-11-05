@@ -14,7 +14,7 @@ if (m.manifest_version !== 3) errors.push('not Manifest V3');
 if (m.action?.default_popup) errors.push('manifest popup would block action.onClicked');
 const csp = JSON.stringify(m.content_security_policy ?? '');
 if (/https?:/.test(csp)) errors.push('CSP allows remote code');
-// The only CSP change allowed is 'wasm-unsafe-eval' for the HD voice's WebAssembly (D47).
+// The only CSP change allowed is 'wasm-unsafe-eval' for the HD voice's WebAssembly (D51).
 const ALLOWED_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'";
 if (m.content_security_policy) {
   const keys = Object.keys(m.content_security_policy);

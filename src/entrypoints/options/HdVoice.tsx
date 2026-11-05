@@ -1,4 +1,4 @@
-/** Settings: the optional HD voice (D47). Opt-in, download with progress, test, remove. */
+/** Settings: the optional HD voice (D51). Opt-in, download with progress, test, remove. */
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';

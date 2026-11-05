@@ -1,5 +1,5 @@
 /**
- * English text to Kokoro phonemes without eSpeak NG (D47): no GPL code ships in the extension.
+ * English text to Kokoro phonemes without eSpeak NG (D51): no GPL code ships in the extension.
  * Words come from the misaki lexicon (Apache-2.0, the dictionaries Kokoro was trained with),
  * downloaded as data with the model. Unknown words go through, in order: word forms (-s, -ed,
  * -ing), CamelCase and compound splits, spelling out acronyms, and last rough letter rules.

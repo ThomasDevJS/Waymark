@@ -90,6 +90,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 
 | You see | It means | What to do |
 | --- | --- | --- |
+| "**Not recorded**" in the REC pill | You clicked something Waymark could never find again: no name, text, label or id (for example a long sentence, or a widget with no label). No step was added. | Click the real button, link or field instead, or **Add note** for that part. |
 | ⚠ **low-confidence** on a step | You clicked something that isn't a button, link or field (often plain text). It is harder to find again. | Delete the step if it wasn't needed, or **Re-pick element** to choose the real control. |
 | ⚠ **canvas** | The click was on a drawing area (chart, map). There is nothing inside it to point at. | Replace the step with a note step. |
 | ⚠ **closed-shadow** | The click was inside a closed web component that Waymark can't see into. It recorded the outer box. | **Test step**. If it is wrong, use a note step. |

@@ -21,7 +21,7 @@ export interface RegistrationApi {
 
 /** Granted http(s) site patterns, sorted and de-duplicated. */
 export function grantedSitePatterns(origins: string[]): string[] {
-  // HD voice download hosts are held only while the model downloads; they are not guide sites (D47).
+  // HD voice download hosts are held only while the model downloads; they are not guide sites (D51).
   const reserved = new Set<string>(HD_HOST_PATTERNS);
   return [...new Set(origins.filter((o) => /^(https?|\*):\/\//.test(o) && !reserved.has(o)))].sort();
 }

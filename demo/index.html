@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard · Demo Invoices</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+  <h1>Dashboard</h1>
+
+  <div class="card">
+    <h2>Start here</h2>
+    <div class="row">
+      <a class="button primary" href="new-invoice.html">Create invoice</a>
+      <a class="button" href="invoices.html">View all invoices</a>
+      <a class="button" href="slow.html">Open slow report</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Menu and tabs <span class="tag">dropdown menu, tabs</span></h2>
+    <div class="row">
+      <div class="menu">
+        <button id="actions-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="actions-menu">Actions ▾</button>
+        <div role="menu" id="actions-menu" hidden>
+          <button role="menuitem" data-msg="Exported to CSV">Export to CSV</button>
+          <button role="menuitem" data-msg="Reminders sent">Send reminders</button>
+          <button role="menuitem" data-msg="Archived">Archive paid invoices</button>
+        </div>
+      </div>
+      <div class="tabs row" role="tablist" aria-label="Period">
+        <button role="tab" aria-selected="true">This month</button>
+        <button role="tab" aria-selected="false">Last month</button>
+        <button role="tab" aria-selected="false">This year</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Revenue chart <span class="tag">canvas: should show the ⚠ canvas warning</span></h2>
+    <canvas id="chart" width="600" height="160" style="max-width:100%"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Plain text <span class="tag">clicking here should show ⚠ low-confidence</span></h2>
+    <p class="plain">You have 3 overdue invoices this month. This sentence is plain text, not a button.</p>
+  </div>
+
+  <div class="card">
+    <h2>Web component <span class="tag">closed shadow: should show ⚠ closed-shadow</span></h2>
+    <quick-actions></quick-actions>
+  </div>
+</main>
+<script type="module">
+  import { toast } from './header.js';
+
+  // Dropdown menu
+  const btn = document.getElementById('actions-btn');
+  const menu = document.getElementById('actions-menu');
+  btn.addEventListener('click', () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  });
+  for (const item of menu.querySelectorAll('[role="menuitem"]')) {
+    item.addEventListener('click', () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); toast(item.dataset.msg); });
+  }
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu')) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
+
+  // Tabs
+  const tabs = document.querySelectorAll('[role="tab"]');
+  for (const t of tabs) t.addEventListener('click', () => { for (const o of tabs) o.setAttribute('aria-selected', String(o === t)); draw(); });
+
+  // Canvas chart
+  function draw() {
+    const c = document.getElementById('chart');
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, c.width, c.height);
+    const values = Array.from({ length: 12 }, () => 30 + Math.random() * 110);
+    values.forEach((v, i) => { g.fillStyle = '#2a62d6'; g.fillRect(20 + i * 48, c.height - v, 32, v); });
+  }
+  draw();
+
+  // Closed shadow root web component
+  customElements.define('quick-actions', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'closed' });
+      const b = document.createElement('button');
+      b.textContent = 'Quick pay';
+      b.style.cssText = 'font:inherit;padding:8px 14px;border-radius:6px;border:1px solid #b8c3d8;background:#fff;cursor:pointer';
+      b.addEventListener('click', () => toast('Quick pay opened'));
+      root.append(b);
+    }
+  });
+</script>
+<script type="module" src="header.js"></script>
+</body>
+</html>

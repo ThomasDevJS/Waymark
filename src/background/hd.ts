@@ -1,5 +1,5 @@
 /**
- * HD voice, service worker side (D47). The model runs in an offscreen document that this
+ * HD voice, service worker side (D51). The model runs in an offscreen document that this
  * creates on demand and closes when idle. State lives in chrome.storage, never in memory:
  * the status in local storage, the hosts to release in session storage.
  */

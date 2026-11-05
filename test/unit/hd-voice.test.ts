@@ -1,4 +1,4 @@
-/** HD voice (D47): policy, the offscreen player, the offscreen sender check, and text splitting. */
+/** HD voice (D51): policy, the offscreen player, the offscreen sender check, and text splitting. */
 import { describe, expect, it, vi } from 'vitest';
 import { HD_FILES, HD_HOST_PATTERNS, HD_OFF, HD_TOTAL_BYTES, hdSpeed, tooSlow, useHd, type HdStatus } from '../../src/core/voice/hd';
 import { grantedSitePatterns } from '../../src/core/permissions/registration';

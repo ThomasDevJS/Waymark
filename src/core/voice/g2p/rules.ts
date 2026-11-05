@@ -1,7 +1,7 @@
 /**
  * Last-resort letter-to-sound rules for words the lexicon does not know (names such as
  * "Jira"), in misaki's phoneme alphabet (A = eɪ, I = aɪ, O = oʊ, W = aʊ, Y = ɔɪ). Written for
- * Waymark (D47); a rough guess, used only after the lexicon, word forms, compounds and spelling.
+ * Waymark (D51); a rough guess, used only after the lexicon, word forms, compounds and spelling.
  */
 const VOWELS = 'aeiouy';
 const isVowel = (c: string | undefined) => !!c && VOWELS.includes(c);

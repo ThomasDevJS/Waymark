@@ -3,7 +3,7 @@ import preact from '@preact/preset-vite';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-// HD voice (D47): onnxruntime-web as transformers.js resolves it. We bundle its WebAssembly-only
+// HD voice (D51): onnxruntime-web as transformers.js resolves it. We bundle its WebAssembly-only
 // build (no WebGPU) and ship the .wasm inside the extension, so no code ever loads from a CDN.
 const fromTransformers = createRequire(createRequire(import.meta.url).resolve('@huggingface/transformers'));
 const ortDist = dirname(fromTransformers.resolve('onnxruntime-web/wasm'));
@@ -29,7 +29,7 @@ export default defineConfig({
       preact(),
       {
         // transformers.js defaults ONNX Runtime's WebAssembly location to a CDN. Waymark always
-        // sets its own path, but the bundle must not carry a remote code URL at all (D47).
+        // sets its own path, but the bundle must not carry a remote code URL at all (D51).
         name: 'waymark-no-cdn',
         transform(code: string, id: string) {
           if (!id.includes('@huggingface/transformers')) return null;
@@ -50,7 +50,7 @@ export default defineConfig({
     permissions: ['storage', 'unlimitedStorage', 'sidePanel', 'scripting', 'activeTab', 'tts', 'alarms', 'offscreen'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: { default_title: 'Waymark' },
-    // HD voice (D47): WebAssembly for the on-device voice model, and cross-origin isolation so
+    // HD voice (D51): WebAssembly for the on-device voice model, and cross-origin isolation so
     // it can use threads. Only 'wasm-unsafe-eval' is added; all code is bundled.
     content_security_policy: { extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" },
     cross_origin_embedder_policy: { value: 'require-corp' },

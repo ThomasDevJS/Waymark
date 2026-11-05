@@ -11,6 +11,7 @@ import { guideKey, writeGuide } from '../core/storage/guides';
 import { framesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
+import { withoutLinks } from '../core/text/markdown';
 import { updateAllBadges } from './discovery';
 
 /** The tab must show a page of the guide's site: steps are only sent to their own origin (D41). */
@@ -151,7 +152,7 @@ export const editorHandlers: Handlers = {
     // The step moves to the page the element was picked on (the top page's URL rule).
     const top = ctx.sender.tab?.url;
     const url = top ? stepUrlRule(top) : undefined;
-    await chrome.storage.session.set({ [pickResultKey(tabId)]: { target: fp, title, url, at: Date.now() } });
+    await chrome.storage.session.set({ [pickResultKey(tabId)]: { target: fp, title: withoutLinks(title), url, at: Date.now() } });
     const msg: ContentPush = { type: 'pick.stop' };
     await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
     return { ok: true };

@@ -43,3 +43,4 @@ textarea, select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 
 .review .removed .value { text-decoration: line-through; opacity: .6; }
 .review button { padding: 0 6px; font-size: 12px; }
 .value { word-break: break-word; }
+.sites { list-style: none; margin: 6px 0 0; padding: 0; max-height: 10em; overflow: auto; word-break: break-all; }

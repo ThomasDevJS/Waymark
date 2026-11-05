@@ -9,7 +9,8 @@ import { enqueue } from '../core/storage/queue';
 import { getHdStatus, hdSpeak, hdStop } from './hd';
 import { clock } from '../offscreen/protocol';
 import { hdSpeed, useHd } from '../core/voice/hd';
-import { DEFAULT_VOICE_SETTINGS, pickVoice, usableVoices, VoiceSettingsSchema, voiceTextFor, type VoiceSettings } from '../core/voice/voice';
+import { pickVoice, usableVoices, voiceTextFor } from '../core/voice/voice';
+import { DEFAULT_VOICE_SETTINGS, VoiceSettingsSchema, type VoiceSettings } from '../core/voice/settings';
 
 const SETTINGS_KEY = 'voiceSettings';
 
@@ -54,7 +55,7 @@ const FALLBACK_TAB_KEY = 'ttsFallbackTab';
 /**
  * When the newest speech started or was stopped (session storage). A step whose HD audio
  * failed falls back to the system voice only while it is still the newest: never after a
- * newer step, Mute or Exit (D47).
+ * newer step, Mute or Exit (D51).
  */
 const SPEECH_AT_KEY = 'speechAt';
 
@@ -71,12 +72,22 @@ export function stopSpeech(): void {
 }
 
 /** The active tab of the browser window the user last focused (the side panel lives there too). */
-async function isFocusedTab(tabId: number): Promise<boolean> {
+/** The tab, if it is the active tab of the last focused window; else null. */
+async function focusedTab(tabId: number): Promise<chrome.tabs.Tab | null> {
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!tab.active) return false;
+    if (!tab.active) return null;
     const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
-    return win.id === tab.windowId;
+    return win.id === tab.windowId ? tab : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the tab shows a page of one of the guide's sites. */
+function onGuideSite(url: string | undefined, appOrigins: string[]): boolean {
+  try {
+    return !!url && appOrigins.includes(new URL(url).origin);
   } catch {
     return false;
   }
@@ -104,8 +115,10 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
   if (!step) return;
   const settings = await getVoiceSettings();
   if (!settings.autoPlay || settings.muted) return;
-  // One voice channel: only the focused tab speaks.
-  if (!(await isFocusedTab(tabId))) return;
+  // One voice channel: only the focused tab speaks, and only on the guide's own sites: a
+  // step is never read out (or sent to the speechSynthesis fallback) on another site (D48).
+  const tab = await focusedTab(tabId);
+  if (!tab || !onGuideSite(tab.url, run.guideSnapshot.appOrigins)) return;
   const text = voiceTextFor(step);
   const lang = run.guideSnapshot.lang;
   if (text && useHd(await getHdStatus(), lang)) {

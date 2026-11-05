@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOp, navigationStep, NAV_BELONGS_TO_CLICK_MS, startRecording, toGuide, urlKey, viewOf } from '../../src/core/recorder/session';
+import { addOrigin, applyOp, navigationStep, NAV_BELONGS_TO_CLICK_MS, startRecording, toGuide, urlKey, viewOf } from '../../src/core/recorder/session';
 import { GuideSchema, type Step } from '../../src/core/model/schema';
 
 const click = (id: string): Step => ({ id, kind: 'click', title: 'Click **X**', url: { kind: 'pattern', value: '/' }, advance: 'action' });
@@ -86,5 +86,17 @@ describe('review fixes', () => {
     const s = startRecording('x', 1, 'https://app.test/a', 0);
     const step = navigationStep(s, { url: 'https://app.test/b', prevUrl: 'https://app.test/a', now: 99_999, title: '[Pay](https://x.test)' })!;
     expect(step.title).toBe('Go to \\[Pay\\](https://x.test)');
+  });
+});
+
+describe('D48: a page cannot make a recording unsaveable', () => {
+  it('stops adding navigate steps and sites at the guide limits', () => {
+    const s = startRecording('t', 1, 'https://app.test/a', 0);
+    for (let i = 0; i < 600; i++) {
+      const step = navigationStep(s, { url: `https://app.test/p${i % 2}`, prevUrl: urlKey(`https://app.test/p${(i + 1) % 2}`), now: 100_000 + i * 2000, title: 'Page' });
+      if (step) s.steps.push(step);
+    }
+    for (let i = 0; i < 80; i++) addOrigin(s, `https://s${i}.test`);
+    expect(GuideSchema.safeParse(toGuide(s)).success).toBe(true);
   });
 });

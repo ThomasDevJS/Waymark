@@ -1,4 +1,4 @@
-/** Numbers to English words for the HD voice (D47): cardinals, years, decimals, ordinals. */
+/** Numbers to English words for the HD voice (D51): cardinals, years, decimals, ordinals. */
 const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 const SCALES: [number, string][] = [

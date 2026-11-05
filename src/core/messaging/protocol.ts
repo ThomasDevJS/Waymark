@@ -9,7 +9,7 @@ import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
-import type { VoiceSettings } from '../voice/voice';
+import type { VoiceSettings } from '../voice/settings';
 import { HD_HOST_PATTERNS, HdStatusSchema, type HdStatus } from '../voice/hd';
 import type { TestResult } from '../../background/editor';
 import type { StartResult } from '../../background/runs';
@@ -67,7 +67,7 @@ export const RequestSchemas = {
       })
       .partial(),
   }),
-  // HD voice (D47). hd.enable names the download hosts this opt-in newly granted, to release later.
+  // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
   'hd.status': z.object({}),
   'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
   'hd.remove': z.object({}),
