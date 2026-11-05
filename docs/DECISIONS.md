@@ -520,6 +520,18 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
   3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
 
+### D57. The privacy policy is not hosted on GitHub Pages; the store listing is a draft
+- **Spec**: Permissions, privacy and security ("A one-page privacy policy (free on GitHub Pages) is required for the store listing"); Distribution and cost.
+- **Finding**: the repository is private on the GitHub Free plan, which has no GitHub Pages for private repositories.
+- **Change**: the policy is `docs/PRIVACY.md`, written against what the code does today (storage keys, the three optional network requests, the permissions). It lists free hosts for the public URL the store needs: a separate public repo with Pages, a public Gist, Cloudflare Pages or Netlify, Google Sites, Codeberg Pages. `docs/STORE.md` drafts the Chrome Web Store listing: descriptions, single purpose, a justification per permission, remote-code and data-use answers, the screenshot list, and the steps for a private (domain or group) listing.
+- **Open items** before submitting:
+  - a contact address in the policy;
+  - a host for the policy;
+  - the screenshots and promo tile (design lane);
+  - **an icon:** the manifest has no `icons` yet, and the store requires a 128×128 one.
+  - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
+- **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
