@@ -95,6 +95,18 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     mute: (muted) => {
       send('run.mute', { muted }).catch(() => undefined);
     },
+    replayVoice: () => {
+      if (view?.step) send('run.replay', { stepId: view.step.id }).catch(() => undefined);
+    },
+    // Repeat step: search again (the page may have changed or been scrolled), redraw the
+    // spotlight with its pulse, scroll the element into view and read the step again (D106).
+    repeat: () => {
+      const v = view;
+      if (!v?.step || v.status !== 'running') return;
+      testMark('repeat', String(Number(document.documentElement.getAttribute('data-waymark-test-repeat') ?? 0) + 1));
+      startSearch(v);
+      send('run.replay', { stepId: v.step.id }).catch(() => undefined);
+    },
   });
 
   const clearStep = () => {
@@ -206,6 +218,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
       testSpot(target, v.stepIndex);
       testMark('player', `drawn:${v.stepIndex}`);
+      testMark('draws', String(Number(document.documentElement.getAttribute('data-waymark-test-draws') ?? 0) + 1));
       return;
     }
     // Another frame found the target: the top frame's off-track or not-found card goes away.
@@ -231,6 +244,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     // Views can arrive out of order (a reply to a page-load report vs. a push): keep the newest.
     if (view && next.runId && view.runId === next.runId && next.rev < view.rev) return;
     view = next;
+    ui.setMuted(next.muted);
     if (!next.active || next.status === 'none' || next.status === 'paused') {
       clearStep();
       stepToken = null;

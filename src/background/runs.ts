@@ -16,6 +16,8 @@ import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from
 import { siteAllowed } from './site-access';
 
 const runKey = (tabId: number) => `run:${tabId}`;
+const REPLAY_KEY = 'replayAt';
+export const REPLAY_MIN_MS = 400;
 const boardKey = (tabId: number) => `match:${tabId}`;
 
 export async function getRun(tabId: number): Promise<Run | null> {
@@ -191,6 +193,26 @@ export const runHandlers: Handlers = {
     // Mute is global: every tab with a run shows the new state.
     const all = await chrome.storage.session.get(null);
     for (const key of Object.keys(all)) if (key.startsWith('run:')) await broadcast(Number(key.slice(4)));
+    return { ok: true };
+  },
+  // Replay voice / Repeat step from the tooltip (D106). Only the sender tab's own run, only its
+  // current step, and at most every 400 ms, so a page cannot keep the voice busy.
+  'run.replay': async ({ stepId }, ctx: HandlerContext) => {
+    const tabId = ctx.tabId;
+    if (tabId === undefined) return { ok: false };
+    const ok = await enqueue(async () => {
+      const run = await getRun(tabId);
+      const step = run ? currentStep(run) : undefined;
+      if (!run || run.status !== 'running' || !step || step.id !== stepId) return false;
+      if (!ctx.sender.origin || !run.guideSnapshot.appOrigins.includes(ctx.sender.origin)) return false;
+      const last = ((await chrome.storage.session.get(REPLAY_KEY))[REPLAY_KEY] as number | undefined) ?? 0;
+      const now = Date.now();
+      if (now - last < REPLAY_MIN_MS && now >= last) return false;
+      await chrome.storage.session.set({ [REPLAY_KEY]: now });
+      return true;
+    });
+    if (!ok) return { ok: false };
+    await speakCurrentStep(tabId, await getRun(tabId), true);
     return { ok: true };
   },
   'run.stop': async ({ tabId }) => {

@@ -4,10 +4,11 @@ import { send } from '../../core/messaging/client';
 import type { RecordingState } from '../../core/recorder/session';
 import type { RunView } from '../../core/player/run';
 import { Markdown } from './Markdown';
-import { Editor } from './Editor';
+import { Editor, editorHasUnsavedEdits } from './Editor';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { FLAG_HELP, FlagNotes } from './steps';
+import type { ShortcutOutcome } from '../../core/storage/shortcut';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
@@ -56,6 +57,24 @@ function openEditor(id: string, tabId: number | null) {
   editing.value = id;
 }
 
+/** A recording stopped with the shortcut whose editor did not open, because of unsaved edits. */
+const stoppedAside = signal<{ guideId: string; title: string; count: number } | null>(null);
+
+/**
+ * Stopped with the keyboard shortcut (D105): open the editor, as the Stop button does. The state
+ * lives in this module, so it applies even while the Recorder is not shown (a tab Waymark is not
+ * allowed on); unsaved edits in an open editor are never replaced, the panel offers the new guide.
+ */
+export function showStopped(o: Extract<ShortcutOutcome, { kind: 'stopped' }>, tabId: number | null): void {
+  recording.value = null;
+  if (editing.value && editing.value !== o.guideId && editorHasUnsavedEdits()) {
+    stoppedAside.value = { guideId: o.guideId, title: o.title, count: o.count };
+    return;
+  }
+  saved.value = { title: o.title, count: o.count };
+  openEditor(o.guideId, tabId);
+}
+
 /** What a screen reader hears when a step is recorded: its number, title and warning names. */
 export function lastStepAnnouncement(steps: RecordingState['steps']): string {
   const s = steps[steps.length - 1];
@@ -68,6 +87,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
   useEffect(() => {
     if (initialEdit) editing.value = initialEdit;
   }, [initialEdit]);
+
   useEffect(() => {
     void refresh(tabId);
     // The panel is a trusted context and may watch session storage directly.
@@ -87,8 +107,31 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
     </p>
   );
   if (!r && editing.value) {
+    const aside = stoppedAside.value;
     return (
       <>
+        {aside && (
+          <div class="banner success" role="status" data-testid="stopped-aside">
+            <Icon name="check" />
+            <div class="row grow">
+              <span class="grow">
+                Saved “{aside.title}” with {aside.count} {aside.count === 1 ? 'step' : 'steps'}. Your unsaved edits here are kept.
+              </span>
+              <button
+                type="button"
+                class="sm"
+                data-testid="open-stopped"
+                onClick={() => {
+                  stoppedAside.value = null;
+                  saved.value = { title: aside.title, count: aside.count };
+                  openEditor(aside.guideId, tabId);
+                }}
+              >
+                Open it (discard edits)
+              </button>
+            </div>
+          </div>
+        )}
         {saved.value && (
           <p class="banner success" role="status" data-testid="saved">
             <Icon name="check" />

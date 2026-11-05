@@ -56,6 +56,9 @@ function answer(type: string, payload: Record<string, unknown>): unknown {
       return { ok: true };
     case 'guide.get':
       return structuredClone(guide);
+    case 'rec.state':
+    case 'run.state':
+      return null;
     case 'guide.save':
       return { ...(payload.guide as Guide), version: 2, revisionId: 'R2' };
     case 'guide.duplicate':
@@ -76,12 +79,15 @@ beforeEach(() => {
         return { ok: true, data: answer(m.type, m.payload) };
       },
     },
-    storage: { onChanged: { addListener() {}, removeListener() {} } },
+    storage: { onChanged: { addListener() {}, removeListener() {} }, session: { get: async () => ({}), remove: async () => undefined } },
+    sidePanel: {},
   };
   root = document.createElement('div');
   document.body.append(root);
 });
 afterEach(() => {
+  // Close an open editor, as the user would, so no draft carries over to the next test.
+  byTest('close-editor')?.click();
   dismissToast();
   render(null, root);
   root.remove();
@@ -194,6 +200,24 @@ describe('toast (D100)', () => {
     await expect.poll(() => byTest('toast'), { timeout: 2000 }).toBeNull();
     expect(document.activeElement).toBe(heading);
     heading.remove();
+  });
+});
+
+describe('recording shortcut and the editor (D105 review)', () => {
+  it('Stop by shortcut never replaces unsaved edits; the new guide is offered instead', async () => {
+    const { Recorder, showStopped } = await import('../../src/entrypoints/sidepanel/Recorder');
+    render(h(Recorder, { tabId: 1, tabUrl: null, initialEdit: 'G1' }), root);
+    await tick();
+    await userEvent.fill(byTest('step-0-title') as HTMLInputElement, 'Edited, not saved');
+    showStopped({ kind: 'stopped', guideId: 'NEW', title: 'Untitled guide', count: 2, at: Date.now() }, 1);
+    await tick();
+    expect((byTest('step-0-title') as HTMLInputElement).value).toBe('Edited, not saved');
+    expect(byTest('stopped-aside')!.textContent).toContain('Saved “Untitled guide” with 2 steps');
+    expect(sent.filter((m) => m.type === 'guide.get').map((m) => m.payload.id)).toEqual(['G1']);
+    await userEvent.click(byTest('open-stopped')!);
+    await tick();
+    expect(sent.filter((m) => m.type === 'guide.get').map((m) => m.payload.id)).toEqual(['G1', 'NEW']);
+    render(null, root);
   });
 });
 

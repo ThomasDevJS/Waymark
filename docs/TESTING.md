@@ -96,6 +96,13 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] While a guide plays, press **Restart** in the panel's playing card: the guide starts again at step 1.
 - [ ] Open the **⋯** menu of a guide with several steps, pick a step under **Start from**, go to that step's page and press **Start from step N**. The guide starts at that step. On another page the panel tells you which page to open.
 
+### I. Sharing and playback conveniences
+- [ ] Select a guide and click **Export 1 selected…**. Under **Format**, pick **How-to (Markdown)**. The list now shows only the guide title, its site and the steps' titles and notes. A note with an email, amount or code has a yellow **Looks like data** badge. Remove it, then **Download how-to** and open the `.md` file: numbered steps, and no address except the site's.
+- [ ] Do the same with **How-to (printable page)**, open the `.html` file in the browser, and print it (Ctrl+P or ⌘P): one clean page of numbered steps.
+- [ ] On an allowed site, press **Alt+R**. The side panel opens and recording starts (REC). Do two actions, then press **Alt+R** again: recording stops and the editor opens on "Untitled guide". On a site that is not allowed, **Alt+R** opens the panel with "Recording didn't start: Allow Waymark on this site first."
+- [ ] Press **Alt+W** in a window where the side panel is closed: it opens. Change both keys at `chrome://extensions/shortcuts`; **Settings → About** shows the new keys.
+- [ ] While a guide plays, press the speech button in the tooltip (**Replay voice**): the step is read again. Scroll the page away from the highlighted element, Tab to **Repeat step** and press Enter (or click it before scrolling): the page scrolls back, the highlight pulses and the step is read again. Mute: **Replay voice** greys out. Unmute with the same button: it works again in the same step.
+
 ## 3. What the warnings mean
 
 | You see | It means | What to do |

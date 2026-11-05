@@ -3,14 +3,16 @@ import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
-import { Recorder } from './Recorder';
+import { Recorder, showStopped } from './Recorder';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
 import { Welcome, welcomeShown } from './Welcome';
+import { useShortcutOutcome } from './shortcut';
 
 const tab = signal<TabInfo | null>(null);
 const error = signal<string | null>(null);
+const shortcutError = signal<string | null>(null);
 
 async function refresh() {
   try {
@@ -127,6 +129,12 @@ function SiteCard({ t }: { t: TabInfo | null }) {
 }
 
 export function App() {
+  // The recording shortcut was refused (for example on a site Waymark is not allowed on, D105).
+  // Stopped: the editor opens (even if this tab's site is not allowed, it shows once one is).
+  useShortcutOutcome(['error', 'started', 'stopped'], (o) => {
+    shortcutError.value = o.kind === 'error' ? o.message : null;
+    if (o.kind === 'stopped') showStopped(o, tab.value?.tabId ?? null);
+  });
   useEffect(() => {
     void refresh();
     const onChange = () => void refresh();
@@ -159,6 +167,12 @@ export function App() {
           <p class="alert" role="alert">
             <Icon name="error" />
             {error.value}
+          </p>
+        )}
+        {shortcutError.value && (
+          <p class="alert" role="alert" data-testid="shortcut-error">
+            <Icon name="error" />
+            <span class="grow">Recording didn’t start: {shortcutError.value}</span>
           </p>
         )}
         <Welcome />

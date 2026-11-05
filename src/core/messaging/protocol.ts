@@ -115,6 +115,8 @@ export const RequestSchemas = {
   }),
   'run.problem': z.object({ stepId: z.string().max(64) }),
   'run.mute': z.object({ muted: z.boolean() }),
+  // The tooltip's Replay voice and Repeat step (D106): reads the current step again.
+  'run.replay': z.object({ stepId: z.string().max(64) }),
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
   'pick.abort': z.object({}),
   'rec.step': z.discriminatedUnion('op', [
@@ -166,6 +168,7 @@ export interface ResponseMap {
   'hd.test': { ok: boolean };
   'hd.report': { ok: true };
   'run.mute': { ok: boolean };
+  'run.replay': { ok: boolean };
   'guide.get': Guide;
   'guide.save': Guide;
   'step.test': TestResult;
@@ -219,6 +222,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.match',
   'run.problem',
   'run.mute', // the tooltip's mute toggle (D38)
+  'run.replay', // the tooltip's Replay voice and Repeat step: the sender tab's current step only (D106)
   'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
   'pick.abort', // Esc in the page cancels the pick everywhere (D41)
   'launcher.start', // on-page launcher and deep link: only guides of the sender's origin (D42)

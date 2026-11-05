@@ -481,6 +481,8 @@ export function Options() {
                       ['next-step', 'Next step'],
                       ['previous-step', 'Previous step'],
                       ['exit-guide', 'Exit the guide'],
+                      ['toggle-recording', 'Start or stop recording in this tab'],
+                      ['_execute_action', 'Open the side panel'],
                     ] as const
                   ).map(([name, label]) => (
                     <li key={name}>
