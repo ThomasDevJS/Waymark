@@ -7,7 +7,7 @@
 - **not found**: the honest "can't find this step" card;
 - **stuck**: drawn on the right element, but the learner's action did not move the run on.
 
-Variants: **reload** (always), **narrow viewport**, and **different items** (another list of todos). Harness: `test/real/`. Results and screenshots of wrong or stuck steps go to `test-results/real/`. `node scripts/real-report.mjs` prints the table below from the last run.
+Variants: **reload** (always), **narrow viewport**, and **different items** (another list of todos). Harness: `test/real/`. Results and screenshots of wrong or stuck steps go to `test-results/real/`. `pnpm test:real` prints the table below and exits non-zero when any step is wrong, missing or stuck.
 
 ## Results
 
@@ -29,10 +29,10 @@ Last full run: 2026-11-05, version 0.2.3. "Before" is the same harness on main a
 | MUI (React) | modal dialog | 2 | 2/2 | 2/2 (×2) | |
 | MUI X (React) | date picker | 2 | 2/2 | 2/2 | |
 | Ant Design (React) | portaled select in a form | 2 | 3/4 | 4/4 (×2) | The one miss before was the page remount closing the open dropdown (see the date picker); the task now waits for it. |
-| Ant Design (React) | date picker | 2 | **1 wrong** | **1 wrong** | ant.design remounts the page about 3 s after load. For about 1.5 s the only "Select date" input is a look-alike in another demo, and it is accepted. Next fix. |
+| Ant Design (React) | date picker | 2 | **1 wrong** (intermittent) | **1 wrong** (intermittent) | ant.design remounts the page about 3 s after load. For about 1.5 s the only "Select date" input is a look-alike in another demo, and it is accepted when the step searches in that window (4 of the last 6 runs). Next fix. |
 | Angular Material | portaled select | 2 | 0/2 (not found) | 2/2 (×2) | D51: `mat-select-10` style ids are generated. |
 
-Tasks passing: **8 of 16 before, 12 of 16 after**. Wrong matches: 1 before, 1 after (the same one, the next fix).
+Tasks passing: **8 of 16 before, 13–14 of 16 after** (14 when the Ant date picker does not hit the remount window). Wrong matches: the same intermittent one before and after; it is the next fix. TodoMVC Vue and Angular show as "recorded 4 steps, expected 5".
 
 ## Known limits
 

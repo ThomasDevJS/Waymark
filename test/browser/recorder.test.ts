@@ -91,6 +91,18 @@ describe('merge rules', () => {
     expect(steps()[0]!.target?.role).toBe('combobox');
   });
 
+  it('pressing a button and dragging off it to cancel records nothing (review)', async () => {
+    await userEvent.dragAndDrop(byText('button', 'Import'), document.querySelector('h1, p, main')!);
+    await settle();
+    expect(titles()).toEqual([]);
+  });
+
+  it('a click on a node of a large svg chart is not recorded as the whole chart (review)', async () => {
+    await userEvent.click(q('#node-users rect'));
+    await settle();
+    expect(steps().map((s) => s.target?.id)).not.toContain('org-chart');
+  });
+
   it('a click on an svg icon records the element around the svg, not its <path> (demoqa)', async () => {
     await userEvent.click(q('#print-record path'));
     await settle();

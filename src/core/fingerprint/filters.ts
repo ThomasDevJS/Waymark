@@ -31,7 +31,8 @@ const GENERATED: RegExp[] = [
   /^[_-]?[a-z]{0,3}\d{2,}$/i, // short prefix + number: a12, _31, x99
   // Component libraries that number ids per page load (D51): mat-select-10, cdk-overlay-3,
   // headlessui-menu-button-3, downshift-0-input, react-select-2-input, rc-tabs-0-tab-1.
-  /^(mat|mdc|cdk|headlessui|downshift|react-select|react-aria|rc|mui|chakra|reach)-([a-z-]*-)?\d+(-|$)/i,
+  // Not Material typography classes (mat-display-1, mat-headline-2).
+  /^(?!mat-(display|headline)-)(mat|mdc|cdk|headlessui|downshift|react-select|react-aria|rc|mui|chakra|reach)-([a-z-]*-)?\d+(-|$)/i,
 ];
 
 const STATE_CLASS =

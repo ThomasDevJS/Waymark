@@ -228,13 +228,18 @@ export function resolveTargetFromPath(path: EventTarget[]): ResolvedTarget | nul
   }
   // A click on an icon lands on a <path> or <use> deep in an <svg>, which has nothing to find it
   // by. The element around the outermost <svg> is what the page made clickable (D50).
+  // Only for icons: a node of a chart or diagram stays the target.
   let i = 0;
   while (i < elements.length && elements[i]!.namespaceURI === SVG_NS) i++;
-  if (i > 0 && elements[i]) return { element: elements[i]!, lowConfidence: true };
+  const svg = elements[i - 1];
+  const box = svg?.getBoundingClientRect();
+  if (i > 0 && elements[i] && box && box.width <= MAX_ICON_PX && box.height <= MAX_ICON_PX) return { element: elements[i]!, lowConfidence: true };
   return { element: first, lowConfidence: true };
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+/** An svg at most this big on both sides is an icon (D50). */
+const MAX_ICON_PX = 48;
 
 function textOfIds(el: Element, ids: string): string {
   const root = rootOf(el);

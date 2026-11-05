@@ -50,6 +50,20 @@ describe('advance rules', () => {
     expect(advanced).toBe(1);
   });
 
+  it('click: pressing the target and dragging off it to cancel does not advance (review)', async () => {
+    watch('click', [q('tb-import')]);
+    await userEvent.dragAndDrop(q('tb-import'), document.querySelector('h1, p, main')!);
+    expect(advanced).toBe(0);
+  });
+
+  it('input: Ctrl, Meta or Alt+Enter is not the end of the step', async () => {
+    watch('input', [q('quick-add')]);
+    await userEvent.click(q('quick-add'));
+    await userEvent.keyboard('x{Control>}{Enter}{/Control}');
+    await userEvent.keyboard('{Alt>}{Enter}{/Alt}');
+    expect(advanced).toBe(0);
+  });
+
   it('click: pressing elsewhere and releasing on the backdrop does not advance', async () => {
     watch('click', [q('dd-priority')]);
     await userEvent.click(q('dd-priority'));

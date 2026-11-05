@@ -36,6 +36,8 @@ export interface RecorderOptions {
 }
 
 export const PENDING_LINK_MS = 1000;
+/** A press and a click on its ancestor are one click only when released this close to the press (D49). */
+export const PRESS_SLOP_PX = 4;
 export const SUBMIT_MERGE_MS = 1500;
 
 interface Pending {
@@ -43,6 +45,9 @@ interface Pending {
   fp: ElementFingerprint;
   time: number;
   path: EventTarget[];
+  /** Pointer position of the press (pending only). */
+  x?: number;
+  y?: number;
 }
 
 interface LastStep {
@@ -134,7 +139,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       pending = null;
       return;
     }
-    pending = { el: t.element, fp: fpOf(t.element), time: now(), path };
+    const m = e as PointerEvent;
+    pending = { el: t.element, fp: fpOf(t.element), time: now(), path, x: m.clientX, y: m.clientY };
   };
 
   const hasInteractiveAncestor = (el: Element) => {
@@ -153,7 +159,9 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     // behind a full-page backdrop): the mouseup lands on the backdrop, so the click goes to the
     // common ancestor of the two. That ancestor is on the pressed control's path (D49).
     const pressed = pending;
-    if (t.lowConfidence && pressed && now() - pressed.time <= PENDING_LINK_MS && pressed.path.includes(t.element) && !path.includes(pressed.el)) {
+    const m = e as MouseEvent;
+    const atPress = !!pressed && pressed.x !== undefined && pressed.y !== undefined && Math.hypot(m.clientX - pressed.x, m.clientY - pressed.y) <= PRESS_SLOP_PX; // not a drag-off cancel
+    if (t.lowConfidence && pressed && atPress && now() - pressed.time <= PENDING_LINK_MS && pressed.path.includes(t.element) && !path.includes(pressed.el)) {
       t = { element: pressed.el, lowConfidence: false };
     }
     const el = t.element;
@@ -165,7 +173,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     let fp: ElementFingerprint;
     const p = pending;
     pending = null;
-    const linked = p && now() - p.time <= PENDING_LINK_MS && (p.el === el || path.includes(p.el) || p.path.includes(el));
+    // A click on an ancestor of the pressed node (it was re-rendered) is linked only when released
+    // where it was pressed: dragging off a button cancels the click (review of D49).
+    const releasedAtPress = !p || p.x === undefined || p.y === undefined || Math.hypot((e as MouseEvent).clientX - p.x, (e as MouseEvent).clientY - p.y) <= PRESS_SLOP_PX;
+    const linked = p && now() - p.time <= PENDING_LINK_MS && (p.el === el || path.includes(p.el) || (p.path.includes(el) && releasedAtPress));
     if (p && linked) fp = p.fp;
     else fp = fpOf(el);
 

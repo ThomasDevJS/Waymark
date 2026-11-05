@@ -321,8 +321,19 @@ export function createApp(options = {}, doc = document) {
   iconPath.setAttribute('d', 'M0 0h16v16H0z');
   icon.append(iconPath);
   const printIcon = h('span', { id: 'print-record', title: T('Print'), cls: 'iconspan', 'data-fx': 'icon-print' }, [icon]);
+  // A chart whose nodes are the click targets (not an icon): a click stays on the node.
+  const chartSvg = doc.createElementNS(svgNs, 'svg');
+  chartSvg.setAttribute('width', '240');
+  chartSvg.setAttribute('height', '90');
+  const node = doc.createElementNS(svgNs, 'g');
+  node.setAttribute('id', 'node-users');
+  const nodeBox = doc.createElementNS(svgNs, 'rect');
+  for (const [k, v] of [['x', '10'], ['y', '10'], ['width', '80'], ['height', '40']]) nodeBox.setAttribute(k, v);
+  node.append(nodeBox);
+  chartSvg.append(node);
+  const chart = h('div', { id: 'org-chart', cls: 'chart' }, [chartSvg]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon]), table, cards, drafts].map(maybeWrap));
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 

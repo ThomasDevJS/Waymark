@@ -24,7 +24,7 @@ describe('isGeneratedToken', () => {
     'flags library counter id %s',
     (t) => expect(isGeneratedToken(t)).toBe(true),
   );
-  it.each(['edit-record-2', 'step-1', 'h-4', 'material-select', 'react-root', 'rc-slider', 'mat-toolbar'])('keeps %s', (t) => expect(isGeneratedToken(t)).toBe(false));
+  it.each(['edit-record-2', 'step-1', 'h-4', 'material-select', 'react-root', 'rc-slider', 'mat-toolbar', 'mat-display-1', 'mat-headline-2', 'mat-h1', 'mat-elevation-z8'])('keeps %s', (t) => expect(isGeneratedToken(t)).toBe(false));
   it('applies profile ignore patterns', () => {
     expect(isGeneratedToken('foo-bar', [/^foo-/])).toBe(true);
   });

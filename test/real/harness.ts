@@ -316,6 +316,12 @@ export async function runTask(context: BrowserContext, ext: ExtensionHelper, tas
       results.push({ site: task.site, task: task.task, variant: v.name, recorded, expectedSteps: task.steps.length, outcomes: task.steps.map(() => 'aborted'), details: [`harness error: ${String(e).slice(0, 300)}`], done: false });
     }
   }
+  if (recordIssues.length && !results.length) {
+    // Nothing could be replayed: still show the task in the results table.
+    const r: VariantResult = { site: task.site, task: task.task, variant: 'record', recorded, expectedSteps: task.steps.length, outcomes: [], details: recordIssues, done: false };
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    writeFileSync(join(RESULTS_DIR, `${slug(task.site)}--${slug(task.task)}--record.json`), JSON.stringify(r, null, 2));
+  }
   const summary = { site: task.site, task: task.task, recorded, recordIssues, results: results.map((r) => ({ variant: r.variant, outcomes: r.outcomes, details: r.details, done: r.done })) };
   console.log(JSON.stringify(summary, null, 2));
   expect.soft(recordIssues, 'recorded steps').toEqual([]);
