@@ -89,6 +89,9 @@
   --wm-lift: -1px; /* hover lift of cards and rows */
   --wm-press: 0.97; /* scale of a pressed button */
   --wm-press-lg: 0.99; /* scale of a pressed card or row (large things move more per percent) */
+  --wm-press-sm: 0.88; /* scale of a pressed checkbox, radio or switch thumb (small things) */
+  --wm-pop: scale(0.4) rotate(-20deg); /* where a success tick pops in from */
+  --wm-arrive: 0.98; /* scale a toast arrives from */
   /* the D90 names, kept */
   --wm-ease: var(--wm-ease-standard);
   --wm-fast: var(--wm-dur-fast);
@@ -108,6 +111,9 @@
     --wm-lift: 0px;
     --wm-press: 1;
     --wm-press-lg: 1;
+    --wm-press-sm: 1;
+    --wm-pop: none;
+    --wm-arrive: 1;
     --wm-ease-spring: var(--wm-ease-standard);
   }
 }

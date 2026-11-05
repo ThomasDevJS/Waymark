@@ -324,7 +324,7 @@ function TutorialList() {
         <>
           <ol class="tutorial-list">
             {TUTORIALS.map((x) => (
-              <li key={x.id} class="lift">
+              <li key={x.id}>
                 <div class="grow">
                   <strong>{x.title}</strong>
                   <span class="small muted block">

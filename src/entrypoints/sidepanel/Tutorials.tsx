@@ -156,7 +156,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
       </ul>
       {/* Stays mounted, so the message is read when it appears. */}
       <p class="status-text ok" role="status" data-testid="tutorials-message">
-        {message.value && message.value !== 'Nothing was copied.' && <Icon key={message.value} name="check" class="tick" />}
+        {message.value?.startsWith('Copied') && <Icon key={message.value} name="check" class="tick" />}
         {message.value ?? ''}
       </p>
       {error.value && (

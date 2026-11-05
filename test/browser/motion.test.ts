@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { cdp, userEvent } from 'vitest/browser';
 import { Editor } from '../../src/entrypoints/sidepanel/Editor';
+import { Library } from '../../src/entrypoints/sidepanel/Library';
 import { dismissToast, showToast, ToastSlot } from '../../src/entrypoints/sidepanel/Toast';
 import { flipList, measure, reducedMotion } from '../../src/ui/motion';
 import type { ElementFingerprint, Guide, Step } from '../../src/core/model/schema';
@@ -24,6 +25,28 @@ const guide: Guide = {
 };
 
 let root: HTMLElement;
+let completions: Record<string, string> = {};
+let onChanged: ((changes: Record<string, unknown>, area: string) => void) | null = null;
+const entry = (id: string, title: string, stepTitles: string) => ({
+  id, revisionId: `R${id}`, title, tags: [], startUrl: 'https://app.test/start', updatedAt: '', appOrigins: ['https://app.test'], matchUrls: [], source: 'local', steps: 2, stepTitles,
+});
+const GUIDES = [entry('A', 'Pay a bill', 'Open billing\nPay'), entry('B', 'Add a user', 'Open users\nInvite billing admin'), entry('C', 'Billing settings', 'Open billing'), entry('D', 'Export data', 'Export')];
+function answer(type: string): unknown {
+  switch (type) {
+    case 'guide.get':
+      return structuredClone(guide);
+    case 'guide.list':
+      return { guides: GUIDES };
+    case 'allow.pending':
+      return { origins: [] };
+    case 'completions.list':
+      return { completed: completions };
+    case 'trash.list':
+      return { items: [] };
+    default:
+      return {};
+  }
+}
 
 async function setReduced(on: boolean): Promise<void> {
   await cdp().send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: on ? 'reduce' : 'no-preference' }] });
@@ -33,10 +56,10 @@ beforeEach(async () => {
   await setReduced(false);
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
-      sendMessage: async (m: { type: string }) => ({ ok: true, data: m.type === 'guide.get' ? structuredClone(guide) : {} }),
+      sendMessage: async (m: { type: string }) => ({ ok: true, data: answer(m.type) }),
       getURL: (p: string) => `chrome-extension://x/${p}`,
     },
-    storage: { onChanged: { addListener() {}, removeListener() {} }, session: { get: async () => ({}), remove: async () => undefined }, local: { get: async () => ({}), set: async () => undefined } },
+    storage: { onChanged: { addListener: (f: typeof onChanged) => (onChanged = f), removeListener() {} }, session: { get: async () => ({}), remove: async () => undefined }, local: { get: async () => ({}), set: async () => undefined } },
   };
   root = document.createElement('div');
   document.body.append(root);
@@ -119,7 +142,7 @@ describe('editor (D130)', () => {
     const down = byTest('step-0-down')!;
     down.focus();
     await userEvent.keyboard('{Enter}');
-    await tick(0);
+    await new Promise(requestAnimationFrame); // the glide starts in the next frame, before its paint
     // Step "One" is now second; the moved rows are gliding.
     const moved = root.querySelector('[aria-labelledby="step-title-S0"]')!;
     expect(moved.getAttribute('data-testid')).toBe('step-1');
@@ -187,5 +210,85 @@ describe('toast (D130, D100)', () => {
     dismissToast();
     await tick(0);
     expect(root.querySelector('.toast')).toBeNull();
+  });
+});
+
+describe('reduced motion everywhere (D130, review)', () => {
+  it('ticks, toasts, chevrons, switches and fills do not move', async () => {
+    await setReduced(true);
+    render(
+      h('div', null,
+        h('p', null, h('svg', { class: 'tick', width: 16, height: 16 })),
+        h('div', { class: 'toast' }, 'x'),
+        h('button', { 'aria-expanded': 'false' }, h('svg', { class: 'chev', width: 16, height: 16 })),
+        h('input', { type: 'checkbox', role: 'switch', class: 'switch' }),
+        h('div', { class: 'meter', style: 'width:100px' }, h('span', { class: 'fill', style: 'transform:scaleX(.2)' })),
+      ),
+      root,
+    );
+    for (const sel of ['.tick', '.toast']) {
+      const el = root.querySelector(sel)!;
+      const [a] = el.getAnimations();
+      expect(a, sel).toBeDefined();
+      a!.pause();
+      a!.currentTime = 0;
+      expect(getComputedStyle(el).transform, sel).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+      expect(Number(getComputedStyle(el).opacity), sel).toBeLessThan(1); // still a fade
+    }
+    root.querySelector('button')!.setAttribute('aria-expanded', 'true');
+    (root.querySelector('.switch') as HTMLInputElement).checked = true;
+    (root.querySelector('.fill') as HTMLElement).style.transform = 'scaleX(.8)';
+    for (const el of [root.querySelector('.chev')!, root.querySelector('.fill')!]) expect(el.getAnimations()).toHaveLength(0);
+    expect(getComputedStyle(root.querySelector('.switch')!, '::after').transitionDuration).toBe('0s');
+  });
+});
+
+describe('library (review)', () => {
+  it('rows never glide while searching (results are sorted by score)', async () => {
+    completions = {};
+    render(h(Library, { tabId: 1, tabUrl: null, onEdit: () => undefined, onStart: () => undefined }), root);
+    await tick(100);
+    const order = () => Array.from(root.querySelectorAll('.guide-item')).map((li) => li.getAttribute('data-flip'));
+    const start = order();
+    await userEvent.type(byTest('search')!, 'billing');
+    await tick(0);
+    expect(order()).not.toEqual(start); // the scores reordered them
+    for (const li of Array.from(root.querySelectorAll('.guide-item'))) expect([...new Set(animatedProps(li))]).not.toContain('transform');
+  });
+
+  it('the Completed check pops only for a guide finished while the panel is open', async () => {
+    completions = { A: '2026-11-05T10:00:00Z' };
+    render(h(Library, { tabId: 1, tabUrl: null, onEdit: () => undefined, onStart: () => undefined }), root);
+    await tick(100);
+    expect(byTest('completed-A')!.querySelector('svg')!.classList.contains('tick')).toBe(false);
+    completions = { ...completions, B: '2026-11-05T11:00:00Z' };
+    onChanged!({ completions: {} }, 'local');
+    await tick(100);
+    expect(byTest('completed-B')!.querySelector('svg')!.classList.contains('tick')).toBe(true);
+    expect(byTest('completed-A')!.querySelector('svg')!.classList.contains('tick')).toBe(false);
+  });
+});
+
+describe('FLIP with rapid moves (review)', () => {
+  it('a second move during a glide starts from where the row is drawn, not from its in-flight offset', () => {
+    const ul = document.createElement('ul');
+    for (const k of ['a', 'b', 'c']) {
+      const li = document.createElement('li');
+      li.dataset.flip = k;
+      li.style.height = '30px';
+      ul.append(li);
+    }
+    root.append(ul);
+    const before1 = measure(ul, 'data-flip');
+    ul.append(ul.children[0]!); // b, c, a: a glides down 60 px
+    flipList(ul, 'data-flip', before1, { only: new Set(['a', 'b', 'c']) });
+    const a = ul.querySelector('[data-flip="a"]')!;
+    a.getAnimations()[0]!.pause(); // frozen at the start: a is drawn at the top (0)
+    const before2 = measure(ul, 'data-flip');
+    expect(before2.get('a')!.y).toBe(0);
+    ul.prepend(a); // back to a, b, c
+    flipList(ul, 'data-flip', before2, { only: new Set(['a', 'b', 'c']) });
+    // a is already drawn at 0 and lands at 0: nothing to glide (before the fix it jumped by the old offset).
+    expect(a.getAnimations()).toHaveLength(0);
   });
 });

@@ -29,8 +29,11 @@ export function reordered(prev: readonly string[], next: readonly string[]): Set
  *
  * `enter(key)` is the class for an item that is new in this render ('enter': it rises in). Only
  * new keys get it: a moved row is re-inserted by Preact, which would restart a CSS entrance.
+ *
+ * `glide: false` keeps only the entrances: lists whose order changes on its own (search results
+ * sorted by score change order with every keystroke) must not slide rows under the cursor.
  */
-export function useFlipList<T extends HTMLElement>(keys: readonly string[]) {
+export function useFlipList<T extends HTMLElement>(keys: readonly string[], opts: { glide?: boolean } = {}) {
   const ref = useRef<T>(null);
   const last = useRef<readonly string[] | null>(null);
   const fresh = useRef<Set<string>>(new Set());
@@ -41,12 +44,20 @@ export function useFlipList<T extends HTMLElement>(keys: readonly string[]) {
     fresh.current = new Set(keys.filter((k) => !prev.has(k)));
     const only = last.current ? reordered(last.current, keys) : new Set<string>();
     // Still rendering: the DOM shows the old order, so this is where the items were.
-    plan.current = only.size && ref.current?.isConnected && !reducedMotion() ? { before: measure(ref.current, 'data-flip'), only } : null;
+    plan.current = opts.glide !== false && only.size && ref.current?.isConnected && !reducedMotion() ? { before: measure(ref.current, 'data-flip'), only } : null;
     last.current = keys;
   }
   useLayoutEffect(() => {
-    if (plan.current && ref.current) flipList(ref.current, 'data-flip', plan.current.before, { only: plan.current.only });
+    const p = plan.current;
     plan.current = null;
+    if (!p) return;
+    // In the next frame's animation callbacks, before its layout and paint: the new order is
+    // never painted unmoved, and its layout is read where the frame does it anyway instead of
+    // forced inside the click (which showed up as long tasks at 4× slower CPU).
+    const id = requestAnimationFrame(() => {
+      if (ref.current) flipList(ref.current, 'data-flip', p.before, { only: p.only });
+    });
+    return () => cancelAnimationFrame(id);
   }, [sig]);
   return { ref, enter: (key: string) => (fresh.current.has(key) ? 'enter' : '') };
 }

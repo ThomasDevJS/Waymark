@@ -33,6 +33,8 @@ const message = signal<string | null>(null);
 const error = signal<string | null>(null);
 /** Guide id → when the learner last finished it (D101). */
 const completed = signal<Record<string, string>>({});
+/** Guides already finished when the list was shown: their badge doesn't pop (D131). */
+let completedAtOpen: Set<string> | null = null;
 /** Selected tag chips (D102): a guide must carry all of them. */
 const tagFilter = signal<string[]>([]);
 /** The guide whose "More" actions are open. */
@@ -47,6 +49,7 @@ async function load() {
     all.value = (await send('guide.list', {})).guides;
     pending.value = (await send('allow.pending', {})).origins;
     completed.value = (await send('completions.list', {})).completed;
+    completedAtOpen ??= new Set(Object.keys(completed.value));
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
@@ -197,6 +200,7 @@ async function shareOne(id: string) {
 
 export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string, stepIndex?: number) => void }) {
   useEffect(() => {
+    completedAtOpen = null; // re-read on this mount: returning from the editor pops nothing
     void load().then(resumeUndo);
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes || 'completions' in changes)) void load();
@@ -218,9 +222,10 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   const allShown = results.length > 0 && results.every((g) => selected.value.has(g.id));
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
-  // Rows glide when the list changes (delete, Undo, a filter); new rows rise in (D130).
-  const pageFlip = useFlipList<HTMLUListElement>(forPage.map((g) => g.id));
-  const otherFlip = useFlipList<HTMLUListElement>(others.map((g) => g.id));
+  // Rows that appear (Undo, a filter) rise in (D131). They never glide: search results are
+  // sorted by score, so the order changes as you type, and rows must not slide under the cursor.
+  const pageFlip = useFlipList<HTMLUListElement>(forPage.map((g) => g.id), { glide: false });
+  const otherFlip = useFlipList<HTMLUListElement>(others.map((g) => g.id), { glide: false });
 
   if (exporting.value) {
     return (
@@ -276,7 +281,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </span>
               {done && (
                 <span class="badge success" data-testid={`completed-${g.id}`} title={`Finished ${new Date(done).toLocaleString()}`}>
-                  <Icon name="check" class="tick" />
+                  <Icon name="check" class={completedAtOpen?.has(g.id) ? undefined : 'tick'} />
                   Completed
                 </span>
               )}
@@ -626,7 +631,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       )}
       {message.value && (
         <p class="status-text ok" role="status" data-testid="library-message">
-          {!message.value.startsWith('http') && <Icon key={message.value} name="check" class="tick" />}
+          {/^(Link copied|Restored|Made a copy|Imported [1-9])/.test(message.value) && <Icon key={message.value} name="check" class="tick" />}
           {message.value}
         </p>
       )}

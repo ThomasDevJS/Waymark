@@ -55,6 +55,14 @@ export function measure(list: Element, attr: string): Map<string, Pos> {
  * left to their CSS entrance; removed ones are already gone. Returns the positions now.
  */
 export function flipList(list: Element, attr: string, before: Map<string, Pos> | null, opts: { duration?: number; max?: number; only?: Set<string> } = {}): Map<string, Pos> {
+  // A glide still running (a second Move within 240 ms) would skew where items are now; `before`
+  // was read as they looked, so the new glide starts from there.
+  if (before && opts.only) {
+    for (const child of Array.from(list.children)) {
+      const key = child.getAttribute(attr);
+      if (key && opts.only.has(key) && canAnimate(child)) child.getAnimations().forEach((a) => a.cancel());
+    }
+  }
   const now = measure(list, attr);
   if (!before || reducedMotion(list.ownerDocument.defaultView ?? window)) return now;
   const duration = opts.duration ?? DUR.slow;

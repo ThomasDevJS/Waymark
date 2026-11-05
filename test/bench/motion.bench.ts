@@ -5,8 +5,11 @@
  * every frame's interval (requestAnimationFrame), plus long tasks and long animation frames
  * (PerformanceObserver) while it plays:
  *   - fold: opening and closing an editor step (side panel);
- *   - toast: deleting a step (the toast enters, the rows glide) and Undo (it leaves);
+ *   - toast: deleting a step (the toast enters) and Undo (it leaves, the step rises back in);
+ *   - reorder: Move down / Move up (the two rows glide);
  *   - spotlight: Next and Back between highlighted elements (the Practice page, the real player).
+ * Clicks are real mouse clicks, so hover, press and release feedback run too. The window after
+ * each click (250–350 ms) covers the animation (≤ 240 ms) plus the render, with little idle.
  * Each scenario runs with motion on and again with reduced motion (nothing moves) as the control.
  * A table goes to stdout and to artifacts/motion/bench.md (JSON beside it).
  */
@@ -130,9 +133,9 @@ async function throttled(page: Page): Promise<CDPSession> {
   return cdp;
 }
 
-const click = (page: Page, selector: string) => page.evaluate((s) => (document.querySelector(s) as HTMLElement | null)?.click(), selector);
-const clickInOverlay = (page: Page, selector: string) =>
-  page.evaluate((s) => (document.querySelector('waymark-overlay')?.shadowRoot?.querySelector(s) as HTMLElement | null)?.click(), selector);
+// Real mouse clicks (hover, :active press and release all run), not element.click().
+const click = (page: Page, selector: string) => page.locator(selector).click();
+const clickInOverlay = (page: Page, selector: string) => page.locator(`waymark-overlay ${selector}`).click(); // the test build's open root
 
 type Mode = 'motion' | 'reduced';
 const results: Record<string, Record<Mode, ReturnType<typeof stats>>> = {};
@@ -152,14 +155,20 @@ for (const mode of ['motion', 'reduced'] as const) {
     const fold: Sample = { frames: [], longTasks: [], loaf: [] };
     for (let r = 0; r < ROUNDS; r++) {
       const k = 2 + (r % 4);
-      await sample(page, () => click(page, `[data-testid="step-${k}-toggle"]`), 400, fold); // unfold
-      await sample(page, () => click(page, `[data-testid="step-${k}-toggle"]`), 300, fold); // fold
+      await sample(page, () => click(page, `[data-testid="step-${k}-toggle"]`), 300, fold); // unfold
+      await sample(page, () => click(page, `[data-testid="step-${k}-toggle"]`), 250, fold); // fold
     }
     const toast: Sample = { frames: [], longTasks: [], loaf: [] };
     for (let r = 0; r < ROUNDS; r++) {
-      await sample(page, () => click(page, '[data-testid="step-1-delete"]'), 500, toast); // toast in, rows glide up
-      await sample(page, () => click(page, '[data-testid="toast-undo"]'), 400, toast); // toast out, the step comes back
+      await sample(page, () => click(page, '[data-testid="step-1-delete"]'), 350, toast); // toast in
+      await sample(page, () => click(page, '[data-testid="toast-undo"]'), 300, toast); // toast out, the step rises back in
     }
+    const reorder: Sample = { frames: [], longTasks: [], loaf: [] };
+    for (let r = 0; r < ROUNDS; r++) {
+      await sample(page, () => click(page, '[data-testid="step-2-down"]'), 350, reorder); // two rows swap and glide
+      await sample(page, () => click(page, '[data-testid="step-3-up"]'), 350, reorder);
+    }
+    (results.reorder ??= {} as Record<Mode, ReturnType<typeof stats>>)[mode] = stats(reorder);
     (results.fold ??= {} as Record<Mode, ReturnType<typeof stats>>)[mode] = stats(fold);
     (results.toast ??= {} as Record<Mode, ReturnType<typeof stats>>)[mode] = stats(toast);
   });
@@ -174,8 +183,8 @@ for (const mode of ['motion', 'reduced'] as const) {
     await page.waitForTimeout(500);
     const glide: Sample = { frames: [], longTasks: [], loaf: [] };
     for (let r = 0; r < ROUNDS; r++) {
-      for (let i = 0; i < 3; i++) await sample(page, () => clickInOverlay(page, '[data-action="next"]'), 450, glide);
-      for (let i = 0; i < 3; i++) await sample(page, () => clickInOverlay(page, '[data-action="back"]'), 450, glide);
+      for (let i = 0; i < 3; i++) await sample(page, () => clickInOverlay(page, '[data-action="next"]'), 350, glide);
+      for (let i = 0; i < 3; i++) await sample(page, () => clickInOverlay(page, '[data-action="back"]'), 350, glide);
     }
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-waymark-test-practice'))).toBe('drawn:0');
     (results.spotlight ??= {} as Record<Mode, ReturnType<typeof stats>>)[mode] = stats(glide);

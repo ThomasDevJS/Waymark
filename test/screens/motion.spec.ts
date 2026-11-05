@@ -31,7 +31,8 @@ export async function frames(page: Page, name: string, area: Locator | (() => Pr
     }, t);
     await page.screenshot({ path: join(OUT, `motion-${name}-${String(t).padStart(3, '0')}.png`), clip, animations: 'allow' });
   }
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.finish?.()));
+  // finish() throws on endless ones (a spinner, the REC halo).
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.effect?.getComputedTiming().endTime !== Infinity && a.finish()));
 }
 
 async function seedGuide(ext: ExtensionHelper): Promise<string> {

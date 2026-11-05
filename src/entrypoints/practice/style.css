@@ -104,9 +104,6 @@ table.invoices td {
   display: flex;
   gap: var(--wm-space-2);
   align-items: center;
-  padding: var(--wm-space-2);
-  margin-inline: calc(-1 * var(--wm-space-2));
-  border-radius: var(--wm-radius-md);
 }
 .tutorials h2 {
   display: flex;
