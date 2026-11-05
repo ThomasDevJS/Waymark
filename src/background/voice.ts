@@ -139,23 +139,53 @@ export async function speakCurrentStep(tabId: number, run: Run | null, explicit 
   const text = voiceTextFor(step);
   if (!text) return silent('the step has no text to read');
   const lang = run.guideSnapshot.lang;
-  if (text && useHd(await getHdStatus(), lang)) {
-    // The next step's text is generated while this one plays, so it starts at once.
-    const nextStep = run.guideSnapshot.steps[run.stepIndex + 1];
-    const next = nextStep ? voiceTextFor(nextStep) || null : null;
-    const at = clock();
-    await chrome.storage.session.set({ [SPEECH_AT_KEY]: at });
-    dlog('voice', 'voice.start', { tab: tabId }, { engine: 'hd', step: run.stepIndex + 1, lang });
-    const outcome = await hdSpeak(run.stepToken, text, hdSpeed(settings.rate), next, at);
-    dlog('voice', 'voice.hd', { tab: tabId }, { outcome });
-    if (outcome !== 'failed') return;
-    // Fall back only if nothing newer happened meanwhile and the learner didn't mute.
-    const latest = (await chrome.storage.session.get(SPEECH_AT_KEY))[SPEECH_AT_KEY];
-    const now = await getVoiceSettings();
-    if (latest !== at || now.muted || (!now.autoPlay && !explicit)) return silent('HD voice failed, and a newer step, Mute or Exit came first');
-    dlog('voice', 'voice.fallback', { tab: tabId }, { why: 'HD voice failed: the system voice reads it' });
-  }
+  // The next step's text is generated while this one plays, so it starts at once.
+  const nextStep = run.guideSnapshot.steps[run.stepIndex + 1];
+  const next = nextStep ? voiceTextFor(nextStep) || null : null;
+  const hd = await speakHdFirst({ token: run.stepToken, text, next, lang, settings, explicit, tabId, step: run.stepIndex + 1 });
+  if (hd !== 'system') return;
   await speak(tabId, text, lang, settings);
+}
+
+/**
+ * The HD voice first (D51), for guides and built-in tutorials alike (D142).
+ * - 'hd': the HD voice played it, or newer speech replaced it.
+ * - 'silent': it failed, and a newer step, Mute or Exit came first: say nothing.
+ * - 'system': the HD voice isn't in use, or it failed while this is still the newest speech:
+ *   the caller reads it with the system voice.
+ * `mark` is stored with the speech time (the tutorial flag, so tutorial.stop can stop it).
+ */
+export async function speakHdFirst(o: {
+  token: string;
+  text: string;
+  next: string | null;
+  lang: string;
+  settings: VoiceSettings;
+  explicit: boolean;
+  tabId?: number;
+  step?: number;
+  mark?: Record<string, unknown>;
+  /** Stop other speech first, only once the HD voice will be used (a tutorial: D142 review). */
+  stopFirst?: boolean;
+}): Promise<'hd' | 'silent' | 'system'> {
+  if (!o.text || !useHd(await getHdStatus(), o.lang)) return 'system';
+  if (o.stopFirst) stopSpeech();
+  const where = o.tabId === undefined ? {} : { tab: o.tabId };
+  const at = clock();
+  await chrome.storage.session.set({ [SPEECH_AT_KEY]: at, ...o.mark });
+  dlog('voice', 'voice.start', where, { engine: 'hd', ...(o.step ? { step: o.step } : {}), lang: o.lang });
+  const outcome = await hdSpeak(o.token, o.text, hdSpeed(o.settings.rate), o.next, at);
+  dlog('voice', 'voice.hd', where, { outcome });
+  if (outcome !== 'failed') return 'hd';
+  // Fall back only if nothing newer happened meanwhile and the learner didn't mute.
+  const latest = (await chrome.storage.session.get(SPEECH_AT_KEY))[SPEECH_AT_KEY];
+  const now = await getVoiceSettings();
+  if (latest !== at || now.muted || (!now.autoPlay && !o.explicit)) {
+    dlog('voice', 'voice.silent', where, { why: 'HD voice failed, and a newer step, Mute or Exit came first' });
+    return 'silent';
+  }
+  dlog('voice', 'voice.fallback', where, { why: 'HD voice failed: the system voice reads it' });
+  return 'system';
 }
 
 const SAMPLE = 'This is how Waymark will read your guides.';
@@ -170,8 +200,9 @@ export async function speakHdSample(): Promise<boolean> {
 
 /**
  * Reads bundled text (a built-in tutorial step, D129) with the voice guides use. Never page or
- * user text: callers look the text up in the bundled pack. System voice only (no HD, no fallback
- * to a page's speechSynthesis: the Practice page is an extension page).
+ * user text: callers look the text up in the bundled pack. The system voice: the caller tries the
+ * HD voice first (speakHdFirst, D142). No fallback to a page's speechSynthesis: the Practice page
+ * is an extension page.
  */
 export async function speakBundledText(text: string, lang: string, settings: VoiceSettings): Promise<boolean> {
   if (!ttsAvailable() || !text) return false;

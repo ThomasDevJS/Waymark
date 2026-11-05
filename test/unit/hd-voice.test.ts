@@ -161,6 +161,27 @@ describe('HD player', () => {
     expect(await player.speak('t1', '漢字', 1, null, 1)).toEqual({ ok: false, error: 'no audio' });
     expect(played).toEqual([]);
   });
+  it('a clip the model returned as NaN (fp16) is a failure, so the system voice reads the step; not a silent "played" (D148)', async () => {
+    const { engine } = fakeEngine({ synth: async () => ({ samples: new Float32Array(24000).fill(Number.NaN), sampleRate: 24000 }) });
+    const { sink, played } = fakeSink();
+    const player = new HdPlayer(engine, sink, () => undefined);
+    const r = await player.speak('t1', "I'll guide you through this app, one step at a time.", 1, null, 1);
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.error).toMatch(/NaN/);
+    expect(played).toEqual([]);
+  });
+
+  it('a few stray NaN samples (1 % or less) still play, as silence', async () => {
+    const samples = new Float32Array(24000).fill(0.1);
+    for (let i = 0; i < 240; i++) samples[i * 100] = Number.NaN;
+    const { engine } = fakeEngine({ synth: async () => ({ samples, sampleRate: 24000 }) });
+    const { sink, played } = fakeSink();
+    const player = new HdPlayer(engine, sink, () => undefined);
+    expect(await player.speak('t1', 'Click Save.', 1, null, 1)).toEqual({ ok: true });
+    expect(played).toEqual(['Click Save.']);
+    expect(samples.every(Number.isFinite)).toBe(true);
+  });
+
   it('a stop with the same time as a speak cancels that speak (the service worker cancelling its own late speak)', async () => {
     const { engine } = fakeEngine();
     const { sink, played } = fakeSink();

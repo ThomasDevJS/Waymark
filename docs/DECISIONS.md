@@ -1132,3 +1132,65 @@ CSS only (`src/content/launcher.ts`); no listener, message or focus rule changes
 - The pop scales about the button's centre, so a press lands while it is still popping in: the closed-root e2e test (#42) no longer waits 400 ms first, and runs twice, with motion and with reduced motion. `test/browser/launcher-motion.test.ts` checks the CSS in a closed root.
 - **Keyframe names** (review): the launcher's and the player's stylesheets share the overlay's shadow root, so a `@keyframes` name defined in both resolves to whichever was added last. The launcher's `wm-pop` (a plain pop) and the player's `wm-pop` (the done tick, with a turn) collided, as did `wm-focus-in`. The launcher's are now `wm-launch-*`, and a unit test fails if any `@keyframes` name appears twice across the content-script stylesheets.
 - **Found at release (0.4.0)**: the closed-root launcher e2e pressed `?` as soon as the launcher marker appeared. With motion on, about 1 run in 12 the press landed within ~20 ms of the overlay's insertion and went to the page; reduced motion passed 24 of 24. A person can't press a button that early (it is still near-invisible), so the test now waits until the point hits the overlay (`elementFromPoint`), which is still during the 240 ms pop-in. With the wait: 24 of 24 with motion.
+
+## 2026-11-05 — Offer the HD voice when it matters (issue #44)
+
+### D140. The HD voice is offered once, on an extension page, the first time a tutorial or guide speaks
+*5 Nov 2026 · SPEC: Voiceover (HD voice); Permissions, privacy and security; issue #44*
+
+- **Not at install** (decided with Thomas on #44): 170 MB before people trust the extension, slow or blocked networks, English only, and it would blur "optional" in the privacy policy and the listing. The gate on #44 ("a step is read within about 1 s on Thomas's laptop") passed, so the offer recommends it.
+- **The card** (`src/ui/HdOffer.tsx`): "Try the HD voice. Tutorials (or Guides) sound much better with the HD voice. It runs on your device: one download of about 170 MB, and after that nothing is sent online." Buttons **Listen to a sample** (D141), **Download**, **Not now**, and a line that the usual voice keeps reading and that Settings has the switch.
+- **Where** (constraint: the click must ask for the download hosts, which only an extension page can do):
+  - the **Practice page**, beside the tutorial list, while a tutorial plays;
+  - the **side panel**, under the playing card, while a guide plays on a site.
+  - Not in the on-page overlay. A content script can't call `chrome.permissions.request`, and it would need the HD status and voice settings, which never go to content scripts. A guide started from the page (the `?` launcher, a deep link) with the panel closed is not asked; the next time the panel is open during a guide, or a tutorial plays, it is.
+  - Not in the welcome either (the issue's optional "quiet tip line"): the welcome shows at install, the moment #44 rules out, and D121 keeps it to three things.
+- **When it shows** (`shouldOfferHd` in `src/core/voice/offer.ts`, pure):
+  - the browser language (`navigator.language`) is English, and so is what is about to be read (the guide's `lang`; tutorials are English); an unknown language is not English;
+  - the device looks capable: `navigator.hardwareConcurrency` ≥ 4, and `navigator.deviceMemory` ≥ 4 GB where the browser reports it (it is Chromium-only and rounded; missing counts as unknown, not small). D51 measured 0.8–0.95× real time on 4 vCPUs, and the model takes about 800 MB while it speaks. The speed check after the download still has the last word ("too slow");
+  - the HD voice is off (not ready, downloading, too slow or failed: Settings has Check again and Try again for those);
+  - "Read each step aloud" is on, and the voice is not muted (added: someone who muted hears no voice, so the question makes no sense then);
+  - not answered yet. **Not now** and **Download** both store `ui:hdOffer` in `storage.local`; neither is asked again. Settings' switch is unchanged. Ignoring the card is not an answer: it shows again next time. An answer on one page hides the card on the other at once (`storage.onChanged`).
+- **Playback is never blocked**: the tutorial or guide draws and reads its step with the system voice while the card is up; the card never takes focus. **Download** runs the same code as Settings (`startHdDownload` in `src/ui/hdDownload.ts`, moved out of `HdVoice.tsx`; the service worker side is D51's `hdEnable`, speed check and host release, unchanged). Each step checks the HD status when it is read, so the first step after "ready" uses the HD voice. The card then follows the download (progress, "The next step uses it", too slow, failed with "try again in Settings", or **Cancel the download**, which is Settings' Remove), and focus moves to its heading when the pressed button goes away. **Not now** and **Close** put focus back on the page's Stop button.
+- **No new data to content scripts**: the panel learns the guide's language from `RunView.lang` (the guide's own field, optional so older views still parse). Content scripts already receive their run's view, which is their own guide's data.
+- **Test hook**: test builds read `test:hdOfferEnv` (`storage.local`) in place of the navigator's language, cores and memory, so e2e can test the gate on any machine.
+- **Tests**: `test/unit/hd-offer.test.ts` (language, capability, asked once, installed, read-aloud and mute, size, sample file, `voice.stop` allowlist), `test/browser/hd-offer.test.ts` (the card: gates, Not now, Download from the click with the shared path, refused hosts keep the question, Cancel, the sample, focus), e2e `test/e2e/h1-hd-offer.spec.ts` (Practice page: the tutorial plays at once, Download through Chrome's dialog with the stub engine, hosts given back, the next step in HD, asked once; Not now remembered and focus; French browser and a 2-core device never see it).
+
+### D141. Listen to a sample plays a bundled 3-second clip
+*5 Nov 2026 · SPEC: Voiceover (HD voice); Security (no remote code); issue #44*
+
+- `public/hd-sample.ogg`: about 3 s, 12 KB (Opus, 32 kbit/s, mono). The same model, voice (`af_heart`) and G2P as the extension, rendered once by `scripts/hd-sample.mjs` (Node, onnxruntime-node from transformers.js's own dependencies, the pinned files checked by SHA-256; not part of any build). It says "Hi! I'll guide you through this app, step by step.": no page names, so renames (D89's "tutorial page") never make it stale.
+- **fp16 silence**: the first wording tried, "Hi! I'll guide you through this app, one step at a time.", came out of the fp16 model as 100 % NaN for its second sentence (silence after "Hi!"); "I will … one step at a time" and "I'll … step by step" were fine. The script now stops when more than 1 % of a sentence is NaN, so a silent sample can't be shipped, and it trims each sentence's quiet edges so the only gap is its 0.25 s pause. The extension had the same gap at playback; D148 fixes it.
+- **License**: Kokoro-82M and its voices are Apache-2.0, so audio made with them ships under the same notice; `THIRD_PARTY_NOTICES.md` lists it. It is data (an audio file), not code.
+- The button never downloads anything and needs no permission. It first stops what is being read with a new extension-page-only message, `voice.stop {}` (Zod-checked, not in the content allowlist), so the sample isn't talked over; pressing it again stops the sample (`aria-pressed`).
+
+### D142. Tutorials use the HD voice once it is installed (amends D129)
+*5 Nov 2026 · SPEC: Voiceover; issue #44*
+
+- D129 kept tutorials on the system voice. The offer's first sentence is "Tutorials sound much better with the HD voice", so that has to be true: once the HD voice is ready, `tutorial.speak` reads with it, with the next tutorial step generated while the current one plays, exactly like a guide.
+- D129's rules stay: ids in, bundled text out (`tutorialVoiceText`, `nextTutorialVoiceText`); never while muted; only with "Read each step aloud" on unless the learner pressed Replay voice.
+- One code path: `speakHdFirst` in `src/background/voice.ts`, used by guides (`speakCurrentStep`) and tutorials. It keeps D51's fallback rules: on an HD failure or a 4 s timeout the system voice reads the step only while it is still the newest speech and the learner hasn't muted or left. The tutorial flag (`speech:tutorial`) is stored with the speech time, so the Practice page's Stop (`tutorial.stop`) also stops a pending HD step.
+- Tests (`test/unit/hd-sw.test.ts`, "built-in tutorials on the HD voice"): HD with the next step; the system voice without HD; fallback on failure; muted and read-aloud off; no fallback after Stop; nothing for an unknown step. Three of them fail on the old handler.
+
+### D143. The offer says "about 170 MB", the whole download
+*5 Nov 2026 · SPEC: Voiceover (HD voice); issue #44*
+
+- #44's copy says 163 MB, which is the model file alone (`model_fp16.onnx`, 163,234,740 bytes). The download also fetches the voice, the tokenizer and the 6 MB English word list: `HD_TOTAL_BYTES` is 169,860,620 bytes. Settings, the privacy policy and the listing already say 170 MB, so the offer uses `mb(HD_TOTAL_BYTES)` ("170 MB") too, and a unit test pins it. "Nothing sent online" became "after that nothing is sent online": the download itself is a request to Hugging Face and GitHub, as the privacy policy says.
+
+### Fixes from the independent review (D140–D143)
+A privacy, permissions, accessibility and copy review of the code. Each fix has a test that fails on the first version (`test/browser/hd-offer.test.ts` "review fixes", `test/unit/hd-sw.test.ts`).
+- **Announcement** (medium): pressing Download turned the card's text paragraph into the live region and changed its text in the same update, which screen readers often don't announce. One keyed live region now stays mounted from the question through the download, and the focused heading is described by it.
+- **Error copy**: the card wrapped the service worker's message ("The download failed: The download stopped. Try again.. …"). It now says one fixed sentence, "The download failed. You can try again in Settings."; Settings keeps the detail.
+- **Stops only when it will speak**: `tutorial.speak` stopped all speech before knowing whether anything would read the step, so a step with HD off and no on-device voice cut off a guide in another tab. Speech is stopped only on the path that reads (`speakHdFirst`'s `stopFirst`, or `speakBundledText`), as before D142.
+- **Sample**: on the Practice page it stops only the tutorial's speech (`tutorial.stop`), never a guide in another tab (D129's rule); in the panel it still sends `voice.stop`, which stops the panel's own guide. The sample pauses when the step changes, so it never talks over the next step.
+- **Download that can't start**: if `hd.enable` fails after the hosts were granted, the card says so and keeps the question. `hdEnable` now records the hosts to give back before creating the offscreen document, and gives them back if that fails (Settings had the same gap).
+- **Privacy policy**: says the offer shows while a tutorial plays, or while an English guide plays with the panel open, until answered (it said "first starts").
+- **More tests**: `runView` carries the guide's `lang` (a French guide gets no offer); Close calls back so the page can restore focus; without a memory override the real `navigator.deviceMemory` is used.
+
+### D148. A step the HD voice returns as NaN is read by the system voice (amends D51)
+*5 Nov 2026 · SPEC: Voiceover (HD voice); found while making D141's sample; issue #44*
+
+- **Finding**: the fp16 model can return NaN for a whole sentence. "I'll guide you through this app, one step at a time." came out 100 % NaN on onnxruntime (CPU), and close wordings were fine. D51's engine turned every NaN into silence, and the player then answered "played". So such a step was read in silence, with no system-voice fallback. Now that the offer (D140) sends more people to the HD voice, that matters.
+- **Change**: the engine passes NaN through (`kokoro.ts`). The offscreen player (`player.ts`, `silenceNaN`) turns NaN into silence and counts them. If more than 1 % of the clip was NaN (`MAX_NAN_SHARE`, the same rule as `scripts/hd-sample.mjs`), it answers `failed` ("no sound: the voice model returned N% NaN samples"). D51's fallback then reads the step with the system voice, only while it is still the newest speech and not muted. A few stray NaN samples still play as silence, as before. The service worker's debug log now records why an HD speak failed (`voice.hd.failed`, with the reason: NaN, timeout or an engine error).
+- **Not known yet**: whether the extension's WebAssembly runtime produces the same NaN as onnxruntime-node for that sentence. Either way, a NaN clip can no longer play as a silent step.
+- **Tests**: `test/unit/hd-voice.test.ts`: an all-NaN clip answers `failed` and plays nothing; 1 % stray NaN still plays, as zeros. Both fail on the old player.
