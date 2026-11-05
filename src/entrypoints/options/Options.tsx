@@ -9,6 +9,10 @@ import type { Problem } from '../../core/storage/problems';
 import { libraryUrlAllowed } from '../../core/sharing/library';
 import { useHd } from '../../core/voice/hd';
 import { HdVoice, hdStatus } from './HdVoice';
+import type { ComponentChildren } from 'preact';
+import { grantedSitePatterns } from '../../core/permissions/registration';
+import { Icon } from '../../ui/Icon';
+import type { IconName } from '../../ui/icons';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
@@ -97,176 +101,319 @@ async function update(patch: Partial<VoiceSettings>) {
   voices.value = (await send('voice.list', {})).voices;
 }
 
+/** Sites Waymark may run on (the same list the service worker registers the content script for). */
+const sites = signal<string[]>([]);
+async function loadSites() {
+  const { origins = [] } = await chrome.permissions.getAll();
+  sites.value = grantedSitePatterns(origins);
+}
+
+/** "https://app.example.com/*" → "https://app.example.com" */
+export function sitePatternLabel(pattern: string): string {
+  return pattern.replace(/\/\*$/, '');
+}
+
+const SECTIONS = [
+  ['voice', 'Voice'],
+  ['hd-voice', 'HD voice'],
+  ['sites', 'Sites'],
+  ['team-library', 'Team library'],
+  ['problems', 'Problems'],
+  ['about', 'About'],
+] as const;
+
+function Section({ id, title, icon, children, badge }: { id: string; title: string; icon: IconName; children: ComponentChildren; badge?: ComponentChildren }) {
+  return (
+    <section class="card settings-section" id={id} aria-labelledby={`${id}-title`}>
+      <div class="card-head">
+        <h2 id={`${id}-title`} class="section-title">
+          <Icon name={icon} />
+          {title}
+        </h2>
+        {badge}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function Options() {
-  useEffect(() => void load(), []);
+  useEffect(() => {
+    void load();
+    void loadSites();
+    chrome.permissions.onAdded.addListener(loadSites);
+    chrome.permissions.onRemoved.addListener(loadSites);
+    return () => {
+      chrome.permissions.onAdded.removeListener(loadSites);
+      chrome.permissions.onRemoved.removeListener(loadSites);
+    };
+  }, []);
   const s = settings.value;
-  if (!s) return <main />;
+  if (!s) return <main class="settings" aria-busy="true" />;
   const forLang = rankVoices(voices.value, lang.value, s.allowOnlineVoices, navigator.language);
   const inUse = pickVoice(voices.value, lang.value, s, navigator.language);
   const help = (platform.value && BETTER_VOICES[platform.value]) ?? Object.values(BETTER_VOICES).join(' ');
   const langs = [...new Set(['en', ...voices.value.map((v) => primaryLang(v.lang))])].sort();
+  const lib = library.value;
   return (
-    <main>
-      <h1>Waymark settings</h1>
-      <section class="site" aria-label="Voice">
-        <h2>Voice</h2>
-        {!available.value && <p role="status">This browser has no extension voice API. Guides will be read with the page's speech engine where possible.</p>}
-        <label class="row">
-          <input type="checkbox" data-testid="autoplay" checked={s.autoPlay} onChange={(e) => void update({ autoPlay: (e.target as HTMLInputElement).checked })} />
-          Read each step aloud when it appears
-        </label>
-        <label class="grow">
-          <span class="muted">Language</span>
-          <select value={lang.value} onChange={(e) => (lang.value = (e.target as HTMLSelectElement).value)}>
-            {langs.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
+    <>
+      <header class="app-header">
+        <h1 class="brand">
+          <Icon name="pin" size={18} />
+          Waymark settings
+        </h1>
+      </header>
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="Settings sections">
+          <ul>
+            {SECTIONS.map(([id, label]) => (
+              <li key={id}>
+                <a href={`#${id}`}>{label}</a>
+              </li>
             ))}
-          </select>
-        </label>
-        <label class="grow">
-          <span class="muted">Voice for “{lang.value}” guides</span>
-          <select
-            data-testid="voice"
-            value={forLang.some((v) => v.voiceName === s.voices[lang.value]) ? s.voices[lang.value] : ''}
-            onChange={(e) => {
-              const v = (e.target as HTMLSelectElement).value;
-              const next = { ...s.voices };
-              if (v) next[lang.value] = v;
-              else delete next[lang.value];
-              void update({ voices: next });
-            }}
-          >
-            <option value="">Automatic (best available voice)</option>
-            {forLang.map((v) => (
-              <option key={v.voiceName} value={v.voiceName}>
-                {v.voiceName}
-                {v.remote ? ' (online)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        {forLang.length === 0 && <p class="muted">No on-device voice for this language: guides stay silent; their text still shows.</p>}
-        {useHd(hdStatus.value, lang.value) ? (
-          <p data-testid="voice-in-use">
-            In use: <strong>HD voice</strong> (on this device)
-          </p>
-        ) : available.value && inUse && (
-          <p data-testid="voice-in-use">
-            In use: <strong>{inUse.voiceName}</strong>
-            {inUse.remote ? ' (online)' : ' (on this device)'}
-            {!isHighQuality(inUse) && <span class="muted"> · a basic voice; see “Get better voices” below.</span>}
-          </p>
-        )}
-        <details data-testid="better-voices">
-          <summary>Get better voices</summary>
-          <p class="muted">
-            Waymark picks the best voice on this device by itself: names with Natural, Neural, Premium or Enhanced first. To get one, install it in your system settings.
-          </p>
-          <p class="muted">{help}</p>
-        </details>
-        <label class="grow">
-          <span class="muted">Speed: {s.rate.toFixed(1)}×</span>
-          <input type="range" min="0.5" max="2" step="0.1" value={s.rate} onChange={(e) => void update({ rate: Number((e.target as HTMLInputElement).value) })} />
-        </label>
-        <label class="row">
-          <input type="checkbox" data-testid="online" checked={s.allowOnlineVoices} onChange={(e) => void update({ allowOnlineVoices: (e.target as HTMLInputElement).checked })} />
-          Allow online voices
-        </label>
-        <p class="muted">
-          Online voices (such as Chrome's “Google …” voices and Edge's “Online (Natural)” voices) send the step text to the voice provider. They are off by default. When you turn them on,
-          natural online voices are used first.
-        </p>
-        <div class="row">
-          <button
-            type="button"
-            data-testid="test-voice"
-            onClick={() =>
-              void send('voice.test', { lang: lang.value }).then((r) => (status.value = r.ok ? 'Playing a sample…' : 'No usable voice for this language.'))
-            }
-          >
-            Test voice
-          </button>
-          {status.value && <span role="status">{status.value}</span>}
-        </div>
-      </section>
-      <HdVoice />
-      <section class="site" aria-label="Team library">
-        <h2>Team library</h2>
-        <p class="muted">
-          Subscribe to a pack file your team publishes at a fixed HTTPS address. Waymark reads it now and every 6 hours, and shows its guides as read-only team guides. Anyone with the address can read the pack.
-        </p>
-        <label class="grow">
-          <span class="muted">Library URL</span>
-          <input data-testid="library-url" type="url" placeholder="https://example.com/guides.waymark.json" value={libraryUrl.value} onInput={(e) => (libraryUrl.value = (e.target as HTMLInputElement).value)} />
-        </label>
-        <div class="row">
-          <button type="button" class="primary" data-testid="library-subscribe" disabled={libraryBusy.value || !libraryUrl.value.trim()} onClick={() => void subscribe()}>
-            {library.value?.url ? 'Save and refresh' : 'Subscribe'}
-          </button>
-          {library.value?.url && (
-            <>
-              <button type="button" data-testid="library-refresh" onClick={() => void send('library.refresh', {}).then((r) => (library.value = r))}>
-                Refresh now
-              </button>
-              <button
-                type="button"
-                data-testid="library-unsubscribe"
-                onClick={() =>
-                  void send('library.set', { url: null }).then((r) => {
-                    library.value = r;
-                    libraryUrl.value = '';
-                  })
-                }
-              >
-                Unsubscribe
-              </button>
-            </>
-          )}
-        </div>
-        {library.value?.url && (
-          <p class="muted" role="status" data-testid="library-status">
-            {library.value.lastError
-              ? `Last refresh failed: ${library.value.lastError}`
-              : library.value.lastFetchAt
-                ? `${library.value.count} team ${library.value.count === 1 ? 'guide' : 'guides'}, refreshed ${new Date(library.value.lastFetchAt).toLocaleString()}.`
-                : 'Not refreshed yet.'}
-          </p>
-        )}
-        {libraryError.value && <p role="alert">{libraryError.value}</p>}
-      </section>
-      <section class="site" aria-label="Problems">
-        <h2>Problems</h2>
-        {problems.value.length === 0 ? (
-          <p class="muted">No broken steps reported. When a guide can't find a step, the learner can press “Report broken step”; reports are listed here.</p>
-        ) : (
-          <>
-            <ul class="guides" data-testid="problems">
-              {problems.value.map((p) => (
-                <li key={`${p.stepId}-${p.at}`}>
-                  <strong>{p.guideTitle}</strong> · step {p.stepIndex + 1}: {p.stepTitle.replace(/\*\*/g, '')}
-                  <div class="muted">
-                    {p.url} · {new Date(p.at).toLocaleString()}
-                  </div>
-                </li>
-              ))}
-            </ul>
+          </ul>
+        </nav>
+        <main class="settings">
+          <Section id="voice" title="Voice" icon="volume">
+            {!available.value && (
+              <p class="banner warn" role="status">
+                <Icon name="warn" />
+                <span>This browser has no extension voice API. Steps are read with the page’s speech engine where possible.</span>
+              </p>
+            )}
+            <label class="check">
+              <input type="checkbox" role="switch" class="switch" data-testid="autoplay" checked={s.autoPlay} onChange={(e) => void update({ autoPlay: (e.target as HTMLInputElement).checked })} />
+              <span>
+                Read each step aloud
+                <span class="hint block">Learners can mute it in the tooltip.</span>
+              </span>
+            </label>
+            <div class="field-grid">
+              <label class="field">
+                <span class="label">Language</span>
+                <select value={lang.value} onChange={(e) => (lang.value = (e.target as HTMLSelectElement).value)}>
+                  {langs.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">Voice for “{lang.value}” guides</span>
+                <select
+                  data-testid="voice"
+                  value={forLang.some((v) => v.voiceName === s.voices[lang.value]) ? s.voices[lang.value] : ''}
+                  onChange={(e) => {
+                    const v = (e.target as HTMLSelectElement).value;
+                    const next = { ...s.voices };
+                    if (v) next[lang.value] = v;
+                    else delete next[lang.value];
+                    void update({ voices: next });
+                  }}
+                >
+                  <option value="">Automatic (best voice on this device)</option>
+                  {forLang.map((v) => (
+                    <option key={v.voiceName} value={v.voiceName}>
+                      {v.voiceName}
+                      {v.remote ? ' (online)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {forLang.length === 0 && <p class="small muted">No voice on this device for this language. Guides stay silent; their text still shows.</p>}
+            {useHd(hdStatus.value, lang.value) ? (
+              <p class="in-use" data-testid="voice-in-use">
+                <Icon name="mic" />
+                <span>
+                  In use: <strong>HD voice</strong> (on this device)
+                </span>
+              </p>
+            ) : (
+              available.value &&
+              inUse && (
+                <p class="in-use" data-testid="voice-in-use">
+                  <Icon name="mic" />
+                  <span>
+                    In use: <strong>{inUse.voiceName}</strong>
+                    {inUse.remote ? ' (online)' : ' (on this device)'}
+                    {!isHighQuality(inUse) && <span class="muted"> · a basic voice; see “Get better voices” below.</span>}
+                  </span>
+                </p>
+              )
+            )}
+            <label class="field">
+              <span class="label">
+                Speed <output class="muted">{s.rate.toFixed(1)}×</output>
+              </span>
+              <input type="range" min="0.5" max="2" step="0.1" value={s.rate} aria-valuetext={`${s.rate.toFixed(1)} times`} onChange={(e) => void update({ rate: Number((e.target as HTMLInputElement).value) })} />
+            </label>
+            <label class="check">
+              <input type="checkbox" role="switch" class="switch" data-testid="online" checked={s.allowOnlineVoices} onChange={(e) => void update({ allowOnlineVoices: (e.target as HTMLInputElement).checked })} />
+              <span>
+                Allow online voices
+                <span class="hint block">
+                  Online voices (Chrome’s “Google …” and Edge’s “Online (Natural)” voices) send the step text to the voice provider. When on, natural online voices come first.
+                </span>
+              </span>
+            </label>
             <div class="row">
               <button
                 type="button"
-                data-testid="copy-problems"
-                onClick={() => void navigator.clipboard.writeText(problemReport(problems.value)).then(() => (copied.value = true))}
+                data-testid="test-voice"
+                onClick={() => void send('voice.test', { lang: lang.value }).then((r) => (status.value = r.ok ? 'Playing a sample…' : 'No usable voice for this language.'))}
               >
-                {copied.value ? 'Copied' : 'Copy'}
+                <Icon name="play" />
+                Test voice
               </button>
-              <button type="button" onClick={() => void send('problems.clear', {}).then(() => (problems.value = []))}>
-                Clear
+              <span role="status" class="status-text">
+                {status.value}
+              </span>
+            </div>
+            <details data-testid="better-voices">
+              <summary>Get better voices</summary>
+              <p class="small muted">Waymark picks the best voice on this device by itself: names with Natural, Neural, Premium or Enhanced come first. To get one, install it in your system settings.</p>
+              <p class="small muted">{help}</p>
+            </details>
+          </Section>
+
+          <HdVoice />
+
+          <Section id="sites" title="Sites" icon="globe" badge={<span class="badge">{sites.value.length}</span>}>
+            <p class="small muted">Waymark runs only on these sites. Allow a new one from the side panel while you’re on it.</p>
+            {sites.value.length ? (
+              <ul class="list divided" data-testid="sites">
+                {sites.value.map((p) => (
+                  <li key={p} class="list-item">
+                    <Icon name="globe" />
+                    <span class="grow mono small">{sitePatternLabel(p)}</span>
+                    <button type="button" class="ghost sm danger" aria-label={`Remove access to ${sitePatternLabel(p)}`} onClick={() => void chrome.permissions.remove({ origins: [p] }).then(loadSites)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div class="empty">
+                <Icon name="shield" />
+                <strong>No sites yet</strong>
+                <span class="small">Open a web app, click the Waymark icon, then Allow on this site.</span>
+              </div>
+            )}
+          </Section>
+
+          <Section
+            id="team-library"
+            title="Team library"
+            icon="library"
+            badge={lib?.url ? <span class={`badge ${lib.lastError ? 'danger' : 'success'}`}>{lib.lastError ? 'Refresh failed' : 'Subscribed'}</span> : undefined}
+          >
+            <p class="small muted">
+              Subscribe to a pack file your team publishes at a fixed HTTPS address. Waymark reads it now and every 6 hours and shows its guides as read-only team guides. Anyone with the address can read the pack.
+            </p>
+            <label class="field">
+              <span class="label">Library URL</span>
+              <input data-testid="library-url" type="url" placeholder="https://example.com/guides.waymark.json" value={libraryUrl.value} onInput={(e) => (libraryUrl.value = (e.target as HTMLInputElement).value)} />
+            </label>
+            <div class="row">
+              <button type="button" class="primary" data-testid="library-subscribe" disabled={libraryBusy.value || !libraryUrl.value.trim()} onClick={() => void subscribe()}>
+                {libraryBusy.value ? 'Reading…' : lib?.url ? 'Save and refresh' : 'Subscribe'}
+              </button>
+              {lib?.url && (
+                <>
+                  <button type="button" data-testid="library-refresh" onClick={() => void send('library.refresh', {}).then((r) => (library.value = r))}>
+                    <Icon name="refresh" />
+                    Refresh now
+                  </button>
+                  <button
+                    type="button"
+                    class="ghost danger"
+                    data-testid="library-unsubscribe"
+                    onClick={() =>
+                      void send('library.set', { url: null }).then((r) => {
+                        library.value = r;
+                        libraryUrl.value = '';
+                      })
+                    }
+                  >
+                    Unsubscribe
+                  </button>
+                </>
+              )}
+            </div>
+            {lib?.url && (
+              <p class={`status-text${lib.lastError ? ' warn' : ''}`} role="status" data-testid="library-status">
+                {lib.lastError
+                  ? `Last refresh failed: ${lib.lastError}`
+                  : lib.lastFetchAt
+                    ? `${lib.count} team ${lib.count === 1 ? 'guide' : 'guides'}, refreshed ${new Date(lib.lastFetchAt).toLocaleString()}.`
+                    : 'Not refreshed yet.'}
+              </p>
+            )}
+            {libraryError.value && (
+              <p class="alert" role="alert">
+                <Icon name="error" />
+                {libraryError.value}
+              </p>
+            )}
+          </Section>
+
+          <Section id="problems" title="Problems" icon="flag" badge={problems.value.length ? <span class="badge warn">{problems.value.length}</span> : undefined}>
+            {problems.value.length === 0 ? (
+              <div class="empty">
+                <Icon name="check" />
+                <strong>No broken steps reported</strong>
+                <span class="small">When a guide can’t find a step, the learner can press “Report broken step”. Reports are listed here.</span>
+              </div>
+            ) : (
+              <>
+                <ul class="list divided" data-testid="problems">
+                  {problems.value.map((p) => (
+                    <li key={`${p.stepId}-${p.at}`} class="list-item problem">
+                      <Icon name="warn" />
+                      <div class="grow">
+                        <div>
+                          <strong>{p.guideTitle}</strong> · step {p.stepIndex + 1}: {p.stepTitle.replace(/\*\*/g, '')}
+                        </div>
+                        <div class="xsmall muted">
+                          <span class="mono">{p.url}</span> · {new Date(p.at).toLocaleString()}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div class="row">
+                  <button type="button" data-testid="copy-problems" onClick={() => void navigator.clipboard.writeText(problemReport(problems.value)).then(() => (copied.value = true))}>
+                    <Icon name="copy" />
+                    {copied.value ? 'Copied' : 'Copy as text'}
+                  </button>
+                  <button type="button" class="ghost danger" onClick={() => void send('problems.clear', {}).then(() => (problems.value = []))}>
+                    <Icon name="trash" />
+                    Clear
+                  </button>
+                </div>
+              </>
+            )}
+          </Section>
+
+          <Section id="about" title="About" icon="info">
+            <dl class="facts">
+              <dt>Version</dt>
+              <dd>{chrome.runtime.getManifest().version}</dd>
+              <dt>Keyboard</dt>
+              <dd>
+                <kbd>Alt</kbd>+<kbd>.</kbd> next step · <kbd>Alt</kbd>+<kbd>,</kbd> previous step · <kbd>Esc</kbd> in the tooltip exits the guide
+              </dd>
+            </dl>
+            <div class="row">
+              <button type="button" onClick={() => void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
+                Change shortcuts
               </button>
             </div>
-          </>
-        )}
-      </section>
-    </main>
+          </Section>
+        </main>
+      </div>
+    </>
   );
 }

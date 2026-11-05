@@ -6,6 +6,7 @@ import { originToMatchPattern } from '../../core/url/url';
 import { Recorder } from './Recorder';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
+import { Welcome } from './Welcome';
 
 const tab = signal<TabInfo | null>(null);
 const error = signal<string | null>(null);
@@ -158,6 +159,7 @@ export function App() {
             {error.value}
           </p>
         )}
+        <Welcome />
         <SiteCard t={t} />
         {(t?.granted || initialEdit) && <Recorder tabId={t?.tabId ?? null} tabUrl={t?.url ?? null} initialEdit={initialEdit} />}
         {t && !t.granted && <LibraryOnly />}
