@@ -62,6 +62,14 @@ const CSS = `
   background: var(--wm-accent-soft); color: var(--wm-accent-text); }
 .badge-icon svg { width: 20px; height: 20px; }
 [data-card='done'] .badge-icon { background: var(--wm-success-soft); color: var(--wm-success); }
+/* Done (D135): the check beside "Done!" and the guide's name, Close under them; no header. */
+[data-card='done'] { min-width: min(280px, calc(100vw - 16px)); }
+[data-card='done'] .tip-body { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 14px 16px; }
+[data-card='done'] .badge-icon { grid-row: 1 / span 2; align-self: center; margin: 0; width: 40px; height: 40px; }
+[data-card='done'] .badge-icon svg { width: 22px; height: 22px; }
+[data-card='done'] .title { align-self: end; }
+[data-card='done'] .note { align-self: start; margin-top: 2px; }
+[data-card='done'] .buttons { grid-column: 1 / -1; margin-top: 12px; }
 [data-card='not-found'] .badge-icon { background: var(--wm-warn-soft); color: var(--wm-warn); }
 .title { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
 .title strong { font-weight: 700; }
@@ -414,6 +422,9 @@ export class PlayerUI {
     note.dir = 'auto';
     const buttons = el('div', 'buttons');
     if (kind === 'done') {
+      // Nothing left to count, mute or exit: the card is the check beside its two lines and Close (D135).
+      tip.querySelector('.head')?.remove();
+      tip.querySelector('.progress')?.remove();
       icon.append(buildSvg(CircleCheck));
       title.textContent = 'Done!';
       note.textContent = `You finished “${view.guideTitle ?? 'this guide'}”.`;
