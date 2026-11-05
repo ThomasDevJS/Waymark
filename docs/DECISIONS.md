@@ -462,6 +462,33 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
 - **Version** 0.3.1.
 
+## 2026-11-05 — Release engineering
+
+### D54. CI minute budget: one run per change, cancel superseded runs, skip docs-only changes
+- **Spec**: Tech stack, testing; Distribution (CI artifact). Hard rule: $0 running cost.
+- **Why**: the repo is private on the Free plan, which includes 2,000 Actions minutes a month. Every branch push ran CI twice (`push` and `pull_request`). GitHub bills each job rounded up to the whole minute, so a run of the three D52 jobs (check about 1.5 min, e2e shards about 2.5 min each, more when apt is slow) bills about 8 minutes, not the 6.5 job-minutes it uses.
+- **Change** (`.github/workflows/ci.yml`):
+  - Triggers: `push` to `main` only, `pull_request`, and `workflow_dispatch`. A branch without a pull request runs no CI; run the workflow by hand to test one.
+  - `concurrency` per pull request (or ref). On pull requests a newer push cancels the run it supersedes. On `main` runs queue instead of cancelling (a small deviation from "cancel superseded runs for the same ref"): two quick merges would otherwise leave the first merge commit without a zip and with a red mark from the cancelled run.
+  - Docs-only changes (any `*.md`, anything under `docs/`) skip the check and e2e jobs. `THIRD_PARTY_NOTICES.md` is not docs-only: it is copied into the build.
+    - On `main`, a trigger-level filter skips the run entirely. It is a `paths` list with negations rather than `paths-ignore`, because `paths-ignore` can't make the `THIRD_PARTY_NOTICES.md` exception.
+    - On pull requests a trigger-level filter would leave required checks "pending" forever. Instead a small `changes` job lists the PR's files with the API (`scripts/ci-changes.mjs`, unit-tested; renames count both names; any error means "run everything"), and the check and e2e jobs are skipped only on its explicit "docs-only" answer; a crash or a missing answer runs everything. A skipped job counts as passed for a required check. The files API compares the whole PR with its base, so a docs-only push to a PR that already changes code still runs the full CI.
+    - A `CI result` job needs all the others and starts only when one of them ended `failure` or `cancelled` (a timeout, for instance), and then fails. Make it the one required check if branch protection is turned on: a skipped matrix job does not report under its shard names (`e2e (1)`, `e2e (2)`), so those can't be required. When everything passes it is skipped and costs nothing.
+  - The extension zip is uploaded on `main` pushes and manual runs only, kept 14 days (was every run, 30 days). The zip is 3 MB and the Free plan has 500 MB of artifact storage; at tonight's rate (85 runs in 6 hours) 30-day artifacts of every run would have filled it in two days, and uploads then fail. Tagged GitHub Releases (a separate change) give stable downloads that don't count against it.
+- **Estimated billed minutes** (8 per full run, 1 for the `changes` job):
+
+  | | Before | After |
+  | --- | --- | --- |
+  | Push to a branch with no PR yet | 8 | 0 |
+  | Push to a PR branch | 16 (two runs) | 9 (one run plus `changes`); a superseded run stops at its cancel, about 1–3 |
+  | Push to a docs-only PR | 16 | 1 |
+  | Merge to `main` | 8 | 8 (0 if docs-only) |
+  | A PR with 3 code pushes, then merged | 56 | 35 |
+
+  Tonight so far (19:31–01:28 UTC) was 85 runs: 53 branch pushes, 21 pull request runs and 11 main pushes, about 680 billed minutes. With these rules the same work would have run 32 times, about 280 minutes. So the monthly budget covers about seven nights like tonight, against fewer than three before.
+- **Limits**: GitHub's `paths` filter looks at the first 300 files of a push only, so a huge docs-first push to `main` could skip CI; pull requests always go through the `changes` job. The `changes` job runs the PR's own copy of `scripts/ci-changes.mjs`, so a PR could declare itself docs-only, but a PR can already edit the workflow, and the token is read-only.
+- **Review** (independent): the gate failed open when the script crashed (no `pipefail` in the default shell) and `CI result` could miss a timed-out job; both fixed as above. The test now also checks that the `paths` list in ci.yml matches the script.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
@@ -512,6 +539,17 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Screen readers**: a new recorded step is announced as "Step 5: Check Send me a copy. Warning: Hard to find" from one hidden live region (`lastStepAnnouncement`), not by re-reading the whole list with its help text. Test step results update one live region that stays mounted. Matcher clue names are shown in plain words ("role and name", "page position"). The editor has an `h2`, a "Steps" `h3` and an `h4` per step. The import dialog takes focus when it opens.
 - **Test changes**: m2 checked "● Recording: Update profile"; it now checks the status badge and the title. m4 found the reorder buttons by the names "Move up" / "Move down"; they are now labelled "Move step 3 up", so the test uses the new `step-N-up` / `step-N-down` test ids.
 - **Export review** lists each string as a row with its kind and step above the value, and says the file name it will save.
+
+### D92. Settings layout, a Sites list, and a first-run welcome
+*5 Nov 2026 · SPEC: Settings; Permissions ("Site access"); Discovery ("First-run access")*
+
+- **Settings** has a header, a section nav (a sticky side column on wide windows, a row of links on narrow ones) and one card per section: Voice, HD voice, Sites, Team library, Problems, About. Each card has an icon, a heading (`h2`) and a status badge where one helps (HD voice: Off / Downloading / Checking / On / Too slow / Failed; Team library: Subscribed / Refresh failed; Problems: count).
+- **Voice**: switches for "Read each step aloud" and "Allow online voices" (still checkboxes underneath, `role="switch"`), the language and voice selects side by side, "In use" as a callout, the speed as an `<output>` with an `aria-valuetext`. Every test id and every text the e2e tests check is unchanged.
+- **HD voice**: the download shows a progress bar with a percentage, and the speed check shows an indeterminate bar. The state texts ("Off.", "On. English guides use the HD voice." …) are unchanged.
+- **Sites (new)**: lists the sites Waymark may run on, from `chrome.permissions.getAll()` through the same `grantedSitePatterns` filter the service worker uses (so the HD voice download hosts never show), each with Remove. It updates on permission changes. It only reads and removes permissions, as the side panel's Remove access already did; the service worker's existing `permissions.onRemoved` handler unregisters the script.
+- **Removing a site** asks first (an inline "Remove access" / Cancel) and then moves focus to the Sites heading. A failure is shown. The site the team library is read from (granted when the library host sends no CORS headers) says so, because removing it stops library refreshes. Clear in Problems asks first too.
+- **About (new)**: the version, the keyboard shortcuts as the browser has them now (`chrome.commands.getAll()`, since users can change them) and a Change shortcuts button (`chrome://extensions/shortcuts`).
+- **First-run welcome** in the side panel: three short cards, Allow, Record and Play, with Back / Next, step tabs, Skip and Get started. It shows until finished or skipped; the flag is `ui:welcomeDone` in `storage.local`. It has nothing to do with guides, so the guide index and storage code ignore it. It sits above the site card. The panel's cards wait until the flag is read, so they don't jump down when the welcome appears. Finishing or skipping moves focus to the panel's next control. The e2e m0 test now checks the welcome and that it stays dismissed; its heading lookup uses `exact: true` ("Welcome to Waymark" also contains "Waymark").
 
 ### D93. On-page UI: tooltip, spotlight, REC pill, launcher
 *5 Nov 2026 · SPEC: Player and overlay; Recorder ("State"); Discovery; Accessibility*
