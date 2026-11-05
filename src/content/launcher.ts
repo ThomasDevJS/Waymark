@@ -44,18 +44,18 @@ export const LAUNCHER_CSS = `
 .wm-launch:active, .wm-card button:active { box-shadow: inset 0 1px 2px rgba(16, 24, 40, .18); }
 @media (prefers-reduced-motion: no-preference) {
   .wm-launch { transition: transform var(--wm-dur-fast) var(--wm-ease-spring), background-color var(--wm-dur-fast) var(--wm-ease-standard), border-color var(--wm-dur-fast) var(--wm-ease-standard);
-    animation: wm-pop var(--wm-dur-slow) var(--wm-ease-spring); }
+    animation: wm-launch-pop var(--wm-dur-slow) var(--wm-ease-spring); }
   .wm-launch:hover { transform: scale(1.06); }
   .wm-launch:active { transform: scale(.92); transition-duration: var(--wm-dur-press); }
-  .wm-card { animation: wm-rise var(--wm-dur-base) var(--wm-ease-enter); }
+  .wm-card { animation: wm-launch-rise var(--wm-dur-base) var(--wm-ease-enter); }
   .wm-card button { transition: background-color var(--wm-dur-fast) var(--wm-ease-standard), transform var(--wm-dur-fast) var(--wm-ease-spring); }
   .wm-card button:active { transform: scale(var(--wm-press-lg)); transition-duration: var(--wm-dur-press); }
   .wm-row button:active, .wm-card .wm-primary:active { transform: scale(var(--wm-press)); }
-  .wm-launch:focus-visible, .wm-card button:focus-visible { animation: wm-focus-in var(--wm-dur-fast) var(--wm-ease-enter); }
+  .wm-launch:focus-visible, .wm-card button:focus-visible { animation: wm-launch-focus-in var(--wm-dur-fast) var(--wm-ease-enter); }
 }
-@keyframes wm-pop { from { opacity: 0; scale: .6; } }
-@keyframes wm-rise { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
-@keyframes wm-focus-in { from { outline-offset: 5px; outline-color: transparent; } }
+@keyframes wm-launch-pop { from { opacity: 0; scale: .6; } }
+@keyframes wm-launch-rise { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
+@keyframes wm-launch-focus-in { from { outline-offset: 5px; outline-color: transparent; } }
 @media (forced-colors: active) { .wm-launch, .wm-card { border: 2px solid CanvasText; } }
 `;
 

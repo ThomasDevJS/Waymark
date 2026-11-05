@@ -46,8 +46,8 @@ describe('launcher motion (D134)', () => {
   it('the button pops in and the menu rises in, on transform and opacity only', async () => {
     await setReduced(false);
     const { button, card } = mount();
-    expect(names(button)).toContain('wm-pop');
-    expect(names(card)).toContain('wm-rise');
+    expect(names(button)).toContain('wm-launch-pop');
+    expect(names(card)).toContain('wm-launch-rise');
     for (const p of [...props(button), ...props(card)]) expect(['opacity', 'scale', 'translate']).toContain(p);
     expect(getComputedStyle(button).transitionProperty).toContain('transform');
   });
