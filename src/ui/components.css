@@ -617,33 +617,44 @@ button.chip.on .chip-count {
  * never layout). Durations, easings and distances are tokens; under reduced motion the
  * distances and scales are zero, so what is left is a fade.
  */
-button,
-.btn,
-.button-like {
-  transition:
-    background-color var(--wm-dur-fast) var(--wm-ease-standard),
-    border-color var(--wm-dur-fast) var(--wm-ease-standard),
-    color var(--wm-dur-fast) var(--wm-ease-standard),
-    transform var(--wm-dur-fast) var(--wm-ease-spring);
+/* No colour transition: colour is inherited by every icon inside, so it restyles them on the
+   main thread each frame (the bench found it costing frames on Move up / down, D132). Under
+   reduced motion nothing transitions: there is nothing to move, and fades of a hover are noise. */
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  .btn,
+  .button-like {
+    transition:
+      background-color var(--wm-dur-fast) var(--wm-ease-standard),
+      border-color var(--wm-dur-fast) var(--wm-ease-standard),
+      transform var(--wm-dur-fast) var(--wm-ease-spring);
+  }
 }
-/* Pressed: a small squeeze and a pressed-in shade, at once (80 ms); it springs back on release. */
+/* Pressed: a pressed-in shade at once; with motion, also a small squeeze (80 ms) that springs
+   back on release. */
 button:active:not(:disabled),
 .btn:active,
 .button-like:active {
-  transform: scale(var(--wm-press));
-  transition-duration: var(--wm-dur-press);
-  transition-timing-function: var(--wm-ease-standard);
   box-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.18);
 }
 button.primary:active:not(:disabled),
 .btn.primary:active {
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
 }
-/* Wide buttons (full-width, list toggles) squeeze less: 3% of 360 px is a visible jump. */
-button.block:active:not(:disabled),
-button.step-toggle:active:not(:disabled),
-button.help-link:active:not(:disabled) {
-  transform: scale(var(--wm-press-lg));
+@media (prefers-reduced-motion: no-preference) {
+  button:active:not(:disabled),
+  .btn:active,
+  .button-like:active {
+    transform: scale(var(--wm-press));
+    transition-duration: var(--wm-dur-press);
+    transition-timing-function: var(--wm-ease-standard);
+  }
+  /* Wide buttons (full-width, list toggles) squeeze less: 3% of 360 px is a visible jump. */
+  button.block:active:not(:disabled),
+  button.step-toggle:active:not(:disabled),
+  button.help-link:active:not(:disabled) {
+    transform: scale(var(--wm-press-lg));
+  }
 }
 
 /* Focus rings settle in from a little further out, once per focus. */

@@ -16,8 +16,12 @@ function token(name: string, css = tokens): string {
   return m[1]!.trim();
 }
 
-/** Properties a transition or keyframe may change. Paint-only colour and outline fades are kept from D90/D93. */
-const ALLOWED = new Set(['transform', 'opacity', 'translate', 'scale', 'rotate', 'background-color', 'border-color', 'color', 'outline-offset', 'outline-color']);
+/**
+ * Properties a transition or keyframe may change. Paint-only background, border and outline fades
+ * are kept from D90/D93. Not `color`: it is inherited by every icon inside, so it restyles them
+ * on the main thread each frame (D132).
+ */
+const ALLOWED = new Set(['transform', 'opacity', 'translate', 'scale', 'rotate', 'background-color', 'border-color', 'outline-offset', 'outline-color']);
 /** box-shadow may only be keyframed where it already pulsed before D130 (the spotlight ring, D93); never transitioned. */
 const BOX_SHADOW_OK = ['wm-ring-pulse'];
 
@@ -35,6 +39,7 @@ function stylesheets(dir = 'src'): string[] {
 /** The properties named in each `transition` / `transition-property` value: everything that is not a time, an easing, a var() or a keyword. */
 export function transitionProps(css: string): string[] {
   const out: string[] = [];
+  css = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
   for (const m of css.matchAll(/(?<![-\w])transition(?:-property)?\s*:\s*([^;}]+)[;}]/g)) {
     // Drop function calls (var(), cubic-bezier(), steps()), nested ones included.
     let value = m[1]!;
@@ -101,6 +106,7 @@ describe('only compositor-friendly properties animate (D130)', () => {
     expect(transitionProps('a { transition: var(--wm-dur-fast) width, opacity 1s cubic-bezier(0, var(--x), 1, 1); }')).toEqual(['width', 'opacity']);
     expect(transitionProps('a { transition-property: box-shadow }')).toEqual(['box-shadow']);
     expect(transitionProps('a { transition-duration: 1s; }')).toEqual([]);
+    expect(transitionProps('/* transition: colour words */ a { transition: opacity 1s }')).toEqual(['opacity']);
   });
 
   const files = stylesheets();
