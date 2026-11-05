@@ -489,6 +489,49 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Limits**: GitHub's `paths` filter looks at the first 300 files of a push only, so a huge docs-first push to `main` could skip CI; pull requests always go through the `changes` job. The `changes` job runs the PR's own copy of `scripts/ci-changes.mjs`, so a PR could declare itself docs-only, but a PR can already edit the workflow, and the token is read-only.
 - **Review** (independent): the gate failed open when the script crashed (no `pipefail` in the default shell) and `CI result` could miss a timed-out job; both fixed as above. The test now also checks that the `paths` list in ci.yml matches the script.
 
+### D55. GitHub Actions on their current Node 24 majors
+- **Spec**: Tech stack, testing (CI). Left open in D52's review.
+- **Change**: `actions/checkout` v4 → **v7**, `actions/setup-node` v4 → **v7**, `actions/cache` v4 → **v6** (in `.github/actions/playwright-browser`), `actions/upload-artifact` v4 → **v7**, `pnpm/action-setup` v4 → **v6**. Node 20 actions are deprecated on GitHub's runners; every one of these runs on `node24`.
+- **Verified** on 5 Nov 2026 in each action's own repository: the major tag exists (latest releases checkout v7.0.1, setup-node v7.1.0, cache v6.1.0, upload-artifact v7.0.2, action-setup v6.1.1), and its `action.yml` at that tag says `using: node24`.
+- **Breaking changes checked against this workflow**, none of which apply:
+  - checkout v6 keeps credentials in a separate file under `$RUNNER_TEMP`; v7 refuses fork code under `pull_request_target`/`workflow_run`, which we don't use.
+  - setup-node v6 caches pnpm only when asked (we set `cache: pnpm`); v7 drops the dummy `NODE_AUTH_TOKEN` (we set no `registry-url`).
+  - cache v5/v6 and upload-artifact v5–v7: Node 24 and ESM only; the inputs we use are unchanged.
+  - action-setup v5/v6 bootstraps pnpm with npm and then switches to the version pinned in `packageManager` (pnpm 10.28.0 here).
+- The project's own Node stays 22 (`node-version: 22`).
+
+### D56. Tagged versions become GitHub Releases
+- **Spec**: Distribution and cost (downloadable builds; $0).
+- **Change**: `.github/workflows/release.yml` runs when a tag `v*` is pushed.
+  - A **build** job (read-only) checks that:
+    - the tag is `v` plus the `package.json` version;
+    - it points at a commit on `main`;
+    - `CHANGELOG.md` has notes for that version (`scripts/changelog-notes.mjs`, unit-tested);
+    - the commit's CI run on `main` passed: the `check`, `e2e (1)` and `e2e (2)` check runs, latest attempt of each. It waits up to 12 minutes for a run still in progress.
+
+    It then runs typecheck, lint, the manifest and CDN guards (on the build that `pnpm zip` packs) and the unit tests, and uploads the zip, its SHA-256 file and the notes as a one-day artifact.
+  - A **publish** job, with no checkout and no install, downloads them and creates the GitHub Release "Waymark X.Y.Z". A version like `0.4.0-rc.1` is marked as a pre-release. Re-running it for an existing release replaces the files, title, notes and flags. GitHub marks the newest release as Latest; a patch to an older line would need `--latest=false`.
+- **Permissions**: none by default (`permissions: {}`). The build job has `contents: read` and `checks: read`. Only the publish job gets `contents: write`, through the default `GITHUB_TOKEN`, and it runs no project code. No other token or secret.
+- **Cost**: about 3 minutes per release (two jobs). Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54). A docs-only commit has no CI run to check, so tag the version bump's merge commit, which always has one.
+- **Review** (independent): CHANGELOG.md did not exist yet (added here, with every version so far); the guard checked a build that `pnpm zip` then rebuilt; CI on the tagged commit was assumed, not checked; the write job ran install scripts; re-runs kept a stale title and flags; the notes parser cut at `## ` inside code blocks and missed linked headings. All fixed, with tests for the parser.
+- **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
+- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
+  1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
+  2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
+  3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
+
+### D57. The privacy policy is not hosted on GitHub Pages; the store listing is a draft
+- **Spec**: Permissions, privacy and security ("A one-page privacy policy (free on GitHub Pages) is required for the store listing"); Distribution and cost.
+- **Finding**: the repository is private on the GitHub Free plan, which has no GitHub Pages for private repositories.
+- **Change**: the policy is `docs/PRIVACY.md`, written against what the code does today (storage keys, the three optional network requests, the permissions). It lists free hosts for the public URL the store needs: a separate public repo with Pages, a public Gist, Cloudflare Pages or Netlify, Google Sites, Codeberg Pages. `docs/STORE.md` drafts the Chrome Web Store listing: descriptions, single purpose, a justification per permission, remote-code and data-use answers, the screenshot list, and the steps for a private (domain or group) listing.
+- **Open items** before submitting:
+  - a contact address in the policy;
+  - a host for the policy;
+  - the screenshots and promo tile (design lane);
+  - **an icon:** the manifest has no `icons` yet, and the store requires a 128×128 one.
+  - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
+- **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
@@ -524,14 +567,21 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D65. A nameless control in a list item is named by the item's label
 - **Spec**: Element targeting, record step 2 and playback step 3 (signals and weights); Data model (new optional `ElementFingerprint.itemLabel`).
 - **Finding**: the todo toggles of TodoMVC in Vue and Angular are `<input type=checkbox class=toggle>` next to a `<label>` that is not linked to them. They have no name, text or test id, so since D47 a click on one is not recorded at all. In React they share a test id and were `instance: 'any'` ("check any todo"), and the title was "Check **the checkbox**". What the author meant is in the row: "Walk the dog".
-- **Change**: a control with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field. Hidden parts and the text of interactive elements are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong. The step title uses it ("Check **Walk the dog**").
-- **When there is none** (independent review):
-  - a link in the item has a name. In an issue list the row is named by its link, and what is left ("Open", "Closed") is status that moves between rows; using it picked the wrong row in the review's test. A named button ("Delete todo" in React and Angular TodoMVC) is an action and does not count;
-  - the item is inside an editable region. In a rich-text task list the label is typed text;
-  - the only text is loose text, not a label or heading.
-- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`).
-- **Safety**: when the item is gone (another list), the other rows' controls match only what record-time look-alikes matched (D64), so the result is not-found, never another row. Named row actions ("Edit", "Delete") get no item label and stay `any`. Candidates are gathered per item in one pass.
-- **Cost**: when the item's text changes, the step is not found. That is the same contract as own text.
+- **Change**: a **checkbox, radio or switch** with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field, and it must be **everything the item says**: the item's visible text, outside interactive elements, is exactly that label. Hidden parts are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong, not identifying. The step title uses it ("Check **Walk the dog**").
+- **Why so narrow** (two independent reviews; each case is a regression test in `test/browser/item-label.test.ts`). A label is identity only when it is the item's name, and status or context that moves between rows picked the wrong row:
+  - "Open" next to a named link in an issue list;
+  - an "Overdue" badge next to "Pay rent";
+  - a "Books" category heading over "Dune";
+  - a parent row taking a nested child's label.
+  So there is no item label when:
+  - the item has other visible text;
+  - a link in it has a name;
+  - it contains another item;
+  - anything in it is editable (typed text in rich-text task lists);
+  - the control is not a toggle. A nameless delete icon would otherwise be titled "Click **Walk the dog**".
+- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`). When the item is gone (another list), the other rows' toggles match only what record-time look-alikes matched (D64), so the result is not-found.
+- **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
+- **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
 
 ### D66. Ids, test ids, names and guide ids that look like data are not stored
 - **Spec**: Element targeting, record step 2 (the data-like filter runs on text, names, option labels, link paths and titles); Privacy (never store what the user typed or sees as data).
@@ -552,3 +602,15 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - control borders (WCAG 1.4.11, ≥3:1): 3.8 / 3.5 on surface, 3.4 / 3.2 on surface-2.
 - **Colour scheme on the page**: the overlay follows the browser's `prefers-color-scheme`, not the host page's colours. Every on-page surface (tooltip, cards, pill, launcher) is opaque with its own text colour, so it reads the same on a light or dark page; the screenshot harness shoots a dark browser on a light page as well.
 - **Screenshots**: `pnpm screens` (`test/screens/screens.spec.ts`, its own Playwright config, not in CI) records a guide on the demo app and shoots every panel, settings and on-page state, light and dark, plus 640×450 (200% zoom of 1280×900) and 375×667. The panel learns the site only from a toolbar click (activeTab), which a test can't make, so for the "not allowed" shot only, the page's `tab.current` answer is rewritten in the test. Shots go to `artifacts/screens/` (git-ignored); `scripts/shots.py` copies chosen light/dark pairs as small 256-colour PNGs into `docs/screenshots/<pr>/`.
+
+### D91. Side panel and editor layout
+*5 Nov 2026 · SPEC: Side panel; User flows (Record, Edit); Discovery*
+
+- **Icons**: Lucide 1.59.0 (ISC; the Feather-derived icons are MIT), bundled. `src/ui/icons.ts` lists the icons used, so only those are built. They are drawn with DOM APIs (`svgIcon`) or Preact (`Icon`), never `innerHTML`, and are always `aria-hidden`; the control carries the label. Notices are in `THIRD_PARTY_NOTICES.md`.
+- **Panel**: a sticky header (Waymark, Settings icon button), then cards: site (origin, an Allowed / Not allowed badge, the `?` button switch, Remove access), playing guide (step n of N with a progress bar), new guide, guides. Without a site: an empty state that says what to do.
+- **Library**: rows with a two-line title, step count, a Team badge, then Copy link, Edit (Duplicate for team guides) as labelled icon buttons and a Start button. "For this page" and "All guides" / "Other guides" have counts. Empty states for "no guides yet" and "no match"; search and Export are hidden until there is a guide.
+- **Recorder**: a Recording / Paused badge, Stop in the card head (the primary action), then Pause, Undo, Add note. The newest step is highlighted. **Warnings are explained inline** under the step (shared text in `sidepanel/steps.tsx`, the same as `docs/TESTING.md` section 3): "Hard to find" (low-confidence), "Drawing area" (canvas), "Closed component" (closed-shadow). Text test changed: m2 checked "● Recording: Update profile"; it now checks the status badge and the title.
+- **Editor**: each step card has a number, a kind badge, Move up / down / Delete icon buttons (labelled "Move step 3 up"…), the rendered title, inline warnings, then Title, Note and Voice text (textareas grow with their text, `field-sizing: content`), "Moves on" and an Optional switch, and Test step, Re-pick, Note after. Re-picking highlights the card and shows how to cancel (Esc). Test step shows Found (with the matched clues as badges), "Found, but fragile" (warn) or Not found (danger). Save and Close stay in a sticky bar at the bottom. The "Saved (version n)." text is unchanged.
+- **Screen readers**: a new recorded step is announced as "Step 5: Check Send me a copy. Warning: Hard to find" from one hidden live region (`lastStepAnnouncement`), not by re-reading the whole list with its help text. Test step results update one live region that stays mounted. Matcher clue names are shown in plain words ("role and name", "page position"). The editor has an `h2`, a "Steps" `h3` and an `h4` per step. The import dialog takes focus when it opens.
+- **Test changes**: m2 checked "● Recording: Update profile"; it now checks the status badge and the title. m4 found the reorder buttons by the names "Move up" / "Move down"; they are now labelled "Move step 3 up", so the test uses the new `step-N-up` / `step-N-down` test ids.
+- **Export review** lists each string as a row with its kind and step above the value, and says the file name it will save.
