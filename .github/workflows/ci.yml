@@ -7,10 +7,12 @@ on:
 permissions:
   contents: read
 
+# Fast checks and the end-to-end shards run in parallel (D52). The Playwright browser is cached
+# per Playwright version; the pnpm store is cached by setup-node.
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -35,19 +37,37 @@ jobs:
           path: artifacts/waymark-*-chrome.zip
           if-no-files-found: error
           retention-days: 30
-      - name: Install Chromium for Playwright and Vitest browser mode
-        run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:unit
+      - uses: ./.github/actions/playwright-browser
       - name: Browser tests and robustness suite
         run: pnpm test:browser
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test build
+        run: pnpm build:test
+      - uses: ./.github/actions/playwright-browser
       - name: Install Xvfb and XTest (accepting the native permission dialog)
-        run: sudo apt-get update && sudo apt-get install -y xvfb libxtst6 python3
-      - name: End-to-end tests (headed under Xvfb)
-        run: xvfb-run -a pnpm exec playwright test
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libxtst6
+      - name: End-to-end tests (headed under Xvfb), shard ${{ matrix.shard }} of 2
+        run: xvfb-run -a pnpm exec playwright test --shard=${{ matrix.shard }}/2
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.shard }}
           path: |
             test-results/
             playwright-report/

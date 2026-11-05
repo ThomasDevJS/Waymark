@@ -3,33 +3,72 @@
  * through the service worker's queue so a guide and the index never disagree.
  */
 import { GuideSchema, type Guide, type UrlRule } from '../model/schema';
+import { toPlainText } from '../text/markdown';
 import { enqueue } from './queue';
 
+/**
+ * One line per guide: everything the badge, "For this page", the side panel list and search,
+ * and the import rules need, so none of them reads full guides (D49). A few hundred guides of
+ * 50 steps are about 20 MB; their index is well under 1 MB.
+ */
 export interface GuideIndexEntry {
   id: string;
+  revisionId: string;
+  forkedFrom?: { guideId: string; revisionId: string };
   title: string;
+  description?: string;
+  tags: string[];
+  startUrl: string;
   updatedAt: string;
   appOrigins: string[];
   /** Pages where the guide is offered (badge, "For this page", launcher). */
   matchUrls: UrlRule[];
   source: 'local' | 'library';
   steps: number;
+  /** Step titles as plain text, one per line, for search (capped). */
+  stepTitles: string;
 }
+
+/** Index caps (D49): search text per step and per guide, and the description kept for search. */
+export const MAX_STEP_TITLE = 80;
+export const MAX_STEP_TITLES = 20_000;
+export const MAX_INDEX_DESCRIPTION = 1000;
+export const MAX_INDEX_TAGS = 20;
 
 export const INDEX_KEY = 'guides:index';
 export const guideKey = (id: string) => `guide:${id}`;
 
-function entryOf(g: Guide): GuideIndexEntry {
-  return { id: g.id, title: g.title, updatedAt: g.updatedAt, appOrigins: g.appOrigins, matchUrls: g.matchUrls, source: g.source, steps: g.steps.length };
+export function indexEntry(g: Guide): GuideIndexEntry {
+  const e: GuideIndexEntry = {
+    id: g.id,
+    revisionId: g.revisionId,
+    title: g.title,
+    tags: g.tags.slice(0, MAX_INDEX_TAGS),
+    startUrl: g.startUrl,
+    updatedAt: g.updatedAt,
+    appOrigins: g.appOrigins,
+    matchUrls: g.matchUrls,
+    source: g.source,
+    steps: g.steps.length,
+    // Each title is cut, not the joined text, so a long guide keeps every step searchable.
+    stepTitles: g.steps.map((s) => toPlainText(s.title).slice(0, MAX_STEP_TITLE)).join('\n').slice(0, MAX_STEP_TITLES),
+  };
+  if (g.forkedFrom) e.forkedFrom = g.forkedFrom;
+  if (g.description) e.description = g.description.slice(0, MAX_INDEX_DESCRIPTION);
+  return e;
 }
 
+/**
+ * The stored index. An index written by an older version (no `revisionId`) is rebuilt from the
+ * stored guides on first read, even if the rebuild at install or update was missed. This does
+ * not go through the write queue, because callers may already be inside it; it happens once.
+ */
 async function readIndex(): Promise<GuideIndexEntry[]> {
-  return ((await chrome.storage.local.get(INDEX_KEY))[INDEX_KEY] as GuideIndexEntry[] | undefined) ?? [];
-}
-
-export function saveGuide(guide: Guide): Promise<void> {
-  const parsed = GuideSchema.parse(guide);
-  return enqueue(() => writeGuide(parsed));
+  const raw = ((await chrome.storage.local.get(INDEX_KEY))[INDEX_KEY] as Partial<GuideIndexEntry>[] | undefined) ?? [];
+  if (raw.every((e) => typeof e.revisionId === 'string' && typeof e.stepTitles === 'string')) return raw as GuideIndexEntry[];
+  const index = (await allGuides()).map(indexEntry);
+  await chrome.storage.local.set({ [INDEX_KEY]: index });
+  return index;
 }
 
 /** Validates and writes a guide plus its index entry. Call only from inside a queued task. */
@@ -45,7 +84,7 @@ export async function writeGuides(guides: Guide[], removeIds: string[]): Promise
   const parsed = guides.map((g) => GuideSchema.parse(g));
   const index = await readIndex();
   const touched = new Set([...parsed.map((g) => g.id), ...removeIds]);
-  const next = [...index.filter((e) => !touched.has(e.id)), ...parsed.map(entryOf)];
+  const next = [...index.filter((e) => !touched.has(e.id)), ...parsed.map(indexEntry)];
   const set: Record<string, unknown> = { [INDEX_KEY]: next };
   for (const g of parsed) set[guideKey(g.id)] = g;
   if (removeIds.length) await chrome.storage.local.remove(removeIds.map(guideKey));
@@ -56,7 +95,19 @@ export async function listGuides(): Promise<GuideIndexEntry[]> {
   return readIndex();
 }
 
-/** Every stored guide (the side panel searches them; a few hundred guides are a few MB). */
+/** Full guides by id, validated; missing or invalid ids are left out. */
+export async function getGuides(ids: string[]): Promise<Guide[]> {
+  const keys = ids.map(guideKey);
+  const got = await chrome.storage.local.get(keys);
+  const out: Guide[] = [];
+  for (const k of keys) {
+    const p = GuideSchema.safeParse(got[k]);
+    if (p.success) out.push(p.data);
+  }
+  return out;
+}
+
+/** Every stored guide, validated. Slow with many guides: only the index rebuild uses it (D49). */
 export async function allGuides(): Promise<Guide[]> {
   const all = await chrome.storage.local.get(null);
   const out: Guide[] = [];
@@ -72,6 +123,6 @@ export async function allGuides(): Promise<Guide[]> {
 export function rebuildIndex(): Promise<void> {
   return enqueue(async () => {
     const guides = await allGuides();
-    await chrome.storage.local.set({ [INDEX_KEY]: guides.map(entryOf) });
+    await chrome.storage.local.set({ [INDEX_KEY]: guides.map(indexEntry) });
   });
 }

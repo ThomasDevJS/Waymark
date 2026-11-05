@@ -9,7 +9,8 @@ import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
-import type { VoiceSettings } from '../voice/voice';
+import type { VoiceSettings } from '../voice/settings';
+import { HD_HOST_PATTERNS, HdStatusSchema, type HdStatus } from '../voice/hd';
 import type { TestResult } from '../../background/editor';
 import type { StartResult } from '../../background/runs';
 import type { LibraryState } from '../../background/discovery';
@@ -40,7 +41,7 @@ export const RequestSchemas = {
   'problems.list': z.object({}),
   'problems.clear': z.object({}),
   'guide.get': z.object({ id: z.string().max(64) }),
-  'guide.all': z.object({}),
+  'guide.many': z.object({ ids: z.array(z.string().max(64)).max(1000) }),
   'guide.delete': z.object({ id: z.string().max(64) }),
   'guide.duplicate': z.object({ id: z.string().max(64) }),
   'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
@@ -70,6 +71,13 @@ export const RequestSchemas = {
       })
       .partial(),
   }),
+  // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
+  'hd.status': z.object({}),
+  'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
+  'hd.remove': z.object({}),
+  'hd.test': z.object({}),
+  // From the offscreen document only (checked by URL in the handler).
+  'hd.report': z.object({ status: HdStatusSchema.optional(), played: z.string().max(5000).optional() }),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -140,6 +148,11 @@ export interface ResponseMap {
   'voice.test': { ok: boolean };
   'voice.settings.get': VoiceSettings;
   'voice.settings.set': VoiceSettings;
+  'hd.status': HdStatus;
+  'hd.enable': HdStatus;
+  'hd.remove': HdStatus;
+  'hd.test': { ok: boolean };
+  'hd.report': { ok: true };
   'run.mute': { ok: boolean };
   'guide.get': Guide;
   'guide.save': Guide;
@@ -151,7 +164,7 @@ export interface ResponseMap {
   'guide.forPage': { guides: { id: string; title: string }[]; launcher: boolean };
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
-  'guide.all': { guides: Guide[] };
+  'guide.many': { guides: Guide[] };
   'guide.delete': { ok: boolean };
   'guide.duplicate': Guide;
   'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[] };
@@ -207,7 +220,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'site.list',
   'site.sync',
   'guide.list',
-  'guide.all',
+  'guide.many',
   'guide.delete',
   'guide.duplicate',
   'pack.check',
@@ -240,6 +253,11 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'voice.test',
   'voice.settings.get',
   'voice.settings.set',
+  'hd.status',
+  'hd.enable',
+  'hd.remove',
+  'hd.test',
+  'hd.report',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
