@@ -21,6 +21,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - On the page, the spotlight ring glides from one step to the next (the dim no longer flashes between steps), the tooltip rises into place, its progress bar eases, a press on the highlighted element ripples, and the REC pill's dot pulses softly. None of it delays a step or covers the element; all of it is off with reduced motion (D133).
 - The on-page `?` launcher pops in, presses and opens its menu with the same light motion (D134).
 
+### Changed
+- The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).
+
 ### Fixed
 - Move up / Move down in the editor no longer drop keyboard focus to the page (D131).
 - The tooltip's mute button can be pressed again in the same step to unmute; before, it kept the state from when the step was drawn (D106).

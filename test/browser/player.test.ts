@@ -205,7 +205,7 @@ describe('overlay drawing', () => {
     ui.clear();
   });
 
-  it('the done card is compact: no step count or bar, the check beside "Done!", one Close (D135)', async () => {
+  it('the done card is compact: no step count or bar, the check beside "Done!", one Close (D89)', async () => {
     const target = q('tb-new');
     const ui = new PlayerUI(handlers);
     ui.showCard('done', view(stepFor('click', target)));

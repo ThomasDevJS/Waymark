@@ -62,7 +62,7 @@ const CSS = `
   background: var(--wm-accent-soft); color: var(--wm-accent-text); }
 .badge-icon svg { width: 20px; height: 20px; }
 [data-card='done'] .badge-icon { background: var(--wm-success-soft); color: var(--wm-success); }
-/* Done (D135): the check beside "Done!" and the guide's name, Close under them; no header. */
+/* Done (D89): the check beside "Done!" and the guide's name, Close under them; no header. */
 [data-card='done'] { min-width: min(280px, calc(100vw - 16px)); }
 [data-card='done'] .tip-body { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: center; padding: 14px 16px; }
 [data-card='done'] .badge-icon { grid-row: 1 / span 2; align-self: center; margin: 0; width: 40px; height: 40px; }
@@ -422,7 +422,7 @@ export class PlayerUI {
     note.dir = 'auto';
     const buttons = el('div', 'buttons');
     if (kind === 'done') {
-      // Nothing left to count, mute or exit: the card is the check beside its two lines and Close (D135).
+      // Nothing left to count, mute or exit: the card is the check beside its two lines and Close (D89).
       tip.querySelector('.head')?.remove();
       tip.querySelector('.progress')?.remove();
       icon.append(buildSvg(CircleCheck));

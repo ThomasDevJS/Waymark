@@ -749,11 +749,13 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - The note is cleared as soon as the editor has unsaved edits, and stays cleared after saving (the editor's own status says what was saved).
 - **Tests**: `test/e2e/m2-recorder.spec.ts` (10-action scenario) edits a step after the recording, checks the note is gone, then at 300 px fills a long sentence and a 200-character word and checks the panel does not scroll sideways. Each assertion fails on the old code.
 
-### D89. The practice page is called "Tutorial page" and has no made-up names
-*5 Nov 2026 · SPEC: Built-in tutorials (D128)*
+### D89. Polish from testing: "Tutorial page" without made-up names, a compact done card, a lighter shade
+*5 Nov 2026 · SPEC: Built-in tutorials (D128); Player UI · issues #56, #57, #58*
 
 - **Change**: the page's header was a made-up brand ("Northwind Invoices", marked Practice) and its sample invoices had made-up company names. Thomas asked for it to say plainly what it is. The header is now **Tutorial page**, the samples are "Sample customer A/B/C", and every user-visible "practice page" (tab title, panel hint, button labels, the tour's first step and its voice line, a copied tutorial's note) now says "tutorial page". Internal names (`practice.html`, `practice-*` ids) are unchanged, so copied tutorials and tests keep working. D128 and `docs/UX.md` 5.1 describe the old name; this entry supersedes their wording.
-- **Tests**: `test/browser/practice.test.ts` checks the heading and that none of the old names appear; the tour's first-step text and voice line are checked in `test/unit/tutorials.test.ts` and `test/e2e/t1-tutorials.spec.ts`.
+- **Done card** (#57): it repeated the step header ("Step 1 of 1", a full bar, mute and X) above a check, "Done!" and the note stacked in a column, so it was tall for two lines of text. It now has no header: the check sits beside "Done!" and "You finished …", and Close is the one way out (Esc still closes). About half the height.
+- **Shade** (#58): the dim around a spotlighted element is 20% lighter by default (`--wm-scrim` 0.5 → 0.4 on light pages, 0.6 → 0.5 dark). A user and per-guide control for it is a separate feature (#58).
+- **Tests**: `test/browser/player.test.ts` checks the done card has no header or bar, one button, the check beside the title, and is under 130 px tall (it fails on the old card). `test/browser/practice.test.ts` checks the heading and that none of the old names appear; the tour's first-step text and voice line are checked in `test/unit/tutorials.test.ts` and `test/e2e/t1-tutorials.spec.ts`.
 
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
