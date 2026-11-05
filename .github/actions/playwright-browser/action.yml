@@ -5,7 +5,13 @@ runs:
   steps:
     - id: version
       shell: bash
-      run: echo "playwright=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Both packages carry a browser revision (e2e and Vitest browser mode); the key covers both.
+      # A failed lookup fails the step instead of writing an empty key.
+      run: |
+        t=$(node -p "require('@playwright/test/package.json').version")
+        p=$(node -p "require('playwright/package.json').version")
+        test -n "$t" && test -n "$p"
+        echo "playwright=$t-$p" >> "$GITHUB_OUTPUT"
     - id: cache
       uses: actions/cache@v4
       with:

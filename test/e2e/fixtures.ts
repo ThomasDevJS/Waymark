@@ -13,6 +13,9 @@ const KEYS_SCRIPT = join(process.cwd(), 'test', 'e2e', 'helpers', 'x11-keys.py')
 
 /** Chrome's permission prompt is a native dialog; it can only be accepted in a headed browser under X. */
 export const canGrant = process.platform === 'linux' && !!process.env.DISPLAY;
+// In CI a missing display must fail loudly: without it nearly every e2e test skips and the job
+// would pass green (D51).
+if (process.env.CI && !canGrant) throw new Error('CI must run the e2e tests under xvfb-run (no DISPLAY).');
 
 export async function launch(userDataDir: string): Promise<BrowserContext> {
   if (!existsSync(join(EXT_PATH, 'manifest.json'))) throw new Error('Run `pnpm build:test` first');

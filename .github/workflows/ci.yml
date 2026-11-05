@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 
-# Fast checks and the end-to-end shards run in parallel (D49). The Playwright browser is cached
+# Fast checks and the end-to-end shards run in parallel (D51). The Playwright browser is cached
 # per Playwright version; the pnpm store is cached by setup-node.
 jobs:
   check:
@@ -61,7 +61,7 @@ jobs:
         run: pnpm build:test
       - uses: ./.github/actions/playwright-browser
       - name: Install Xvfb and XTest (accepting the native permission dialog)
-        run: sudo apt-get install -y --no-install-recommends xvfb libxtst6
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libxtst6
       - name: End-to-end tests (headed under Xvfb), shard ${{ matrix.shard }} of 2
         run: xvfb-run -a pnpm exec playwright test --shard=${{ matrix.shard }}/2
       - if: failure()
