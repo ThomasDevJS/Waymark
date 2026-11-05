@@ -33,12 +33,15 @@ async function setRecording(state: RecordingState | null): Promise<void> {
   else await chrome.storage.session.remove(KEY);
 }
 
-/** Read-modify-write of the recording, serialized through the write queue. */
-function mutate<T>(fn: (state: RecordingState | null) => Promise<T> | T): Promise<T> {
+/**
+ * Read-modify-write of the recording, serialized through the write queue. With `writeIf`, the
+ * state is written back only when the result says something changed (refused steps cost no write).
+ */
+function mutate<T>(fn: (state: RecordingState | null) => Promise<T> | T, writeIf?: (out: T) => boolean): Promise<T> {
   return enqueue(async () => {
     const state = await getRecording();
     const out = await fn(state);
-    await setRecording(state);
+    if (!writeIf || writeIf(out)) await setRecording(state);
     return out;
   });
 }
@@ -192,8 +195,8 @@ export const recordingHandlers: Handlers = {
       if (top) addOrigin(st, new URL(top).origin);
       // The action's own time, not when this message got here: a route report it caused may
       // have been handled first (D67).
-      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at));
-    });
+      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at), tabId);
+    }, (ok) => ok);
     if (result) {
       const st = await getRecording();
       await broadcast(st, st?.tabIds ?? []);
@@ -213,7 +216,7 @@ export async function onRouteReport(
     if (!st || !isRecordingTab(st, tabId) || ctx.frameId !== 0) return st;
     const key = String(tabId);
     if (payload.via === 'leaving') {
-      st.leavingAt = { ...(st.leavingAt ?? {}), [key]: Date.now() };
+      st.leavingAt = { ...(st.leavingAt ?? {}), [key]: eventTime(payload.at) };
       return st;
     }
     const prevUrl = st.lastUrl[key];
@@ -235,7 +238,7 @@ export async function onRouteReport(
     if (step) {
       st.steps.push(step);
       // A click reported after this, but done just before the navigation, takes it back (D67).
-      st.pendingNav = { stepId: step.id, at: leavingAt ?? at };
+      st.pendingNav = [...(st.pendingNav ?? []), { stepId: step.id, at: leavingAt ?? at, tabId }].slice(-5);
       changed = true;
     }
     return st;

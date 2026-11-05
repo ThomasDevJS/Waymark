@@ -19,7 +19,7 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
     if (on && !recorder) {
       recorder = createRecorder({
         emit: (op) => {
-          send('rec.step', { ...op, at: Date.now() }).catch(() => undefined);
+          send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
         },
         isOwnEvent: isOverlayPath,
         framePath,

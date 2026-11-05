@@ -67,7 +67,7 @@ export function startContent(): void {
         .catch(() => undefined);
     }, (url) => {
       if (!contextAlive() || window !== window.top) return;
-      send('route.report', { url, via: 'leaving' }).catch(() => undefined);
+      send('route.report', { url, via: 'leaving', at: Date.now() }).catch(() => undefined);
     }),
   );
   disposers.push(watchContext(() => instance.dispose()));

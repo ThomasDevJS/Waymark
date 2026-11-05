@@ -82,6 +82,37 @@ describe('rec.step and route.report in either order (D67)', () => {
     expect((res as { steps: Step[] } | null)?.steps.map((s) => s.id)).toEqual(['c1']);
   });
 
+  it('route reports handled first (a redirect chain) are all taken back by the click that caused them', async () => {
+    const t = Date.now();
+    const current = stubChrome(startRecording('Orders', 7, `${ORIGIN}/`), 0);
+    const { recordingHandlers, onRouteReport } = await import('../../src/background/recording');
+    await onRouteReport({ url: `${ORIGIN}/a`, via: 'navigation-api', navigationType: 'push', at: t + 20 }, ctx);
+    await onRouteReport({ url: `${ORIGIN}/b`, via: 'navigation-api', navigationType: 'push', at: t + 40 }, ctx);
+    expect(current().steps.map((s) => s.kind)).toEqual(['navigate', 'navigate']);
+    await recordingHandlers['rec.step']!({ op: 'add', step: click('c1'), at: t }, ctx);
+    expect(current().steps.map((s) => s.kind)).toEqual(['click']);
+  });
+
+  it("a click in another tab never takes back this tab's navigation", async () => {
+    const t = Date.now();
+    const st = startRecording('Orders', 7, `${ORIGIN}/`);
+    st.tabIds.push(8);
+    st.lastUrl['8'] = `${ORIGIN}/`;
+    const current = stubChrome(st, 0);
+    const { recordingHandlers, onRouteReport } = await import('../../src/background/recording');
+    await onRouteReport({ url: `${ORIGIN}/a`, via: 'navigation-api', navigationType: 'push', at: t + 20 }, { ...ctx, tabId: 8 });
+    await recordingHandlers['rec.step']!({ op: 'add', step: click('c1'), at: t }, ctx);
+    expect(current().steps.map((s) => s.kind)).toEqual(['navigate', 'click']);
+  });
+
+  it("the leaving page's own time marks the start of a full page load", async () => {
+    const t = Date.now();
+    const current = stubChrome(startRecording('Orders', 7, `${ORIGIN}/`), 0);
+    const { onRouteReport } = await import('../../src/background/recording');
+    await onRouteReport({ url: `${ORIGIN}/`, via: 'leaving', at: t - 500 }, ctx);
+    expect(current().leavingAt?.['7']).toBe(t - 500);
+  });
+
   it('a navigation long after the click is still its own step, in either order', async () => {
     const t = Date.now();
     const current = stubChrome(startRecording('Orders', 7, `${ORIGIN}/`), 60);
@@ -103,13 +134,14 @@ describe('event times from pages (D67)', () => {
     expect(eventTime(Number.NaN, now)).toBe(now);
     expect(eventTime(now - 60_000, now)).toBe(now); // a page cannot move its click a minute back
     expect(eventTime(now + 60_000, now)).toBe(now);
+    expect(eventTime(now + 5_000, now)).toBe(now); // never in the future: it would hide later navigations
   });
 
   it('a navigate step is taken back by an action done just before it, reported after it', async () => {
     const { applyOp, startRecording: start } = await import('../../src/core/recorder/session');
     const st = start('T', 7, `${ORIGIN}/`, 0);
     st.steps.push({ id: 'n1', kind: 'navigate', title: 'Go to Orders', url: { kind: 'pattern', value: '/orders' }, advance: 'action' });
-    st.pendingNav = { stepId: 'n1', at: 10_000 };
+    st.pendingNav = [{ stepId: 'n1', at: 10_000 }];
     applyOp(st, { op: 'add', step: click('c2') }, 9_900);
     expect(st.steps.map((s) => s.id)).toEqual(['c2']);
     expect(st.pendingNav).toBeUndefined();
@@ -119,7 +151,7 @@ describe('event times from pages (D67)', () => {
     const { applyOp, startRecording: start } = await import('../../src/core/recorder/session');
     const st = start('T', 7, `${ORIGIN}/`, 0);
     st.steps.push({ id: 'n1', kind: 'navigate', title: 'Go to Orders', url: { kind: 'pattern', value: '/orders' }, advance: 'action' });
-    st.pendingNav = { stepId: 'n1', at: 10_000 };
+    st.pendingNav = [{ stepId: 'n1', at: 10_000 }];
     applyOp(st, { op: 'add', step: { ...click('c3'), url: { kind: 'pattern', value: '/orders' } } }, 10_100);
     expect(st.steps.map((s) => s.id)).toEqual(['n1', 'c3']);
   });
@@ -128,7 +160,7 @@ describe('event times from pages (D67)', () => {
     const { applyOp, startRecording: start } = await import('../../src/core/recorder/session');
     const st = start('T', 7, `${ORIGIN}/`, 0);
     st.steps.push({ id: 'n1', kind: 'navigate', title: 'Go to Orders', url: { kind: 'pattern', value: '/orders' }, advance: 'action' });
-    st.pendingNav = { stepId: 'n1', at: 10_000 };
+    st.pendingNav = [{ stepId: 'n1', at: 10_000 }];
     applyOp(st, { op: 'add', step: click('c2') }, 12_000); // clicked on the new page, 2 s later
     expect(st.steps.map((s) => s.id)).toEqual(['n1', 'c2']);
   });
