@@ -12,6 +12,7 @@
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
+import { ariaRole } from '../debug/log';
 
 export const SUBMIT_NAV_MS = 1500;
 /** A press on the target and a click on its ancestor within this time are one click (D61). */
@@ -129,7 +130,7 @@ export function watchAdvance(w: AdvanceWatch): () => void {
               : !el || !p.path.includes(el)
                 ? 'pressed on the target, released on another element'
                 : 'released on a control of its own, which takes the click';
-        return { why, distancePx: dist, tag: el ? tagOf(el) : null, role: el?.getAttribute('role') ?? null, inside: !!el && w.targets.some((t) => t.contains(el) || el.contains(t)) };
+        return { why, distancePx: dist, tag: el ? tagOf(el) : null, role: ariaRole(el?.getAttribute('role')), inside: !!el && w.targets.some((t) => t.contains(el) || el.contains(t)) };
       });
     });
   }

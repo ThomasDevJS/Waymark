@@ -148,6 +148,25 @@ describe('advance rules', () => {
     expect(log.at(-1)).toEqual({ ev: 'advance', d: { kind: 'click', why: 'a click on the target' } });
   });
 
+  it('a near-miss logs only real ARIA role names, never a page-written role string (review #4)', async () => {
+    const log: Logged[] = [];
+    const b = button(300, 300);
+    const odd = Object.assign(document.createElement('span'), { textContent: 'odd' });
+    odd.setAttribute('role', 'customer jane.doe secret note');
+    odd.style.cssText = 'position:fixed;left:300px;top:345px;width:60px;height:20px;z-index:10';
+    const tab = Object.assign(document.createElement('span'), { textContent: 'tab' });
+    tab.setAttribute('role', 'tab');
+    tab.style.cssText = 'position:fixed;left:420px;top:300px;width:40px;height:20px;z-index:10';
+    document.body.append(odd, tab);
+    added.push(odd, tab);
+    stops.push(watchAdvance({ step: stepFor(b), targets: [b], onAdvance: () => undefined, debug: (ev, d) => log.push({ ev, d: d() }) }));
+    await userEvent.click(odd);
+    await userEvent.click(tab);
+    const roles = log.filter((l) => l.ev === 'click.miss').map((l) => l.d.role);
+    expect(roles).toEqual([null, 'tab']);
+    expect(JSON.stringify(log)).not.toContain('jane.doe');
+  });
+
   it('a logger that throws never stops the step from advancing', async () => {
     const b = button(300, 300);
     let advanced = 0;

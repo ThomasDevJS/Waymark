@@ -10,6 +10,7 @@ import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
 import { buildFingerprint } from '../fingerprint/build';
 import { hasStrongSignal, presentSignals } from '../matcher/signals';
+import { ariaRole } from '../debug/log';
 import { isInteractive, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
 import { hasInteractiveAncestor, promoteToRegion } from './region';
 import { safeLabel } from '../fingerprint/filters';
@@ -44,7 +45,7 @@ export interface RecorderOptions {
 
 /** What a fingerprint can be found by, for the debug log: names only. */
 export function fpFacts(fp: ElementFingerprint): Record<string, unknown> {
-  return { tag: fp.tag, role: fp.role ?? null, signals: presentSignals(fp), instance: fp.instance, alike: fp.matchCount, strong: hasStrongSignal(fp) };
+  return { tag: fp.tag, role: ariaRole(fp.role), signals: presentSignals(fp), instance: fp.instance, alike: fp.matchCount, strong: hasStrongSignal(fp) };
 }
 
 export const PENDING_LINK_MS = 1000;

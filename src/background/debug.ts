@@ -13,6 +13,7 @@
 import type { Handlers, HandlerContext } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import {
+  CONTENT_RATE_MAX,
   appendEntries,
   asBuffer,
   browserName,
@@ -37,6 +38,8 @@ export const FLUSH_MS = 250;
 let enabled: boolean | null = null;
 let init: Promise<boolean> | null = null;
 let pending: NewEntry[] = [];
+/** Content entries dropped before they were written (a page sending faster than the rate). */
+let pendingDropped = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let tail: Promise<unknown> = Promise.resolve();
 
@@ -64,7 +67,10 @@ function onStorageChanged(changes: Record<string, chrome.storage.StorageChange>,
 
 function setEnabled(on: boolean) {
   enabled = on;
-  if (!on) pending = [];
+  if (!on) {
+    pending = [];
+    pendingDropped = 0;
+  }
 }
 
 /** Reads the switch once per service worker start; later changes arrive through onChanged. */
@@ -99,9 +105,12 @@ export function flushDebug(): Promise<void> {
   return serial(async () => {
     if (!enabled || !pending.length) return;
     const batch = pending;
+    const dropped = pendingDropped;
     pending = [];
+    pendingDropped = 0;
     try {
       const buf = asBuffer((await chrome.storage.session.get(DEBUG_LOG_KEY))[DEBUG_LOG_KEY]);
+      buf.dropped += dropped;
       appendEntries(buf, batch, Date.now());
       await chrome.storage.session.set({ [DEBUG_LOG_KEY]: buf });
     } catch {
@@ -112,8 +121,12 @@ export function flushDebug(): Promise<void> {
 
 function push(e: NewEntry) {
   if (enabled === false) return;
-  // Before the switch is known, entries wait (a few at most), then go or are dropped.
-  if (pending.length >= DEBUG_CAP) pending.shift();
+  // Before the switch is known, entries wait (a few at most), then go or are dropped. When the
+  // queue is full the new entry goes, never an older one: no sender can push others out.
+  if (pending.length >= DEBUG_CAP) {
+    if (e.content) pendingDropped++;
+    return;
+  }
   pending.push(e);
   if (enabled === null) void debugReady();
   else schedule();
@@ -249,6 +262,8 @@ export async function debugTextForTab(tabId: number, origin: string, run: Run | 
 }
 
 export async function setDebug(on: boolean): Promise<DebugSetting> {
+  // Off takes effect at once, before the storage write: nothing is collected in between.
+  if (!on) setEnabled(false);
   const prev = await getDebugSetting();
   const next: DebugSetting = on ? { on: true, since: prev.on && prev.since ? prev.since : new Date().toISOString() } : { on: false };
   await chrome.storage.local.set({ [DEBUG_SETTING_KEY]: next });
@@ -265,9 +280,15 @@ export async function setDebug(on: boolean): Promise<DebugSetting> {
   return next;
 }
 
+/**
+ * Empties the log. Entries still waiting in a page, or on their way, carry an earlier time and
+ * are dropped when they arrive (`clearedAt`).
+ */
 export async function clearDebug(): Promise<void> {
   pending = [];
-  await serial(() => chrome.storage.session.set({ [DEBUG_LOG_KEY]: emptyBuffer() }));
+  pendingDropped = 0;
+  const clearedAt = Date.now();
+  await serial(() => chrome.storage.session.set({ [DEBUG_LOG_KEY]: { ...emptyBuffer(), clearedAt } }));
 }
 
 /** Entries from a content script, for its own tab and frame (sender, never payload). */
@@ -275,7 +296,17 @@ export async function addContentEntries(entries: ContentEntry[], ctx: HandlerCon
   if (ctx.tabId === undefined || !(await debugReady())) return false;
   const now = Date.now();
   const origin = ctx.sender.origin ?? null;
-  for (const e of entries) push({ at: entryTime(e.t, now), tab: ctx.tabId, frame: ctx.frameId ?? null, o: origin, src: e.src, ev: e.ev, d: e.d, content: true });
+  // The per-tab rate applies here too, before the entries wait for the next write: a page sending
+  // many batches between two writes cannot crowd out the other tabs' entries (review of D110).
+  let waiting = pending.filter((p) => p.content && p.tab === ctx.tabId).length;
+  for (const e of entries) {
+    if (waiting >= CONTENT_RATE_MAX) {
+      pendingDropped++;
+      continue;
+    }
+    waiting++;
+    push({ at: entryTime(e.t, now), tab: ctx.tabId, frame: ctx.frameId ?? null, o: origin, src: e.src, ev: e.ev, d: e.d, content: true });
+  }
   return true;
 }
 
@@ -317,6 +348,7 @@ export function _resetDebugForTests(): void {
   enabled = null;
   init = null;
   pending = [];
+  pendingDropped = 0;
   if (timer !== null) clearTimeout(timer);
   timer = null;
   tail = Promise.resolve();

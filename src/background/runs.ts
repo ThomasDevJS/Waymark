@@ -17,6 +17,15 @@ import { siteAllowed } from './site-access';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
 
+/** The origin of a page an entry names, so a page's own Copy log leaves out other sites (D111). */
+function originOf(url: string | undefined): string | null {
+  try {
+    return url ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Step facts for the debug log: position, kind and the guide's own title (D110). */
 function stepFacts(run: Run): Record<string, unknown> {
   const step = currentStep(run);
@@ -188,7 +197,7 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
     if (!step) throw new Error(`This guide has no step ${stepIndex + 1}.`);
     if (!url || !onStepPage(guide, stepIndex, url)) return { status: 'needs-start', startUrl: guide.startUrl, reachable: false, pattern: step.url.value, stepIndex };
     const run = startRun(guide, Date.now(), stepIndex);
-    dlog('run', 'run.start', { tab: tabId }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url) }));
+    dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url) }));
     await enqueue(async () => {
       await chrome.storage.session.remove(boardKey(tabId));
       await chrome.storage.session.set({ [runKey(tabId)]: run });
@@ -205,7 +214,7 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
     await chrome.tabs.update(tabId, { url: guide.startUrl });
   }
   const run = startRun(guide);
-  dlog('run', 'run.start', { tab: tabId }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url) }));
+  dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url) }));
   await enqueue(async () => {
     await chrome.storage.session.remove(boardKey(tabId));
     await chrome.storage.session.set({ [runKey(tabId)]: run });
@@ -357,7 +366,7 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
     return true;
   });
   if (moved) {
-    dlog('run', 'run.moved', { tab: newId }, { from: opener, url: redactUrl(url) });
+    dlog('run', 'run.moved', { tab: newId, o: originOf(url) }, { from: opener, url: redactUrl(url) });
     await broadcast(opener);
     await broadcast(newId);
     await voiceSync(newId);

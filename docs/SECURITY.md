@@ -52,7 +52,7 @@ Out of scope: a compromised browser or OS, a malicious extension with `debugger`
 - Content scripts receive only ids and titles of guides for their own origin, and the current step of a run on their tab.
 - Typed values are never stored; the data-like filter is applied to every label-like string that is stored (accessible name, own text, placeholder, option label, link path, URL segment, page title).
 - Nothing about the user's pages goes to logs (`console.*`) in production builds.
-- The debug log (D110–D112) is collected only while its switch is on. Content scripts append through `debug.log` only (Zod-checked, own tab and frame from the sender, 50 entries per message, 100 per tab per second, values capped and redacted again by the service worker). `debug.copy` gives a content script only its own tab's entries since its run started, about its own site or the run, with no settings, and only when that run's guide includes the sender's origin.
+- The debug log (D110–D112) is collected only while its switch is on. Content scripts append through `debug.log` only (Zod-checked, own tab and frame from the sender, 50 entries per message, 100 per tab per second both when they arrive and when they are written, strings of 200 characters, lists of 20 × 60, at most 1 KB per stored entry, redacted again by the service worker; a full queue drops new entries, never older ones). `debug.copy` gives a content script only its own tab's entries since its run started, about its own site or the run, with no settings, and only when that run's guide includes the sender's origin.
 
 ## Audit (4 Nov 2026)
 

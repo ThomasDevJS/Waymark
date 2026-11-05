@@ -296,3 +296,81 @@ describe('service worker logger', () => {
     expect(await dbg.debugTextForTab(7, 'https://a.test', null)).toBeNull();
   });
 });
+
+// ---- review fixes (independent review of D110–D112); each fails on the first version ----
+
+describe('review fixes', () => {
+  it('#1 an entry is at most 1 KB stored, and a full buffer stays far below the session quota', async () => {
+    const { ContentEntrySchema, MAX_ENTRY_BYTES } = await import('../../src/core/debug/log');
+    const fat = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, Array.from({ length: 20 }, () => 'x'.repeat(60))]));
+    // The schema already refuses what sanitizeData would clip anyway.
+    expect(ContentEntrySchema.safeParse({ t: 1, src: 'match', ev: 'x', d: { a: 'x'.repeat(201) } }).success).toBe(false);
+    expect(ContentEntrySchema.safeParse({ t: 1, src: 'match', ev: 'x', d: { a: Array(21).fill('x') } }).success).toBe(false);
+    expect(ContentEntrySchema.safeParse({ t: 1, src: 'match', ev: 'x', d: { a: ['x'.repeat(61)] } }).success).toBe(false);
+    const buf = appendEntries(emptyBuffer(), Array.from({ length: DEBUG_CAP }, (_, i) => entry(i, { d: fat })), 0);
+    for (const e of buf.entries) expect(JSON.stringify(e).length).toBeLessThanOrEqual(MAX_ENTRY_BYTES);
+    expect(buf.entries[0]!.d).toContainEqual(['truncated', true]);
+    expect(JSON.stringify(buf).length).toBeLessThan(2.2 * 1024 * 1024);
+  });
+
+  it('#2 one tab flooding the log cannot push out other tabs’ or the service worker’s entries', async () => {
+    const { session } = stubChrome({ on: true });
+    const dbg = await import('../../src/background/debug');
+    await dbg.debugReady();
+    dbg.dlog('run', 'mine', { tab: 7 });
+    await dbg.addContentEntries([{ t: Date.now(), src: 'match', ev: 'other-tab' }], content(8, 'https://a.test'));
+    for (let i = 0; i < 40; i++) await dbg.addContentEntries(Array.from({ length: 50 }, () => ({ t: Date.now(), src: 'match' as const, ev: 'flood' })), content(9, 'https://evil.test'));
+    await dbg.flushDebug();
+    const buf = session[DEBUG_LOG_KEY] as DebugBuffer;
+    expect(buf.entries.map((e) => e.ev)).toEqual(expect.arrayContaining(['mine', 'other-tab']));
+    expect(buf.entries.filter((e) => e.ev === 'flood')).toHaveLength(CONTENT_RATE_MAX);
+    expect(buf.dropped).toBe(2000 - CONTENT_RATE_MAX);
+  });
+
+  it('#3 the page’s copy never holds the address of the page the tab was on before the guide opened its start page', async () => {
+    const { session, local } = stubChrome({ on: true });
+    const guide = {
+      id: '01GUIDE0000000000000000000', revisionId: '01REV00000000000000000000', title: 'Guide', lang: 'en', version: 1, schemaVersion: 1, tags: [], matchUrls: [], source: 'local', appOrigins: ['https://a.test'],
+      startUrl: 'https://a.test/', createdAt: '2026-11-05T00:00:00.000Z', updatedAt: '2026-11-05T00:00:00.000Z',
+      steps: [{ id: 's1', kind: 'click', title: 'Click **Save**', url: { kind: 'pattern', value: '/' }, advance: 'action', target: { instance: 'unique', matchCount: 1, tag: 'button', role: 'button', accessibleName: 'Save', cssPath: 'button', xpath: '/html[1]/body[1]/button[1]', ancestors: [], shadowPath: [], framePath: [], rect: { x: 0, y: 0, w: 1, h: 1, vw: 1, vh: 1 } } }],
+    };
+    local['guide:' + guide.id] = guide;
+    let url = 'https://bank.example/accounts/summary';
+    Object.assign(chrome, {
+      tabs: { ...chrome.tabs, get: async () => ({ id: 7, url }), update: async (_id: number, p: { url: string }) => void (url = p.url) },
+      permissions: { ...chrome.permissions, contains: async () => true },
+      windows: { getLastFocused: async () => ({ id: 1 }) },
+      tts: undefined,
+    });
+    const { guideKey } = await import('../../src/core/storage/guides');
+    local[guideKey(guide.id)] = guide;
+    const dbg = await import('../../src/background/debug');
+    await dbg.debugReady();
+    const runs = await import('../../src/background/runs');
+    expect(await runs.startRunInTab(7, guide.id, true)).toEqual({ status: 'started' });
+    await dbg.flushDebug();
+    const text = (await dbg.debugTextForTab(7, 'https://a.test', session['run:7'] as never))!;
+    // That entry is about the previous page's site, so this page's copy leaves it out.
+    expect(text).not.toContain('bank.example');
+    // The full log still has it, as the site and path only.
+    expect(await dbg.debugText()).toContain('url=https://bank.example/accounts/summary');
+  });
+
+  it('#5 step rules in the log lose kept query keys and anything after #', () => {
+    expect(sanitizeData({ page: '/orders?tab=open', expected: '/x?id=:id#frag' })).toEqual({ page: '/orders', expected: '/x' });
+  });
+
+  it('#6 Clear also drops entries still on their way from pages; switching off stops at once', async () => {
+    const { session } = stubChrome({ on: true });
+    const dbg = await import('../../src/background/debug');
+    await dbg.debugReady();
+    const before = Date.now() - 200; // waited in the page, sent after Clear
+    await dbg.clearDebug();
+    await dbg.addContentEntries([{ t: before, src: 'match', ev: 'late' }], content(7, 'https://a.test'));
+    await dbg.flushDebug();
+    expect((session[DEBUG_LOG_KEY] as DebugBuffer).entries.map((e) => e.ev)).not.toContain('late');
+    const off = dbg.setDebug(false);
+    expect(dbg.debugOn()).toBe(false);
+    await off;
+  });
+});

@@ -22,6 +22,12 @@ export const MAX_BATCH = 50;
 export const MAX_STRING = 200;
 export const MAX_KEYS = 16;
 export const MAX_LIST = 20;
+export const MAX_LIST_ITEM = 60;
+/**
+ * One stored entry is at most this long as JSON, so 2,000 entries stay near 2 MB, far below the
+ * 10 MB of chrome.storage.session (review of D110). Values past it are left out, last first.
+ */
+export const MAX_ENTRY_BYTES = 1024;
 /** A content script's own time is used when it is this close to the service worker's clock (D67). */
 export const CLOCK_SKEW_MS = 10_000;
 
@@ -60,6 +66,8 @@ export interface DebugBuffer {
   dropped: number;
   /** Rate-limit windows per tab: window start and entries in it. */
   rate: Record<string, { w: number; n: number }>;
+  /** When the log was last cleared: entries from before (still on their way from a page) are dropped. */
+  clearedAt?: number;
 }
 
 export interface DebugSetting {
@@ -81,6 +89,7 @@ export function asBuffer(raw: unknown): DebugBuffer {
     entries: b.entries.slice(-DEBUG_CAP),
     dropped: typeof b.dropped === 'number' ? b.dropped : 0,
     rate: b.rate && typeof b.rate === 'object' ? b.rate : {},
+    ...(typeof b.clearedAt === 'number' ? { clearedAt: b.clearedAt } : {}),
   };
 }
 
@@ -93,7 +102,8 @@ const KEY = /^[a-zA-Z][a-zA-Z0-9]{0,23}$/;
  */
 const DENIED_KEYS = new Set(['value', 'values', 'typed', 'password', 'query', 'search', 'hash', 'fragment', 'href', 'html', 'innerText', 'textContent']);
 
-const valueSchema = z.union([z.string().max(2000), z.number(), z.boolean(), z.null(), z.array(z.string().max(500)).max(100)]);
+// The same limits sanitizeData applies, so nothing larger is ever accepted from a page.
+const valueSchema = z.union([z.string().max(MAX_STRING), z.number(), z.boolean(), z.null(), z.array(z.string().max(MAX_LIST_ITEM)).max(MAX_LIST)]);
 
 /** One entry from a content script (`debug.log`). Tab, frame and origin come from the sender. */
 export const ContentEntrySchema = z.object({
@@ -121,6 +131,18 @@ export function redactUrl(href: string | undefined | null): string {
   return u.origin + normalizePath(u.pathname);
 }
 
+/** WAI-ARIA role names. A `role` value is logged only when it is one of these (a page can write anything there). */
+const ARIA_ROLES = new Set(
+  (
+    'alert alertdialog application article banner blockquote button caption cell checkbox code columnheader combobox comment complementary contentinfo definition deletion dialog directory document emphasis feed figure form generic grid gridcell group heading img image insertion link list listbox listitem log main mark marquee math menu menubar menuitem menuitemcheckbox menuitemradio meter navigation none note option paragraph presentation progressbar radio radiogroup region row rowgroup rowheader scrollbar search searchbox separator slider spinbutton status strong subscript superscript switch tab table tablist tabpanel term textbox time timer toolbar tooltip tree treegrid treeitem'
+  ).split(' '),
+);
+
+/** The role if it is a WAI-ARIA role name, else null. */
+export function ariaRole(role: string | null | undefined): string | null {
+  return role && ARIA_ROLES.has(role) ? role : null;
+}
+
 function clip(s: string, max = MAX_STRING): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
@@ -142,8 +164,11 @@ export function sanitizeData(d: Record<string, unknown> | undefined): DebugData 
     else if (typeof v === 'string') {
       if (k === 'url') val = redactUrl(v);
       else if (k === 'path') val = v.startsWith('/') ? normalizePath(v.split(/[?#]/)[0]!) : clip(v);
+      // Step URL rules can keep query keys (site profiles): the path only, like every address.
+      else if (k === 'page' || k === 'expected') val = clip(v.split(/[?#]/)[0]!);
+      else if (k === 'role') val = ariaRole(v);
       else val = clip(v);
-    } else if (Array.isArray(v)) val = v.slice(0, MAX_LIST).map((x) => clip(String(x), 60));
+    } else if (Array.isArray(v)) val = v.slice(0, MAX_LIST).map((x) => clip(String(x), MAX_LIST_ITEM));
     if (val === undefined) continue;
     out[k] = val;
     n++;
@@ -169,6 +194,7 @@ export interface NewEntry {
  */
 export function appendEntries(buf: DebugBuffer, items: NewEntry[], now: number, cap = DEBUG_CAP): DebugBuffer {
   for (const it of items) {
+    if (buf.clearedAt !== undefined && it.at < buf.clearedAt) continue;
     if (it.content && it.tab !== null) {
       const key = String(it.tab);
       const r = buf.rate[key];
@@ -182,6 +208,10 @@ export function appendEntries(buf: DebugBuffer, items: NewEntry[], now: number, 
     const d = sanitizeData(it.d);
     const e: DebugEntry = { n: ++buf.seq, at: it.at, tab: it.tab, frame: it.frame, o: it.o, src: it.src, ev: it.ev };
     if (d) e.d = Object.entries(d);
+    if (e.d && JSON.stringify(e).length > MAX_ENTRY_BYTES) {
+      e.d.push(['truncated', true]);
+      while (e.d.length > 1 && JSON.stringify(e).length > MAX_ENTRY_BYTES) e.d.splice(-2, 1);
+    }
     buf.entries.push(e);
   }
   if (buf.entries.length > cap) buf.entries.splice(0, buf.entries.length - cap);
