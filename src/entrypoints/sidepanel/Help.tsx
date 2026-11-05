@@ -50,7 +50,7 @@ export function HelpTip({ label, children, testid }: { label: string; children?:
         <Icon name="help" />
       </button>
       {open && (
-        <span class="help-text small" id={id} data-testid={testid ? `${testid}-text` : undefined}>
+        <span class="help-text small unfold" id={id} data-testid={testid ? `${testid}-text` : undefined}>
           {children}
         </span>
       )}
@@ -63,7 +63,7 @@ export function HelpCard({ extra }: { extra?: ComponentChildren }) {
   if (!helpOpen.value) return null;
   return (
     <section
-      class="card help-card"
+      class="card help-card unfold"
       id="help"
       aria-labelledby="help-title"
       data-testid="help"

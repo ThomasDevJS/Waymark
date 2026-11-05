@@ -4,7 +4,7 @@
  * Save bumps the guide version.
  */
 import { signal } from '@preact/signals';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useLayoutEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { ElementFingerprint, Guide, Step } from '../../core/model/schema';
 import { newId } from '../../core/model/ids';
@@ -16,6 +16,7 @@ import { FLAG_HELP, FlagNotes, KIND } from './steps';
 import { parseTags } from '../../core/discovery/tags';
 import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
+import { useFlipList } from '../../ui/useMotion';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -70,7 +71,16 @@ function patchStep(id: string, patch: Partial<Step>) {
   );
 }
 
+/**
+ * The step whose Move up / Move down button had focus: reordering re-inserts its row, which
+ * drops focus to the page, so the button gets it back after the render (D130).
+ */
+let refocusMove: { id: string; dir: 'up' | 'down' } | null = null;
+
 function move(index: number, by: number) {
+  const active = document.activeElement;
+  const id = draft.value?.steps[index]?.id;
+  refocusMove = id && active?.closest(`[data-flip="${CSS.escape(id)}"]`) ? { id, dir: by < 0 ? 'up' : 'down' } : null;
   setSteps((steps) => {
     const to = index + by;
     if (to < 0 || to >= steps.length) return steps;
@@ -148,6 +158,17 @@ export function editorHasUnsavedEdits(): boolean {
 }
 
 export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: number | null; onClose: () => void }) {
+  const stepFlip = useFlipList<HTMLOListElement>(draft.value?.steps.map((s) => s.id) ?? []);
+  useLayoutEffect(() => {
+    const r = refocusMove;
+    if (!r) return;
+    refocusMove = null;
+    const row = stepFlip.ref.current?.querySelector(`[data-flip="${CSS.escape(r.id)}"]`);
+    if (!row || row.contains(document.activeElement)) return;
+    // At the top or bottom the pressed button is now disabled: the other one takes focus.
+    const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('[data-testid$="-up"], [data-testid$="-down"]'));
+    (buttons.find((b) => b.dataset.testid!.endsWith(`-${r.dir}`) && !b.disabled) ?? buttons.find((b) => !b.disabled))?.focus();
+  });
   useEffect(() => {
     // Back from a recording started with the shortcut: the unsaved draft of this guide is kept.
     if (draft.value?.id === guideId && dirty.value) return () => dismissScope('editor');
@@ -290,7 +311,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         </button>
       </div>
       <p class="hint">Open a step to change its text, test it or point it at another element. Use the arrows to reorder.</p>
-      <ol class="edit-steps" aria-label="Steps">
+      <ol class="edit-steps" aria-label="Steps" ref={stepFlip.ref}>
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
@@ -302,7 +323,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           const more = moreSteps.value.has(s.id);
           const moreId = `step-more-${s.id}`;
           return (
-            <li key={s.id} class={`edit-step${isPicking ? ' picking' : ''}${open ? ' open' : ''}`} data-testid={`step-${i}`} aria-labelledby={titleId}>
+            <li key={s.id} class={`edit-step ${stepFlip.enter(s.id)}${isPicking ? ' picking' : ''}${open ? ' open' : ''}`} data-flip={s.id} data-testid={`step-${i}`} aria-labelledby={titleId}>
               <div class="step-head">
                 <span class="num" aria-hidden="true">
                   {i + 1}
@@ -343,11 +364,11 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   <span class="grow">
                     <Markdown text={s.title || 'Untitled step'} noLinks />
                   </span>
-                  <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+                  <Icon name="chevron-down" class="chev" />
                 </button>
               </h4>
               {open && (
-                <div class="step-body" id={bodyId}>
+                <div class="step-body unfold" id={bodyId}>
                   <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
                   <label class="field">
                     <span class="label">
@@ -414,11 +435,11 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     )}
                     <button type="button" class="ghost sm push" data-testid={`step-${i}-more`} aria-expanded={more} aria-controls={more ? moreId : undefined} onClick={() => toggleIn(moreSteps, s.id)}>
                       More options
-                      <Icon name={more ? 'chevron-up' : 'chevron-down'} />
+                      <Icon name="chevron-down" class="chev" />
                     </button>
                   </div>
                   {more && (
-                    <div class="step-more" id={moreId}>
+                    <div class="step-more unfold" id={moreId}>
                       <label class="field">
                         <span class="label">
                           Spoken text <span class="hint">· what the voice says; leave empty to read the title and note</span>
@@ -510,6 +531,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         )}
         {status.value && (
           <p class="status-text ok" role="status" data-testid="editor-status">
+            {status.value.startsWith('Saved') && <Icon key={status.value} name="check" class="tick" />}
             {status.value}
           </p>
         )}

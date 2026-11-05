@@ -194,7 +194,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             </div>
             {rv.status === 'running' && rv.total > 0 && (
               <div class="meter" role="progressbar" aria-label="Guide progress" aria-valuemin={1} aria-valuemax={rv.total} aria-valuenow={rv.stepIndex + 1}>
-                <span style={{ width: `${((rv.stepIndex + 1) / rv.total) * 100}%` }} />
+                <span class="fill" style={{ transform: `scaleX(${(rv.stepIndex + 1) / rv.total})` }} />
               </div>
             )}
           </section>
@@ -329,7 +329,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
       {r.steps.length ? (
         <ol class="live-steps" data-testid="steps" aria-label="Recorded steps">
           {r.steps.map((s, i) => (
-            <li key={s.id} data-kind={s.kind}>
+            <li key={s.id} class="enter" data-kind={s.kind}>
               <span class="num" aria-hidden="true">
                 {i + 1}
               </span>

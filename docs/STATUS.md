@@ -38,6 +38,11 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Adding a tutorial: add it to the pack; any new target needs a `data-guide-id` on the practice page (and an entry in `VIEW_OF` if it lives in a view). `test/browser/practice.test.ts` fails if a target is missing or not found uniquely.
 - Tests: `test/unit/tutorials.test.ts`, `test/browser/practice.test.ts`, e2e `test/e2e/t1-tutorials.spec.ts` (test hook: `data-waymark-test-practice` = `drawn:N`, `not-found:N`, `off-track:N`, `done:N`, `finished`, `exited`).
 
+## Motion (D130–D132, issue #43)
+- Tokens (durations, easings, distances, press scales) and the reduced-motion path are in `src/ui/tokens.css`; the CSS rules are the "motion" section of `src/ui/components.css`. JS helpers: `src/ui/motion.ts` (`reducedMotion`, `flipList`), `src/ui/useMotion.ts` (`useFlipList` for reorderable lists).
+- Rules: animate only transform and opacity (a unit test reads every stylesheet), 80–240 ms, nothing moves under reduced motion, never move something the player may be measuring, never take focus or change what screen readers hear.
+- Tests: `test/unit/motion.test.ts`, `test/browser/motion.test.ts`. Frame times: `pnpm motion:bench` (4× slower CPU, results in `artifacts/motion/`). Frame sequences: `pnpm screens` (`test/screens/motion.spec.ts`) and `scripts/frames.py`.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.
@@ -73,6 +78,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 ## Running and debugging tests
 - `pnpm check`: typecheck, lint, both builds, manifest guard, unit (happy-dom) and browser-mode Vitest. Run it before every push (see CLAUDE.md).
 - `pnpm screens`: screenshots of every panel, settings and on-page state, light and dark, into `artifacts/screens/` (D90). Not part of `pnpm check`; run it for UI changes and compare with a set made before the change (`SHOTS=before pnpm screens`).
+- `pnpm motion:bench`: frame times of the panel and player animations with the CPU slowed 4× (D132). Not part of `pnpm check`; run it when touching motion.
 - `pnpm bench`: the performance harness (`test/perf/`, 500 guides of 50 steps through the service worker paths). Not part of `pnpm check`; run it when touching storage, the index, badges or search (D49).
 - **Demo app for manual testing:** `pnpm demo` serves `demo/` at http://localhost:8080 (see `demo/README.md`).
 - `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (31 tests, about 3 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).

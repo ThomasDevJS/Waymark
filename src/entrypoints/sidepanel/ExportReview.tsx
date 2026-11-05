@@ -126,7 +126,7 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
       <fieldset class="formats" data-testid="export-format">
         <legend class="label">Format</legend>
         {FORMATS.map((x) => (
-          <label key={x.value} class={`format${f === x.value ? ' on' : ''}`}>
+          <label key={x.value} class={`format lift pressable${f === x.value ? ' on' : ''}`}>
             <input type="radio" name="export-format" value={x.value} checked={f === x.value} data-testid={`format-${x.value}`} onChange={() => (format.value = x.value)} />
             <span class="stack-sm">
               <strong>{x.label}</strong>

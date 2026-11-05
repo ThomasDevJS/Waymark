@@ -151,11 +151,11 @@ function SiteCard({ t }: { t: TabInfo | null }) {
           onClick={() => (siteOptionsOpen.value = open ? null : t.origin)}
         >
           Site options
-          <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+          <Icon name="chevron-down" class="chev" />
         </button>
       </div>
       {open && (
-        <div class="site-options stack-sm" id="site-options">
+        <div class="site-options stack-sm unfold" id="site-options">
           <LauncherToggle origin={t.origin} />
           <div class="row">
             <button type="button" class="ghost sm danger" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>

@@ -14,6 +14,7 @@ import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
+import { useFlipList } from '../../ui/useMotion';
 import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
 import { showToast, ToastSlot, toast } from './Toast';
 import { UNDO_MS } from '../../core/storage/trash';
@@ -32,6 +33,8 @@ const message = signal<string | null>(null);
 const error = signal<string | null>(null);
 /** Guide id → when the learner last finished it (D101). */
 const completed = signal<Record<string, string>>({});
+/** Guides already finished when the list was shown: their badge doesn't pop (D131). */
+let completedAtOpen: Set<string> | null = null;
 /** Selected tag chips (D102): a guide must carry all of them. */
 const tagFilter = signal<string[]>([]);
 /** The guide whose "More" actions are open. */
@@ -46,6 +49,7 @@ async function load() {
     all.value = (await send('guide.list', {})).guides;
     pending.value = (await send('allow.pending', {})).origins;
     completed.value = (await send('completions.list', {})).completed;
+    completedAtOpen ??= new Set(Object.keys(completed.value));
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
@@ -196,6 +200,7 @@ async function shareOne(id: string) {
 
 export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string, stepIndex?: number) => void }) {
   useEffect(() => {
+    completedAtOpen = null; // re-read on this mount: returning from the editor pops nothing
     void load().then(resumeUndo);
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes || 'completions' in changes)) void load();
@@ -203,7 +208,6 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
-
   const index = useMemo(() => buildSearch(all.value), [all.value]);
   const chips = useMemo(() => tagChips(all.value), [all.value]);
   // A chip whose last guide went away stops filtering.
@@ -218,6 +222,10 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   const allShown = results.length > 0 && results.every((g) => selected.value.has(g.id));
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
+  // Rows that appear (Undo, a filter) rise in (D131). They never glide: search results are
+  // sorted by score, so the order changes as you type, and rows must not slide under the cursor.
+  const pageFlip = useFlipList<HTMLUListElement>(forPage.map((g) => g.id), { glide: false });
+  const otherFlip = useFlipList<HTMLUListElement>(others.map((g) => g.id), { glide: false });
 
   if (exporting.value) {
     return (
@@ -243,14 +251,14 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     );
   };
 
-  const item = (g: GuideIndexEntry) => {
+  const item = (g: GuideIndexEntry, flip: { enter: (key: string) => string }) => {
     const done = completed.value[g.id];
     const open = moreOpen.value === g.id;
     // The guide may have fewer steps than when the choice was made.
     const from = Math.min(startFrom.value[g.id] ?? 0, Math.max(0, g.steps - 1));
     const moreId = `more-${g.id}`;
     return (
-      <li key={g.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`guide-${g.id}`}>
+      <li key={g.id} class={`guide-item lift ${flip.enter(g.id)}${open ? ' open' : ''}`} data-flip={g.id} data-testid={`guide-${g.id}`}>
         <div class="guide-row">
           {selecting.value && (
           <input
@@ -273,7 +281,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </span>
               {done && (
                 <span class="badge success" data-testid={`completed-${g.id}`} title={`Finished ${new Date(done).toLocaleString()}`}>
-                  <Icon name="check" />
+                  <Icon name="check" class={completedAtOpen?.has(g.id) ? undefined : 'tick'} />
                   Completed
                 </span>
               )}
@@ -325,7 +333,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           </div>
         </div>
         {open && (
-          <div class="guide-more" id={moreId} data-testid={`more-panel-${g.id}`}>
+          <div class="guide-more unfold" id={moreId} data-testid={`more-panel-${g.id}`}>
             {g.steps > 1 && (
               <div class="row nowrap">
                 <label class="inline-field grow">
@@ -527,8 +535,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             <Icon name="pin" />
             For this page <span class="badge accent">{forPage.length}</span>
           </h2>
-          <ul class="guide-list" data-testid="for-this-page">
-            {forPage.map(item)}
+          <ul class="guide-list" data-testid="for-this-page" ref={pageFlip.ref}>
+            {forPage.map((g) => item(g, pageFlip))}
           </ul>
         </section>
       )}
@@ -540,8 +548,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             {others.length > 0 && <span class="badge">{others.length}</span>}
           </h2>
           {others.length ? (
-            <ul class="guide-list" data-testid="all-guides">
-              {others.map(item)}
+            <ul class="guide-list" data-testid="all-guides" ref={otherFlip.ref}>
+              {others.map((g) => item(g, otherFlip))}
             </ul>
           ) : query.value || activeTags.length ? (
             <div class="empty" data-testid="no-match">
@@ -623,6 +631,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       )}
       {message.value && (
         <p class="status-text ok" role="status" data-testid="library-message">
+          {/^(Link copied|Restored|Made a copy|Imported [1-9])/.test(message.value) && <Icon key={message.value} name="check" class="tick" />}
           {message.value}
         </p>
       )}

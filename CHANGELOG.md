@@ -17,13 +17,16 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - Export a guide as a text how-to, in Markdown or as a printable page, after the same review as packs; text that looks like data is flagged in the review (D104).
 - Keyboard shortcuts: Alt+R starts or stops recording in the current tab, Alt+W opens the side panel. Both can be changed at chrome://extensions/shortcuts (D105).
 - Replay voice and Repeat step buttons in the tooltip (D106).
+- Light motion and press feedback in the side panel, Settings and the Practice page: buttons squeeze when pressed, rows lift on hover, folds and toasts slide in, reordered steps glide, a check pops in after Saved and Copied, and the REC dot pulses softly. Everything is short (80–240 ms) and turns into plain fades when the system asks for reduced motion (D130, D131).
 
 ### Fixed
+- Move up / Move down in the editor no longer drop keyboard focus to the page (D131).
 - The tooltip's mute button can be pressed again in the same step to unmute; before, it kept the state from when the step was drawn (D106).
 
 ### For developers
 - CI runs once per change instead of twice, cancels superseded pull request runs and skips docs-only changes, to stay within the Free plan's Actions minutes (D54).
 - GitHub Actions moved to their Node 24 majors (D55).
+- `pnpm motion:bench` measures frame times of the animations with the CPU slowed 4×; `pnpm screens` also shoots motion frame sequences (D132).
 - `pnpm release <version>` prepares a release: it bumps the version and moves these notes under it (D56). Feature PRs add their changes here and no longer bump the version.
 
 ## [0.3.2] - 2026-11-05
