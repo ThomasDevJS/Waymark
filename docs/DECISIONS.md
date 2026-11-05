@@ -539,6 +539,16 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **What this changes**: the spec's plan of a private store listing first is on hold. `docs/STORE.md` stays as a draft for later, and D57's open items (a contact address and a host for the privacy policy) are not needed until then. `docs/PRIVACY.md` still describes what the code does and stays current.
 - **Cost of the choice**: no automatic updates. Each person replaces the unzipped folder with a newer release and reloads the extension. Developer mode shows Chrome's "developer mode extensions" notice at browser start.
 
+### D59. CI asks the Ubuntu mirror only for what is missing
+*5 Nov 2026 · CI (D52, D54)*
+
+- **Finding**: twice on 5 Nov an e2e shard hit the job's 15-minute timeout before any test ran (PR #49, then the 0.4.0 release PR #54). On a browser cache hit, `playwright install-deps chromium` still ran `apt-get`. The runner image already had every library Chromium needs, but `install-deps` also installs 9 optional font packages (CJK, unifont, about 22 MB), and the Azure Ubuntu mirror served them at a few KB/s, with timeouts and retries. Each hang cost 15 runner minutes, a re-run and a failure email.
+- **Change**:
+  - On a cache hit, the action starts each cached Chromium binary with `--version` and calls `install-deps` only when one can't start (which is what a missing shared library does). A cache miss still runs `playwright install --with-deps`.
+  - "Install Xvfb and XTest" skips `apt-get` when `xvfb-run` and `libxtst6` are already installed (they are on the image).
+  - The browser step gets `timeout-minutes: 6` and the Xvfb step 4, so a stuck download fails within minutes, not at the job's 15.
+- **Cost**: the optional fonts are not installed. No test compares screenshots or depends on CJK glyphs; `pnpm screens` runs locally, not in CI.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
