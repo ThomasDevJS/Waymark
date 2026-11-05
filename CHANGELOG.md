@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-05
+
 ### Added
 - **Built-in tutorials**: five short tutorials (How Waymark works, Record your first guide, Edit a guide, Share a guide, What the warnings mean) play on a bundled Practice page, so you can learn Waymark without allowing it on any site. They are in the panel under **Tutorials**, and can be hidden (D128, D129, #41, fixes #37).
 - **Debug log**, off by default (Settings → Problems → **Keep a debug log**): what the recorder, matcher and player decided and why, to paste into a bug report. It is kept only until the browser closes and never holds typed values or page text beyond step titles. While it is on, the not-found card can copy that page's part (D110–D112, #35, fixes #33).
@@ -153,7 +155,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/commits/main
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.0
 [0.3.2]: https://github.com/ThomasDevJS/Waymark/pull/13
 [0.3.1]: https://github.com/ThomasDevJS/Waymark/pull/14
 [0.3.0]: https://github.com/ThomasDevJS/Waymark/pull/10
