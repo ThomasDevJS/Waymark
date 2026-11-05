@@ -140,7 +140,7 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
         open.addEventListener('click', () => void start(id, true, host));
         host.append(note, open);
       } else {
-        note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then start it.`;
+        note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then press Start.`;
         host.append(note);
       }
     } catch {

@@ -686,3 +686,16 @@ Only the look and the accessibility semantics change; every handler, advance rul
   - The launcher menu returns focus to the button when it closes with focus inside, closes on an outside press or when focus leaves it, and sets `aria-controls` only while open.
   - The ring has a thin dark inner line, so it shows against white content in dark mode as well.
   - "Report broken step" has a border, like the other buttons.
+
+### D94. The Waymark mark, extension icons, and a copy pass
+*5 Nov 2026 · SPEC: Distribution (store listing); UI copy*
+
+- **Mark**: an original drawing: a white flag on a pole, planted at the end of a dotted path, on a blue rounded tile (`assets/brand/mark.svg`). At 16 px the path and the pole's foot would blur, so 16 px has its own simpler drawing (`mark-16.svg`). `node scripts/icons.mjs` renders `public/icon/{16,32,48,128}.png` with the Playwright Chromium; the PNGs are committed, so builds need no browser. WXT puts them in the manifest's `icons`, which the toolbar button uses too. The panel and Settings headers show the mark (`src/ui/Mark.tsx`) instead of a generic pin icon.
+- **No remote fonts or icons**: the system font stack only, and every icon is bundled.
+- **Copy**: one name per thing across the panel, Settings, the page and the docs. "Team guide" / "team library", not "library guide". "Select", not "Tick". "On the page". The recorder warnings are called "Hard to find", "Drawing area" and "Closed component" everywhere. Error text says what to do next ("Team guides are read-only. Duplicate the guide to edit your own copy."). `docs/TESTING.md` now uses the new labels: the welcome, the Allowed badge, Undo, Note after, the speaker and × buttons, Export n selected…, Import…, Copy as text, Settings → Sites, and the new warning names.
+- **Settings → Sites and D80**: the Sites list leaves out library sites that are granted only to fetch the pack (`fetchOnlyPatterns`), the same filter the service worker uses for the content script. A library site the user has also allowed for guides is still listed, with its note.
+- **Fixes from the independent review**:
+  - Icons: the 128 px icon is a 96 px tile with 16 px of transparent padding, as the Chrome Web Store asks. 32 px uses the simple drawing too, because the dots read as specks. The small tile is a lighter blue (#3d6cf0), so it shows on dark toolbars.
+  - Test step on the page no longer flashes matcher internals ("Matched: roleName…"). It says "Found." or "Found, but fragile." and points to the side panel. "Not found" no longer repeats itself, and it says what to do.
+  - Plurals ("1 step"); "Pack address" instead of "Library URL"; the same "…then press Start." and the same read-only sentence everywhere; no "Score" for authors; "Add note at end" next to "Note after". The Export hint is visible text, because a tooltip on a disabled button is unreachable.
+  - Left as is, because e2e asserts them: "could not find that again" (pick banner), "Not recorded…" (pill) and the straight apostrophe in "Open a page of this guide's site…".

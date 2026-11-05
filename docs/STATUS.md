@@ -15,6 +15,11 @@ As of 5 Nov 2026 the version is 0.3.2, on branch `waymark-v1`. This file is for 
 
 Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BROWSERS.md` and pilot guides. Phase 2 has not been started.
 
+## Interface (D90–D94)
+- Design tokens (colour, spacing, radius, type, elevation, motion; light and dark) are in `src/ui/tokens.css`; components are in `src/ui/components.css`. The overlay uses the same tokens, scoped to its layer in the closed shadow root (`src/content/overlay/theme.ts`).
+- Icons: Lucide, bundled (`src/ui/icons.ts` for the pages, one-by-one imports in the content script). The Waymark mark is in `assets/brand/`; `node scripts/icons.mjs` renders `public/icon/{16,32,48,128}.png`.
+- `pnpm screens` shoots every screen and state (light, dark, dark browser on a light page, 200% zoom, phone) to compare before and after a UI change.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

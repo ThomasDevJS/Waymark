@@ -88,7 +88,7 @@ export const editorHandlers: Handlers = {
     return enqueue(async () => {
       const current = await loadGuide(guide.id).catch(() => null);
       if (!current) throw new Error('Guide not found.');
-      if (current.source === 'library') throw new Error('Library guides are read-only. Duplicate it to edit.');
+      if (current.source === 'library') throw new Error('Team guides are read-only. Use Duplicate in the list to edit your own copy.');
       // Never overwrite a newer copy saved elsewhere (another side panel) without knowing.
       if (current.revisionId !== baseRevisionId) throw new Error('This guide was changed elsewhere. Close the editor and open it again.');
       const next: Guide = {

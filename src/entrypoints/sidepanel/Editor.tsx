@@ -180,7 +180,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {readOnly && <span class="badge accent">Team guide · read-only</span>}
         {dirty.value && <span class="badge warn">Unsaved changes</span>}
       </div>
-      {readOnly && <p class="small muted">Team guides can’t be edited here. Close this, then use Duplicate in the list to get your own copy.</p>}
+      {readOnly && <p class="small muted">Team guides are read-only. Use Duplicate in the list to edit your own copy.</p>}
       <h3 class="section-label">
         <Icon name="steps" />
         Steps
@@ -355,7 +355,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       <div>
         <button type="button" class="ghost" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
           <Icon name="plus" />
-          Add note step
+          Add note at end
         </button>
       </div>
       <div class="editor-bar">
@@ -430,7 +430,7 @@ function TestResultView({ t }: { t: TestResult | 'running' }) {
       <Icon name={t.fragile ? 'warn' : 'check'} />
       <div class="stack-sm">
         <span>
-          <strong>{t.fragile ? 'Found, but fragile.' : 'Found.'}</strong> Score {Math.round(t.score)}.
+          <strong>{t.fragile ? 'Found, but fragile.' : 'Found.'}</strong>
           {t.fragile && ' Only one strong clue matched, so a small app change may break it. Re-pick it, or add a data-guide-id to the element.'}
         </span>
         <span class="clues">
