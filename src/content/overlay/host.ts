@@ -3,6 +3,8 @@
  * root (open in test builds), shown as a manual popover so it sits in the top layer above any
  * z-index. Pointer, mouse and click events inside it do not reach the app.
  */
+import { THEME_CSS } from './theme';
+
 const HOST_TAG = 'waymark-overlay';
 let host: HTMLElement | null = null;
 let root: ShadowRoot | null = null;
@@ -11,7 +13,7 @@ const ISOLATED_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'cl
 
 const BASE_CSS = `
 :host { all: initial; }
-.layer { position: fixed; inset: 0; pointer-events: none; font: 13px/1.4 system-ui, sans-serif; }
+.layer { position: fixed; inset: 0; pointer-events: none; font: 13px/1.4 var(--wm-font); color: var(--wm-fg); -webkit-font-smoothing: antialiased; }
 `;
 
 /**
@@ -44,9 +46,9 @@ export function overlayRoot(): ShadowRoot {
     'all: initial !important; display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; overflow: visible !important; pointer-events: none !important; z-index: 2147483647 !important;';
   root = host.attachShadow({ mode: __WAYMARK_TEST__ ? 'open' : 'closed' });
   const style = document.createElement('style');
-  style.textContent = BASE_CSS;
+  style.textContent = THEME_CSS + BASE_CSS;
   const layer = document.createElement('div');
-  layer.className = 'layer';
+  layer.className = 'layer wm-theme';
   root.append(style, layer);
   for (const type of ISOLATED_EVENTS) host.addEventListener(type, (e) => e.stopPropagation());
   (document.documentElement ?? document).appendChild(host);
