@@ -7,7 +7,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 - **Share:** export a pack file, copy a link that starts a guide, or subscribe to a team library URL.
 - **Private:** Waymark works only on sites you allow, one at a time. Guides stay in your browser, and there is no telemetry ([privacy policy](docs/PRIVACY.md)).
 
-**Status:** v0.4.0. Milestones M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing). From M6 it has the popup fallback and an optional on-device HD voice. It is for internal use and installed from a release; a store listing draft is kept in [docs/STORE.md](docs/STORE.md) for later (D58). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.4.1. Milestones M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing). From M6 it has the popup fallback and an optional on-device HD voice. It is for internal use and installed from a release; a store listing draft is kept in [docs/STORE.md](docs/STORE.md) for later (D58). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 

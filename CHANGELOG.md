@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-05
+
 ### Added
 - The first time a tutorial or an English guide starts reading, Waymark offers the HD voice once, on the Tutorial page or in the side panel: **Listen to a sample** (a short clip that ships with Waymark), **Download** (about 170 MB, in the background: the usual voice keeps reading and the next step switches to HD when it's ready) or **Not now**. Only for an English browser on a computer that looks fast enough; never at install (D140, D141, D143).
 - Tutorials are read with the HD voice once it's installed (D142).
@@ -16,6 +18,10 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ### Fixed
 - A step the HD voice model returns as silence (NaN audio) is now read by the system voice instead of playing silently (D148).
+
+### For developers
+- CI asks the Ubuntu mirror only for what is missing, and its browser and Xvfb steps time out within minutes. Two e2e shards had hit the 15-minute limit before any test ran (D59, #60).
+- The Release workflow can be started by hand (**Actions → Release → Run workflow**, with the version and the release merge commit). It creates the tag after the same checks as a pushed tag (D160, #61, #62).
 
 ## [0.4.0] - 2026-11-05
 
@@ -167,7 +173,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.0
 [0.3.2]: https://github.com/ThomasDevJS/Waymark/pull/13
 [0.3.1]: https://github.com/ThomasDevJS/Waymark/pull/14
