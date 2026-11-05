@@ -41,7 +41,7 @@ Out of scope: a compromised browser or OS, a malicious extension with `debugger`
 - **Pack and library → service worker.** Size cap (5 MB), Zod schema with string and array caps, 500 steps per guide, real http(s) origins without wildcards, newer versions rejected. Parsed with `JSON.parse` into plain data; no object merging that could reach `__proto__`.
 - **Service worker → extension pages.** Pages are trusted code but show untrusted strings. Notes render through the markdown allow-list (bold, italic, line breaks, `https:` links with `target="_blank" rel="noopener noreferrer"`); all other strings are text nodes.
 - **Storage.** Both `local` and `session` are `TRUSTED_CONTEXTS`, so a content script cannot read or write them directly.
-- **Permissions.** Host access is requested from a click in the side panel or options. The one Allow request for the sites of imported or library guides (SPEC: Discovery, "First-run access") lists every site by name, each can be unticked, and at most 50 are queued (D48). Registrations follow `chrome.permissions.getAll()` and are re-synced on install, startup and every permission change.
+- **Permissions.** Host access is requested from a click in the side panel or options. The one Allow request for the sites of imported or library guides (SPEC: Discovery, "First-run access") lists every site by name, each can be unticked, and at most 50 are queued (D48). Registrations follow `chrome.permissions.getAll()` and are re-synced on install, startup and every permission change. A library site granted only to fetch the pack is excluded and is not treated as allowed until the user allows it in the panel; unsubscribing gives that permission back (D80).
 
 ## Rules to check
 

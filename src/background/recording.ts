@@ -2,6 +2,7 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { enqueue } from '../core/storage/queue';
+import { siteAllowed } from './site-access';
 import { writeGuide } from '../core/storage/guides';
 import { updateAllBadges, updateBadge } from './discovery';
 import type { Step } from '../core/model/schema';
@@ -71,6 +72,10 @@ export function recorderStep(step: Step): Step | null {
   return out;
 }
 
+/**
+ * Per-step check from content scripts. The raw permission is enough here: a fetch-only site (D80)
+ * has no content script, and this runs on every recorded step, so it stays one call.
+ */
 async function siteGranted(origin: string): Promise<boolean> {
   try {
     return await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] });
@@ -107,7 +112,7 @@ export const recordingHandlers: Handlers = {
   'rec.start': async ({ tabId, title }) => {
     const url = await tabUrl(tabId);
     if (!url || !/^https?:/.test(url)) throw new Error('Open a web page to record on.');
-    if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(url)] }))) throw new Error('Allow Waymark on this site first.');
+    if (!(await siteAllowed(new URL(url).origin))) throw new Error('Allow Waymark on this site first.');
     const state = await enqueue(async () => {
       if (await getRecording()) throw new Error('A recording is already running.');
       const s = startRecording(title, tabId, url);

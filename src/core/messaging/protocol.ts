@@ -53,6 +53,8 @@ export const RequestSchemas = {
   'library.get': z.object({}),
   'library.set': z.object({ url: z.string().max(2000).nullable() }),
   'library.refresh': z.object({}),
+  'site.fetchOnly': z.object({ origin: z.string().max(500), on: z.boolean() }),
+  'site.allowed': z.object({ origins: z.array(z.string().max(500)).max(50) }),
   'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
   'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50) }),
   'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
@@ -176,6 +178,8 @@ export interface ResponseMap {
   'library.get': LibraryState;
   'library.set': LibraryState;
   'library.refresh': LibraryState;
+  'site.fetchOnly': { ok: true };
+  'site.allowed': { registered: string[] };
   'frame.nonce': { nonce: string };
   'frame.claim': { ok: boolean };
   'frame.path': { framePath: string[] | null };
@@ -232,6 +236,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'library.get',
   'library.set',
   'library.refresh',
+  'site.fetchOnly',
+  'site.allowed',
   'rec.start',
   'rec.pause',
   'rec.resume',

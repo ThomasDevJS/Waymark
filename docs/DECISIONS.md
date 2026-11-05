@@ -583,6 +583,34 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
 - **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
 
+## 2026-11-05 — Team library access and schedule (issues #21, #22)
+
+### D80. A library site granted only to fetch the pack is not a guide site
+- **Spec**: Sharing, "v1: library URL" (the library's site is requested when it sends no CORS headers), and Architecture, "Content script" (registered for granted sites).
+- **Finding** (issue #21): that grant also registered the content script on the library's site (for example `raw.githubusercontent.com`), and the panel called the site allowed.
+- **Change**:
+  - Settings marks the site "fetch-only" (`fetchOnlyOrigins` in `chrome.storage.local`, `src/background/site-access.ts`) before it asks for it. The mark comes first so the permission event never registers the script there. If the user denies the prompt, the mark is cleared. A site the user had already allowed is not marked.
+  - Fetch-only sites get no content script (`grantedSitePatterns(origins, exclude)`). The panel, recording, playback and the pending-Allow list all treat them as not allowed (`siteAllowed`).
+  - When the user clicks **Allow** on such a site, or ticks it in the one-click Allow, the panel sends `site.allowed`. That clears the mark, registers the script and injects it into open tabs. Chrome fires no permission event for an origin that is already granted, which is why the panel has to send this message.
+  - Unsubscribing, or moving the library to another site, gives back a permission that was held only for fetching.
+  - **Review fixes**:
+    - **Migration:** after an update, a granted library site that no stored guide uses is marked fetch-only. Subscriptions made before this change are covered.
+    - **Giving a permission back:** the permission is removed first, and the mark is cleared only once that succeeded. A failed removal never leaves an unmarked guide site behind.
+    - **Marking:** the service worker never marks a site that is already granted.
+    - **Clean-up at browser start:** fetch-only sites other than the current library's site are given back. This covers a subscription that never finished.
+    - **Injection:** `site.allowed` injects only into sites it actually un-marked, because a fresh grant is already injected by `permissions.onAdded`.
+  - The per-step `rec.step` check keeps the raw permission call. A fetch-only site has no content script, and an extra storage read there reordered a click and its route change in e2e. That ordering is a latent race in the recorder, reported to the real-sites lane.
+- **Limits**:
+  - A site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+  - If the library's site is also an HD-voice download host (D51), the two grants are not coordinated. Both hosts are expected to send CORS headers, so this should not come up.
+
+### D81. One library fetch per browser start
+- **Spec**: Sharing, "v1: library URL" (refreshed with `chrome.alarms`).
+- **Finding** (issue #22): `onStartup` and `onInstalled` fetched the library immediately, and also set an alarm that fetched it again a minute later. Subscribing did the same.
+- **Change**: at browser start and install, the alarm (delay 1 minute) does the only fetch. After a fetch caused by subscribing, the next alarm waits a full period (`scheduleLibrary({ fetchedNow: true })`).
+
+## 2026-11-05 — Design
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 

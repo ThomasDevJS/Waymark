@@ -56,8 +56,14 @@ async function subscribe() {
       readable = false;
     }
     if (!readable) {
-      const granted = await chrome.permissions.request({ origins: [originToMatchPattern(url.origin)] });
+      const pattern = originToMatchPattern(url.origin);
+      // A site the user already allowed stays a guide site. Otherwise the grant is only for
+      // fetching: mark it first, so the grant never registers the content script there (D80).
+      const already = await chrome.permissions.contains({ origins: [pattern] });
+      if (!already) await send('site.fetchOnly', { origin: url.origin, on: true });
+      const granted = await chrome.permissions.request({ origins: [pattern] });
       if (!granted) {
+        if (!already) await send('site.fetchOnly', { origin: url.origin, on: false });
         libraryError.value = 'Waymark needs access to the library site to read the pack.';
         return;
       }
