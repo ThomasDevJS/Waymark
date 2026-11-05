@@ -345,7 +345,9 @@ Voice and step text are free: the browser's on-device voices read each step, and
 - Speech stops on step change, Back, Exit, or mute (`chrome.tts.stop`).
 - Fallback where `chrome.tts` is missing: `speechSynthesis` in the content script, unlocked by the learner's Start click.
 - **HD voice (optional, D51).** A neural voice that runs on the device: Kokoro-82M (Apache-2.0) through transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. It is off by default and English only.
-  - Settings turns it on. That click requests the download hosts. The model (fp16, 163 MB) and the misaki English lexicon (6 MB) download once from their official hosts, pinned to a revision and checked by SHA-256, into Cache Storage. Then the host permissions are released.
+  - Never offered at install. The first time a tutorial or an English guide is about to speak, the Practice page or the side panel shows one small offer (**Listen to a sample**, a bundled clip; **Download**; **Not now**), only for an English browser on a capable device (4+ cores, 4+ GB where reported), with HD off, "Read each step aloud" on and the voice not muted. It is asked once; playback is never blocked (D140–D143).
+  - Built-in tutorials use the HD voice too, once it is ready (D142).
+  - Settings, or the offer's Download, turns it on. That click requests the download hosts. The model (fp16, 163 MB) and the misaki English lexicon (6 MB) download once from their official hosts, pinned to a revision and checked by SHA-256, into Cache Storage. Then the host permissions are released.
   - Text becomes phonemes with Waymark's own G2P over the misaki lexicon (word forms, compounds, spelled acronyms, numbers, then letter rules). No eSpeak NG, so no GPL code ships.
   - The next step's audio is generated while the current one plays. A step waits at most 4 s for its HD audio, then the system voice reads it. If the engine fails, the system voice is used too.
   - After the download, one sample measures the device's speed. Slower than 1.5× real time, and HD voice stays unused ("too slow").

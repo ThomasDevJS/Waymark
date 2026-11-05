@@ -25,7 +25,7 @@ beforeEach(() => {
       getURL: (p: string) => `chrome-extension://x/${p}`,
     },
     tabs: { create: async (o: unknown) => sent.push({ type: 'tabs.create', payload: o }) },
-    storage: { local: { get: async () => ({}), set: async () => undefined } },
+    storage: { local: { get: async () => ({}), set: async () => undefined }, onChanged: { addListener() {}, removeListener() {} } },
   };
   root = document.createElement('div');
   document.body.append(root);

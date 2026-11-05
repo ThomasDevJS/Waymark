@@ -7,6 +7,7 @@ import { Markdown } from './Markdown';
 import { Editor, editorHasUnsavedEdits } from './Editor';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
+import { HdOffer } from '../../ui/HdOffer';
 import { FLAG_HELP, FlagNotes } from './steps';
 import type { ShortcutOutcome } from '../../core/storage/shortcut';
 
@@ -199,6 +200,8 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             )}
           </section>
         )}
+        {/* The first time a guide is about to speak: offer the HD voice once (D140). */}
+        {rv?.active && rv.status === 'running' && <HdOffer about="guides" contentLang={rv.lang ?? 'en'} onClosed={() => document.querySelector<HTMLElement>('[data-testid="stop-run"]')?.focus()} />}
         {needsStart.value && tabId !== null && (
           <div class="banner" role="status">
             <Icon name="info" />

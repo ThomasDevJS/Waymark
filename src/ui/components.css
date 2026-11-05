@@ -123,6 +123,29 @@ code {
 .card.flat {
   box-shadow: none;
 }
+
+/* HD voice offer (D140): an empty live region stays mounted but takes no room in the card's grid. */
+.hd-offer [role='status']:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.hd-offer .card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+}
+.hd-offer-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+}
+.hd-offer-progress progress {
+  flex: 1;
+  min-width: 0;
+}
 .card-head {
   display: flex;
   align-items: center;

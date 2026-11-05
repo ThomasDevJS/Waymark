@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import { TUTORIALS, tutorialById, type Tutorial } from '../../core/tutorials/tutorials';
 import { Icon } from '../../ui/Icon';
+import { HdOffer } from '../../ui/HdOffer';
 import { Mark } from '../../ui/Mark';
 import { PracticePlayer } from './player';
 
@@ -401,6 +402,8 @@ export function Practice() {
         </main>
         <aside class="stack">
           <TutorialList />
+          {/* The first time a tutorial is about to speak: offer the HD voice once (D140). */}
+          {playing.value && <HdOffer about="tutorials" contentLang="en" onClosed={() => document.querySelector<HTMLElement>('[data-testid="practice-stop"]')?.focus()} />}
           <PanelPicture />
         </aside>
       </div>

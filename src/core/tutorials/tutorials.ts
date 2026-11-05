@@ -130,3 +130,11 @@ export function tutorialVoiceText(tutorialId: string, stepId: string): string | 
   const s = tutorialById(tutorialId)?.steps.find((x) => x.id === stepId);
   return s ? voiceTextFor(toStep(s)) || null : null;
 }
+
+/** The voice text of the step after this one, which the HD voice prepares while this one plays (D142). */
+export function nextTutorialVoiceText(tutorialId: string, stepId: string): string | null {
+  const steps = tutorialById(tutorialId)?.steps ?? [];
+  const i = steps.findIndex((x) => x.id === stepId);
+  const next = i >= 0 ? steps[i + 1] : undefined;
+  return next ? voiceTextFor(toStep(next)) || null : null;
+}

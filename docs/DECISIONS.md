@@ -1078,3 +1078,46 @@ Only looks and motion change: no advance rule, message, timer or run state does.
 - **Closed root.** Production uses a closed shadow root and test builds an open one (D85). The browser tests run against both (`waymark-test-closed`); an e2e test plays a guide on the fixture site with the closed root and motion on, clicks the targets during the ripple and the glide, and checks the run finishes and that one glide and two ripples ran (test builds count them in `data-waymark-test-motion`, since nothing can look into a closed root).
 - **Tests**: `test/browser/player-motion.test.ts` (both roots: glide geometry and the hole at once, when not to glide, no leftover tooltip between steps, the exit copy on close, the progress ease, the ripple never taking the click, focus kept, reduced motion), `test/e2e/p1-player-motion.spec.ts`, and `reducedMotion()` asking `matchMedia` once (`test/browser/motion.test.ts`).
 - **Fixes from the independent review** (each test fails on the first version, on both roots): a large size change stretched the ring's border over the target (above); the exit copy went at the first animation ending inside it (the done card's tick), not its own; the same tutorial started again eased its bar backwards from the done card; an off-screen target kept the glide's no-fade classes and popped in; right and middle presses rippled; overlapping Exit timers; the e2e test no longer requires the glide (it depends on timing on slow runners; the browser tests check it); the REC halo grows to 2× (it overlapped the label).
+
+## 2026-11-05 — Offer the HD voice when it matters (issue #44)
+
+### D140. The HD voice is offered once, on an extension page, the first time a tutorial or guide speaks
+*5 Nov 2026 · SPEC: Voiceover (HD voice); Permissions, privacy and security; issue #44*
+
+- **Not at install** (decided with Thomas on #44): 170 MB before people trust the extension, slow or blocked networks, English only, and it would blur "optional" in the privacy policy and the listing. The gate on #44 ("a step is read within about 1 s on Thomas's laptop") passed, so the offer recommends it.
+- **The card** (`src/ui/HdOffer.tsx`): "Try the HD voice. Tutorials (or Guides) sound much better with the HD voice. It runs on your device: one download of about 170 MB, and after that nothing is sent online." Buttons **Listen to a sample** (D141), **Download**, **Not now**, and a line that the usual voice keeps reading and that Settings has the switch.
+- **Where** (constraint: the click must ask for the download hosts, which only an extension page can do):
+  - the **Practice page**, beside the tutorial list, while a tutorial plays;
+  - the **side panel**, under the playing card, while a guide plays on a site.
+  - Not in the on-page overlay. A content script can't call `chrome.permissions.request`, and it would need the HD status and voice settings, which never go to content scripts. A guide started from the page (the `?` launcher, a deep link) with the panel closed is not asked; the next time the panel is open during a guide, or a tutorial plays, it is.
+  - Not in the welcome either (the issue's optional "quiet tip line"): the welcome shows at install, the moment #44 rules out, and D121 keeps it to three things.
+- **When it shows** (`shouldOfferHd` in `src/core/voice/offer.ts`, pure):
+  - the browser language (`navigator.language`) is English, and so is what is about to be read (the guide's `lang`; tutorials are English); an unknown language is not English;
+  - the device looks capable: `navigator.hardwareConcurrency` ≥ 4, and `navigator.deviceMemory` ≥ 4 GB where the browser reports it (it is Chromium-only and rounded; missing counts as unknown, not small). D51 measured 0.8–0.95× real time on 4 vCPUs, and the model takes about 800 MB while it speaks. The speed check after the download still has the last word ("too slow");
+  - the HD voice is off (not ready, downloading, too slow or failed: Settings has Check again and Try again for those);
+  - "Read each step aloud" is on, and the voice is not muted (added: someone who muted hears no voice, so the question makes no sense then);
+  - not answered yet. **Not now** and **Download** both store `ui:hdOffer` in `storage.local`; neither is asked again. Settings' switch is unchanged. Ignoring the card is not an answer: it shows again next time. An answer on one page hides the card on the other at once (`storage.onChanged`).
+- **Playback is never blocked**: the tutorial or guide draws and reads its step with the system voice while the card is up; the card never takes focus. **Download** runs the same code as Settings (`startHdDownload` in `src/ui/hdDownload.ts`, moved out of `HdVoice.tsx`; the service worker side is D51's `hdEnable`, speed check and host release, unchanged). Each step checks the HD status when it is read, so the first step after "ready" uses the HD voice. The card then follows the download (progress, "The next step uses it", too slow, failed with "try again in Settings", or **Cancel the download**, which is Settings' Remove), and focus moves to its heading when the pressed button goes away. **Not now** and **Close** put focus back on the page's Stop button.
+- **No new data to content scripts**: the panel learns the guide's language from `RunView.lang` (the guide's own field, optional so older views still parse). Content scripts already receive their run's view, which is their own guide's data.
+- **Test hook**: test builds read `test:hdOfferEnv` (`storage.local`) in place of the navigator's language, cores and memory, so e2e can test the gate on any machine.
+- **Tests**: `test/unit/hd-offer.test.ts` (language, capability, asked once, installed, read-aloud and mute, size, sample file, `voice.stop` allowlist), `test/browser/hd-offer.test.ts` (the card: gates, Not now, Download from the click with the shared path, refused hosts keep the question, Cancel, the sample, focus), e2e `test/e2e/h1-hd-offer.spec.ts` (Practice page: the tutorial plays at once, Download through Chrome's dialog with the stub engine, hosts given back, the next step in HD, asked once; Not now remembered and focus; French browser and a 2-core device never see it).
+
+### D141. Listen to a sample plays a bundled 6-second clip
+*5 Nov 2026 · SPEC: Voiceover (HD voice); Security (no remote code); issue #44*
+
+- `public/hd-sample.ogg`: about 6 s, 21 KB (Opus, 32 kbit/s, mono). The same model, voice (`af_heart`) and G2P as the extension, rendered once by `scripts/hd-sample.mjs` (Node, onnxruntime-node from transformers.js's own dependencies, the pinned files checked by SHA-256; not part of any build). It says "Welcome to the practice page. Waymark guides you through it one step at a time."
+- **License**: Kokoro-82M and its voices are Apache-2.0, so audio made with them ships under the same notice; `THIRD_PARTY_NOTICES.md` lists it. It is data (an audio file), not code.
+- The button never downloads anything and needs no permission. It first stops what is being read with a new extension-page-only message, `voice.stop {}` (Zod-checked, not in the content allowlist), so the sample isn't talked over; pressing it again stops the sample (`aria-pressed`).
+
+### D142. Tutorials use the HD voice once it is installed (amends D129)
+*5 Nov 2026 · SPEC: Voiceover; issue #44*
+
+- D129 kept tutorials on the system voice. The offer's first sentence is "Tutorials sound much better with the HD voice", so that has to be true: once the HD voice is ready, `tutorial.speak` reads with it, with the next tutorial step generated while the current one plays, exactly like a guide.
+- D129's rules stay: ids in, bundled text out (`tutorialVoiceText`, `nextTutorialVoiceText`); never while muted; only with "Read each step aloud" on unless the learner pressed Replay voice.
+- One code path: `speakHdFirst` in `src/background/voice.ts`, used by guides (`speakCurrentStep`) and tutorials. It keeps D51's fallback rules: on an HD failure or a 4 s timeout the system voice reads the step only while it is still the newest speech and the learner hasn't muted or left. The tutorial flag (`speech:tutorial`) is stored with the speech time, so the Practice page's Stop (`tutorial.stop`) also stops a pending HD step.
+- Tests (`test/unit/hd-sw.test.ts`, "built-in tutorials on the HD voice"): HD with the next step; the system voice without HD; fallback on failure; muted and read-aloud off; no fallback after Stop; nothing for an unknown step. Three of them fail on the old handler.
+
+### D143. The offer says "about 170 MB", the whole download
+*5 Nov 2026 · SPEC: Voiceover (HD voice); issue #44*
+
+- #44's copy says 163 MB, which is the model file alone (`model_fp16.onnx`, 163,234,740 bytes). The download also fetches the voice, the tokenizer and the 6 MB English word list: `HD_TOTAL_BYTES` is 169,860,620 bytes. Settings, the privacy policy and the listing already say 170 MB, so the offer uses `mb(HD_TOTAL_BYTES)` ("170 MB") too, and a unit test pins it. "Nothing sent online" became "after that nothing is sent online": the download itself is a request to Hugging Face and GitHub, as the privacy policy says.

@@ -196,6 +196,68 @@ describe('speaking a step', () => {
   });
 });
 
+describe('built-in tutorials on the HD voice (D142)', () => {
+  const ctx = {} as never;
+
+  it('a tutorial step uses the HD voice once it is ready, with the next step to pre-generate', async () => {
+    local.hdStatus = ready;
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: true });
+    expect(speaks()).toMatchObject([{ text: expect.stringMatching(/^Welcome to the practice page\./), next: expect.stringMatching(/^Click New invoice\./) }]);
+    expect(ttsSpeak).not.toHaveBeenCalled();
+  });
+
+  it('without the HD voice a tutorial uses the system voice, as before (D129)', async () => {
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: true });
+    expect(speaks()).toEqual([]);
+    expect(ttsSpeak).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tutorial falls back to the system voice when the HD voice fails', async () => {
+    local.hdStatus = ready;
+    offscreenReply = async (m) => (m.type === 'hd.speak' ? { ok: false, error: 'wasm failed' } : { ok: true });
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: true });
+    expect(ttsSpeak.mock.calls[0]![0]).toMatch(/^Welcome to the practice page\./);
+  });
+
+  it('never while muted, and never with "Read each step aloud" off unless asked', async () => {
+    local.hdStatus = ready;
+    local.voiceSettings = { muted: true };
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1', explicit: true }, ctx)).toEqual({ ok: false });
+    local.voiceSettings = { autoPlay: false };
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx)).toEqual({ ok: false });
+    expect(speaks()).toEqual([]);
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1', explicit: true }, ctx)).toEqual({ ok: true });
+    expect(speaks()).toHaveLength(1);
+  });
+
+  it('a failed HD tutorial step does not fall back after the tutorial stopped', async () => {
+    local.hdStatus = ready;
+    let fail!: (r: unknown) => void;
+    offscreenReply = (m) => (m.type === 'hd.speak' ? new Promise((r) => (fail = r)) : Promise.resolve({ ok: true }));
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    const speaking = tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'tour-1' }, ctx);
+    await vi.waitFor(() => expect(speaks().length).toBe(1));
+    // The tutorial is marked while its HD audio is pending, so the practice page's Stop reaches it.
+    expect(await tutorialHandlers['tutorial.stop']!({}, ctx)).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 5));
+    fail({ ok: false, error: 'wasm failed' });
+    expect(await speaking).toEqual({ ok: false });
+    expect(ttsSpeak).not.toHaveBeenCalled();
+  });
+
+  it('only bundled text: an unknown step reads nothing, on either voice', async () => {
+    local.hdStatus = ready;
+    const { tutorialHandlers } = await import('../../src/background/tutorials');
+    expect(await tutorialHandlers['tutorial.speak']!({ tutorialId: 'tour', stepId: 'nope' }, ctx)).toEqual({ ok: false });
+    expect(speaks()).toEqual([]);
+    expect(ttsSpeak).not.toHaveBeenCalled();
+  });
+});
+
 describe('opt-in and remove', () => {
   it('enable: records only the hosts this opt-in added, opens the document and starts the download', async () => {
     const { hdEnable } = await import('../../src/background/hd');
