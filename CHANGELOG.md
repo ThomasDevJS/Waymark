@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).
+
 ## [0.4.0] - 2026-11-05
 
 ### Added
@@ -41,9 +44,6 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - A step is read aloud once its element is found, not while a slow frame is still loading (D83, #34).
 - Element ids, test ids, names and classes that look like data (emails, phone numbers, UUIDs, long numbers) are no longer stored in guides or guide files (D66, #27).
 - Waymark is for internal use for now: install it from a release. There is no store listing; the draft in [docs/STORE.md](docs/STORE.md) is kept for later (D58).
-
-### Changed
-- The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).
 
 ### Fixed
 - On pages that rebuild themselves after loading, a step could be drawn on a look-alike element while the real one was briefly gone. A match must now beat every look-alike seen at record time (D64, #18).
