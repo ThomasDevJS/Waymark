@@ -90,7 +90,7 @@ describe('ambiguity returns not-found', () => {
       ['dr-publish', 'dr-save'],
       ['dr-private', 'dr-public'],
       ['tg-autosave', 'tg-beta'],
-      // told apart only by their container's id, in the CSS path (D55; ant.design date pickers)
+      // told apart only by their container's id, in the CSS path (D57; ant.design date pickers)
       ['date-basic', 'date-other'],
       ['date-other', 'date-basic'],
     ] as const) {

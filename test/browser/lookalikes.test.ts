@@ -1,4 +1,4 @@
-/** D55: a unique match must beat every look-alike seen at record time (review of D55). */
+/** D57: a unique match must beat every look-alike seen at record time (review of D57). */
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildFingerprint } from '../../src/core/fingerprint';
 import { matchOnce } from '../../src/core/matcher';

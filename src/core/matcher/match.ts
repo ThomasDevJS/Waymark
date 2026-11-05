@@ -162,7 +162,7 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     if (coreCovers(runnerUp, best)) return notFound('ambiguous');
   }
   // The best candidate matched nothing that a look-alike seen at record time lacked: it may be
-  // that look-alike while the real target is missing or not rendered yet (D55).
+  // that look-alike while the real target is missing or not rendered yet (D57).
   const core = best.matched.filter((k) => !POSITIONAL.has(k));
   if (fp.lookalikes?.some((set) => core.every((k) => set.includes(k)))) return notFound('lookalike');
   return {
@@ -181,7 +181,7 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
 export const MAX_LOOKALIKES = 5;
 
 /**
- * Record time, in one scoring pass (SPEC record step 3; D55):
+ * Record time, in one scoring pass (SPEC record step 3; D57):
  * - `count`: visible, enabled elements that match every non-positional signal (more than one
  *   means a repeated element);
  * - `lookalikes`: for every other element with a strong signal (visible or not, enabled or not:
