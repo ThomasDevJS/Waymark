@@ -3,7 +3,9 @@
  * not-found, off-track and done cards. Everything lives in the overlay host's shadow root and
  * is built with DOM APIs (user strings never reach innerHTML).
  */
-import { autoUpdate, computePosition, flip, offset, shift, type Placement } from '@floating-ui/dom';
+import { arrow, autoUpdate, computePosition, flip, offset, shift, type Placement } from '@floating-ui/dom';
+import { ChevronLeft, ChevronRight, CircleCheck, MapPin, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
+import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
 import { renderInline } from '../../core/text/markdown';
@@ -11,28 +13,66 @@ import { composedParent } from '../../core/fingerprint/dom';
 import { claimOverlay, mountOverlayIn, overlayLayer, overlayRoot, releaseOverlay } from '../overlay/host';
 
 const CSS = `
-.panel { position: fixed; background: rgba(15, 18, 24, .45); pointer-events: none; }
-.ring { position: fixed; border: 2px solid #4c7dff; border-radius: 6px; pointer-events: none; box-sizing: border-box; }
-.tip { position: fixed; top: 0; left: 0; width: max-content; max-width: min(340px, calc(100vw - 16px)); box-sizing: border-box;
-  background: #fff; color: #1d1f23; border: 1px solid #d9dde3; border-radius: 10px; padding: 12px 14px; pointer-events: auto;
-  box-shadow: 0 6px 24px rgba(0,0,0,.25); font: 14px/1.45 system-ui, sans-serif; }
+.spot { position: fixed; z-index: 0; border-radius: 8px; pointer-events: none; box-sizing: border-box;
+  box-shadow: 0 0 0 9999px var(--wm-scrim); }
+.ring { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box;
+  border: 2px solid var(--wm-ring); box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 6px color-mix(in srgb, var(--wm-ring) 30%, transparent); }
+.tip { position: fixed; z-index: 2; top: 0; left: 0; width: max-content; max-width: min(360px, calc(100vw - 16px));
+  box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
+  padding: 14px 16px 12px; pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.45 var(--wm-font); text-align: left; }
 .tip.centered { left: 50%; top: 24px; transform: translateX(-50%); }
-.count { font-size: 12px; color: #5f6672; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.title { font-weight: 500; margin: 4px 0; }
-.note { margin: 4px 0 0; color: #3b4048; }
-.buttons { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid #c9ced6; background: transparent; color: inherit; cursor: pointer; }
-button.primary { background: #2f5fd0; border-color: #2f5fd0; color: #fff; }
-button.icon { border: 0; padding: 2px 4px; }
-button:focus-visible { outline: 2px solid #4c7dff; outline-offset: 1px; }
-a { color: #2f5fd0; }
-@media (prefers-color-scheme: dark) {
-  .tip { background: #23262c; color: #e8eaed; border-color: #3a3e45; }
-  .count, .note { color: #a0a6b0; }
-  button { border-color: #4a4f57; }
-  a { color: #8ab0ff; }
+.tip *, .tip *::before, .tip *::after { box-sizing: border-box; }
+.arrow { position: absolute; width: 12px; height: 12px; background: var(--wm-surface); transform: rotate(45deg); pointer-events: none; }
+.arrow[data-side='top'] { border-left: 1px solid var(--wm-border); border-top: 1px solid var(--wm-border); }
+.arrow[data-side='bottom'] { border-right: 1px solid var(--wm-border); border-bottom: 1px solid var(--wm-border); }
+.arrow[data-side='left'] { border-left: 1px solid var(--wm-border); border-bottom: 1px solid var(--wm-border); }
+.arrow[data-side='right'] { border-right: 1px solid var(--wm-border); border-top: 1px solid var(--wm-border); }
+.head { display: flex; align-items: center; gap: 8px; margin: -4px -8px 0 0; }
+.count { flex: 1; font-size: 12px; font-weight: 600; color: var(--wm-fg-muted); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.progress { height: 3px; border-radius: 999px; background: var(--wm-surface-2); margin: 6px 0 10px; overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--wm-accent); border-radius: inherit; }
+.badge-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; margin: 2px 0 8px;
+  background: var(--wm-accent-soft); color: var(--wm-accent-text); }
+.badge-icon svg { width: 20px; height: 20px; }
+[data-card='done'] .badge-icon { background: var(--wm-success-soft); color: var(--wm-success); }
+[data-card='not-found'] .badge-icon { background: var(--wm-warn-soft); color: var(--wm-warn); }
+.title { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.title strong { font-weight: 700; }
+.note { margin: 6px 0 0; color: var(--wm-fg-muted); font-size: 13.5px; overflow-wrap: anywhere; }
+.flash { margin: 10px 0 0; padding: 6px 10px; border-radius: var(--wm-radius-sm); background: var(--wm-success-soft); color: var(--wm-success); font-size: 13px; }
+.buttons { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+.buttons .spacer { flex: 1; }
+button { font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; min-height: 32px; padding: 5px 12px; border-radius: var(--wm-radius-sm);
+  border: 1px solid var(--wm-border-input); background: var(--wm-surface); color: var(--wm-fg); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  margin: 0; text-transform: none; letter-spacing: normal; box-shadow: none; }
+button:hover { background: var(--wm-surface-hover); }
+button.primary { background: var(--wm-accent); border-color: var(--wm-accent); color: var(--wm-accent-fg); }
+button.primary:hover { background: var(--wm-accent-hover); border-color: var(--wm-accent-hover); }
+button.ghost { border-color: transparent; background: transparent; }
+button.ghost:hover { background: var(--wm-surface-hover); }
+button.icon { min-height: 28px; min-width: 28px; padding: 4px; justify-content: center; border-color: transparent; background: transparent; color: var(--wm-fg-muted); }
+button.icon:hover { background: var(--wm-surface-hover); color: var(--wm-fg); }
+button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
+button svg { width: 16px; height: 16px; flex: none; }
+a { color: var(--wm-accent-text); }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .tip { animation: wm-tip-in 160ms var(--wm-ease); }
+  .tip.centered { animation-name: wm-card-in; }
+  .ring { animation: wm-ring-in 220ms var(--wm-ease), wm-ring-pulse 1.6s ease-in-out 240ms 2; }
+  .spot { animation: wm-fade-in 200ms var(--wm-ease); }
 }
-@media (prefers-reduced-motion: no-preference) { .tip { transition: opacity 120ms; } }
+@keyframes wm-tip-in { from { opacity: 0; translate: 0 4px; } }
+@keyframes wm-card-in { from { opacity: 0; translate: 0 -6px; } }
+@keyframes wm-fade-in { from { opacity: 0; } }
+@keyframes wm-ring-in { from { opacity: 0; } }
+@keyframes wm-ring-pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 10px color-mix(in srgb, var(--wm-ring) 18%, transparent); } }
+@media (forced-colors: active) {
+  .tip { border: 2px solid CanvasText; }
+  .ring { border-color: Highlight; }
+  .spot { box-shadow: none; }
+  button { border: 1px solid ButtonText; }
+}
 `;
 
 export interface UiHandlers {
@@ -82,10 +122,18 @@ export function modalDialogOf(target: Element): Element | null {
   return null;
 }
 
+/** A step title as plain text (markdown rendered, then read back), for the screen reader announcement. */
+function plain(text: string): string {
+  const span = document.createElement('span');
+  span.append(...renderInline(text));
+  return span.textContent ?? '';
+}
+
 export class PlayerUI {
-  private panels: HTMLElement[] = [];
+  private spot: HTMLElement | null = null;
   private ring: HTMLElement | null = null;
   private tip: HTMLElement | null = null;
+  private announcer: HTMLElement | null = null;
   private stopAuto: (() => void) | null = null;
 
   constructor(private readonly h: UiHandlers) {}
@@ -98,6 +146,20 @@ export class PlayerUI {
       style.textContent = CSS;
       root.append(style);
     }
+  }
+
+  /**
+   * Step changes are announced from one live region that stays in the layer, so screen readers
+   * read each new step (a live region inserted already filled is often skipped).
+   */
+  private announce(text: string): void {
+    if (!this.announcer?.isConnected) {
+      this.announcer = el('div', 'sr');
+      this.announcer.setAttribute('role', 'status');
+      this.announcer.setAttribute('aria-live', 'polite');
+      overlayLayer().append(this.announcer);
+    }
+    this.announcer.textContent = text;
   }
 
   /** Shows the tooltip for the current step, anchored to `target` with a spotlight, or centered when there is none. */
@@ -118,31 +180,33 @@ export class PlayerUI {
     tip.append(title);
     if (step.note) {
       const note = el('div', 'note');
+      note.id = 'waymark-step-note';
       note.append(...renderInline(step.note));
       tip.append(note);
+      tip.setAttribute('aria-describedby', note.id);
     }
     const buttons = el('div', 'buttons');
-    if (view.stepIndex > 0) buttons.append(this.button('Back', 'back', this.h.back));
+    if (view.stepIndex > 0) buttons.append(this.button('Back', 'back', this.h.back, 'ghost', ChevronLeft));
+    buttons.append(el('span', 'spacer'));
+    if (step.optional) buttons.append(this.button('Skip', 'skip', this.h.skip, 'ghost'));
     if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next') {
-      buttons.append(this.button(view.stepIndex === view.total - 1 ? 'Done' : 'Next', 'next', this.h.next, true));
+      const last = view.stepIndex === view.total - 1;
+      buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
     }
-    if (step.optional) buttons.append(this.button('Skip', 'skip', this.h.skip));
-    buttons.append(this.button('Exit', 'exit', this.h.exit));
-    tip.append(buttons);
+    if (buttons.childElementCount > 1) tip.append(buttons);
+    const arrowEl = el('div', 'arrow');
     layer.append(tip);
     this.tip = tip;
+    this.announce(`Step ${Math.min(view.stepIndex + 1, view.total)} of ${view.total}: ${plain(step.title)}`);
 
     if (!target) {
       tip.classList.add('centered');
       return;
     }
-    this.panels = [0, 1, 2, 3].map(() => {
-      const p = el('div', 'panel');
-      layer.append(p);
-      return p;
-    });
+    tip.append(arrowEl);
+    this.spot = el('div', 'spot');
     this.ring = el('div', 'ring');
-    layer.append(this.ring);
+    layer.append(this.spot, this.ring);
     const placement: Placement = step.placement && step.placement !== 'auto' ? step.placement : 'bottom';
     const update = () => {
       if (!target.isConnected) {
@@ -150,11 +214,21 @@ export class PlayerUI {
         return;
       }
       const r = target.getBoundingClientRect();
-      const { hole, panels } = spotlightPanels({ x: r.left, y: r.top, w: r.width, h: r.height }, window.innerWidth, window.innerHeight);
-      panels.forEach((b, i) => Object.assign(this.panels[i]!.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` }));
-      if (this.ring) Object.assign(this.ring.style, { left: `${hole.x}px`, top: `${hole.y}px`, width: `${hole.w}px`, height: `${hole.h}px` });
-      void computePosition(target, tip, { strategy: 'fixed', placement, middleware: [offset(12), flip(), shift({ padding: 8 })] }).then(({ x, y }) => {
+      const { hole } = spotlightPanels({ x: r.left, y: r.top, w: r.width, h: r.height }, window.innerWidth, window.innerHeight);
+      const box = { left: `${hole.x}px`, top: `${hole.y}px`, width: `${hole.w}px`, height: `${hole.h}px` };
+      if (this.spot) Object.assign(this.spot.style, box);
+      if (this.ring) Object.assign(this.ring.style, box);
+      void computePosition(target, tip, {
+        strategy: 'fixed',
+        placement,
+        middleware: [offset(14), flip(), shift({ padding: 8 }), arrow({ element: arrowEl, padding: 12 })],
+      }).then(({ x, y, placement: final, middlewareData }) => {
         Object.assign(tip.style, { left: `${x}px`, top: `${y}px` });
+        // The arrow sits on the tooltip's side that faces the target.
+        const side = ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' } as const)[final.split('-')[0] as 'top' | 'bottom' | 'left' | 'right'];
+        const a = middlewareData.arrow;
+        arrowEl.dataset.side = side;
+        Object.assign(arrowEl.style, { left: a?.x != null ? `${a.x}px` : '', top: a?.y != null ? `${a.y}px` : '', right: '', bottom: '', [side]: '-7px' });
       });
     };
     this.stopAuto = autoUpdate(target, tip, update, { animationFrame: false });
@@ -168,46 +242,52 @@ export class PlayerUI {
     const tip = this.tooltipShell(view);
     tip.classList.add('centered');
     tip.dataset.card = kind;
+    const icon = el('div', 'badge-icon');
     const title = el('div', 'title');
+    title.id = 'waymark-step-title';
     const note = el('div', 'note');
     const buttons = el('div', 'buttons');
     if (kind === 'done') {
+      icon.append(buildSvg(CircleCheck));
       title.textContent = 'Done!';
       note.textContent = `You finished “${view.guideTitle ?? 'this guide'}”.`;
-      buttons.append(this.button('Close', 'close', this.h.exit, true));
+      buttons.append(el('span', 'spacer'), this.button('Close', 'close', this.h.exit, 'primary', undefined, true));
     } else if (kind === 'not-found') {
+      icon.append(buildSvg(TriangleAlert));
       title.textContent = 'Waymark can’t find this step on the page.';
-      note.append(...(view.step ? renderInline(view.step.title) : []));
+      note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
       buttons.append(
-        this.button('Retry', 'retry', this.h.retry, true),
+        this.button('Report broken step', 'report', this.h.report, 'ghost'),
+        el('span', 'spacer'),
         this.button('Skip', 'skip', this.h.skip),
-        this.button('Exit', 'exit', this.h.exit),
-        this.button('Report broken step', 'report', this.h.report),
+        this.button('Retry', 'retry', this.h.retry, 'primary', undefined, true),
       );
     } else {
+      icon.append(buildSvg(MapPin));
       title.textContent = 'This step is on another page.';
-      note.append(...(view.step ? renderInline(view.step.title) : []));
-      buttons.append(this.button('Go back', 'go-back', this.h.goBack, true), this.button('Skip', 'skip', this.h.skip), this.button('Exit', 'exit', this.h.exit));
+      note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
+      buttons.append(el('span', 'spacer'), this.button('Skip', 'skip', this.h.skip), this.button('Go back', 'go-back', this.h.goBack, 'primary', undefined, true));
     }
-    tip.append(title, note, buttons);
+    tip.append(icon, title, note, buttons);
     overlayLayer().append(tip);
     this.tip = tip;
+    this.announce(`${title.textContent} ${note.textContent ?? ''}`.trim());
   }
 
   /** Small confirmation inside the current tooltip (e.g. after reporting a broken step). */
   flash(message: string): void {
     if (!this.tip) return;
-    const note = el('div', 'note', message);
-    note.setAttribute('role', 'status');
-    this.tip.append(note);
+    const note = el('div', 'flash', message);
+    this.tip.insertBefore(note, this.tip.querySelector('.buttons'));
+    this.announce(message);
   }
 
   clear(): void {
     releaseOverlay(this);
     this.stopAuto?.();
     this.stopAuto = null;
-    this.panels.forEach((p) => p.remove());
-    this.panels = [];
+    this.spot?.remove();
+    this.spot = null;
     this.ring?.remove();
     this.ring = null;
     this.tip?.remove();
@@ -227,7 +307,6 @@ export class PlayerUI {
     const tip = el('div', 'tip');
     tip.setAttribute('role', 'dialog');
     tip.setAttribute('aria-label', `Waymark guide: ${view.guideTitle ?? ''}`);
-    tip.setAttribute('aria-live', 'polite');
     // Keep focus in the app's field: clicks on the tooltip never take it.
     tip.addEventListener('mousedown', (e) => e.preventDefault());
     tip.addEventListener('keydown', (e) => {
@@ -236,21 +315,37 @@ export class PlayerUI {
         this.h.exit();
       }
     });
-    const count = el('div', 'count');
-    count.append(el('span', undefined, `Step ${Math.min(view.stepIndex + 1, view.total)} of ${view.total}`));
+    const n = Math.min(view.stepIndex + 1, view.total);
+    const head = el('div', 'head');
+    head.append(el('span', 'count', `Step ${n} of ${view.total}`));
     // Mute toggle: reflects the global voice setting; the service worker stops speech.
-    const mute = this.button(view.muted ? '🔇' : '🔊', 'mute', () => this.h.mute(!view.muted));
-    mute.className = 'icon';
-    mute.setAttribute('aria-label', 'Mute voice');
+    const mute = this.iconButton(view.muted ? VolumeX : Volume2, 'mute', 'Mute voice', () => this.h.mute(!view.muted));
     mute.setAttribute('aria-pressed', String(view.muted));
-    count.append(mute);
-    tip.append(count);
+    const exit = this.iconButton(X, 'exit', 'Exit guide', this.h.exit);
+    head.append(mute, exit);
+    const progress = el('div', 'progress');
+    progress.setAttribute('aria-hidden', 'true');
+    const bar = el('span');
+    bar.style.width = `${view.total ? (n / view.total) * 100 : 0}%`;
+    progress.append(bar);
+    tip.append(head, progress);
     return tip;
   }
 
-  private button(label: string, action: string, fn: () => void, primary = false): HTMLButtonElement {
-    const b = el('button', primary ? 'primary' : undefined, label);
+  private iconButton(icon: IconNode, action: string, label: string, fn: () => void): HTMLButtonElement {
+    const b = this.button('', action, fn, 'icon');
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.append(buildSvg(icon));
+    return b;
+  }
+
+  private button(label: string, action: string, fn: () => void, variant?: 'primary' | 'ghost' | 'icon', icon?: IconNode, trailing = false): HTMLButtonElement {
+    const b = el('button', variant);
     b.type = 'button';
+    if (icon && !trailing) b.append(buildSvg(icon));
+    if (label) b.append(label);
+    if (icon && trailing) b.append(buildSvg(icon));
     b.dataset.action = action;
     b.addEventListener('click', (e) => {
       e.stopPropagation();

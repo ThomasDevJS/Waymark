@@ -7,15 +7,24 @@ import { renderInline } from '../../core/text/markdown';
 import { overlayLayer, overlayRoot } from './host';
 
 const CSS = `
-.pill { position: fixed; left: 16px; bottom: 16px; max-width: min(420px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: center;
-  padding: 6px 12px; border-radius: 999px; background: #1d1f23; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); pointer-events: none; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: #e53935; flex: none; }
-.paused .dot { background: #9e9e9e; }
-.label { font-weight: 600; flex: none; }
-.last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (prefers-color-scheme: light) { .pill { background: #fff; color: #1d1f23; border: 1px solid #d9dde3; } }
-@media (prefers-reduced-motion: no-preference) { .dot { animation: blink 1.5s ease-in-out infinite; } .paused .dot { animation: none; } }
-@keyframes blink { 50% { opacity: .35; } }
+.pill { position: fixed; left: 16px; bottom: 16px; max-width: min(440px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: center; box-sizing: border-box;
+  padding: 6px 14px 6px 10px; border-radius: 999px; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border);
+  box-shadow: var(--wm-shadow-2); pointer-events: none; font: 13px/1.4 var(--wm-font); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wm-rec); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--wm-rec) 25%, transparent); }
+.paused .dot { background: var(--wm-fg-muted); box-shadow: none; }
+.label { font-weight: 700; flex: none; letter-spacing: .04em; font-size: 12px; color: var(--wm-rec); }
+.paused .label { color: var(--wm-fg-muted); }
+.sep { width: 1px; align-self: stretch; background: var(--wm-border); flex: none; }
+.last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pill.notice .last { color: var(--wm-warn); font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) {
+  .pill { animation: wm-pill-in 180ms var(--wm-ease); }
+  .dot { animation: wm-blink 1.5s ease-in-out infinite; }
+  .paused .dot { animation: none; }
+}
+@keyframes wm-blink { 50% { opacity: .35; } }
+@keyframes wm-pill-in { from { opacity: 0; translate: 0 6px; } }
+@media (forced-colors: active) { .pill { border: 1px solid CanvasText; } .dot { background: Mark; } }
 `;
 
 let pill: HTMLElement | null = null;
@@ -57,10 +66,14 @@ export function showPill(view: RecordingView): void {
   const label = document.createElement('span');
   label.className = 'label';
   label.textContent = view.paused ? 'Paused' : 'REC';
+  const sep = document.createElement('span');
+  sep.className = 'sep';
   const last = document.createElement('span');
   last.className = 'last';
-  last.append(...(view.lastStepTitle ? renderInline(view.lastStepTitle) : [document.createTextNode(`${view.count} steps`)]));
-  pill.replaceChildren(dot, label, last);
+  if (view.lastStepTitle) last.append(document.createTextNode(`${view.count}. `), ...renderInline(view.lastStepTitle));
+  else last.textContent = view.count ? `${view.count} steps` : 'Use the page; each action becomes a step';
+  pill.classList.remove('notice');
+  pill.replaceChildren(dot, label, sep, last);
 }
 
 /** Shows a short notice in the pill for a few seconds, then the last step again. */
@@ -70,6 +83,7 @@ export function flashPill(text: string): void {
   const last = pill.querySelector('.last');
   if (!last) return;
   last.textContent = text;
+  pill.classList.add('notice');
   if (flashTimer) clearTimeout(flashTimer);
   flashTimer = setTimeout(() => {
     flashTimer = null;
