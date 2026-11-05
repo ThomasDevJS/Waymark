@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { send } from '../core/messaging/client';
 import { HD_TOTAL_BYTES, mb, type HdStatus } from '../core/voice/hd';
 import { HD_OFFER_KEY, shouldOfferHd, type HdOfferAnswer, type HdOfferInput } from '../core/voice/offer';
-import { startHdDownload } from './hdDownload';
+import { startHdDownload, type HdStart } from './hdDownload';
 import { Icon } from './Icon';
 
 /** The bundled sample (scripts/hd-sample.mjs): about 6 s of the HD voice, 21 KB. */
@@ -60,9 +60,16 @@ export interface HdOfferProps {
   contentLang: string;
   /** The card closed (Not now, Close, or a cancelled download): put focus somewhere useful. */
   onClosed?: () => void;
+  /**
+   * Stops what this page is reading before the sample plays. The Practice page stops only its
+   * tutorial's speech (tutorial.stop, never a guide's in another tab); the panel stops its guide's.
+   */
+  stopSpeech?: () => Promise<unknown>;
+  /** Changes when the step changes: the sample stops, so it never talks over the next step. */
+  stepKey?: string | number | null;
 }
 
-export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
+export function HdOffer({ about, contentLang, onClosed, stopSpeech = () => send('voice.stop', {}), stepKey }: HdOfferProps) {
   const [gate, setGate] = useState<Gate | null>(null);
   /** offer: the question. progress: Download was pressed here; the card follows the download. */
   const [phase, setPhase] = useState<'offer' | 'progress' | 'closed'>('offer');
@@ -90,6 +97,13 @@ export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
     };
   }, [contentLang]);
 
+  // A new step starts reading: the sample gives way.
+  useEffect(() => {
+    if (!audio.current) return;
+    audio.current.pause();
+    setSampling(false);
+  }, [stepKey]);
+
   const close = () => {
     audio.current?.pause();
     setPhase('closed');
@@ -104,7 +118,7 @@ export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
   const playSample = async () => {
     if (sampling) return stopSample();
     // Stop the step being read, so the sample isn't talked over.
-    await send('voice.stop', {}).catch(() => undefined);
+    await stopSpeech().catch(() => undefined);
     const a = (audio.current ??= new Audio(HD_SAMPLE_URL));
     a.currentTime = 0;
     a.onended = () => setSampling(false);
@@ -118,7 +132,7 @@ export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
   const download = async () => {
     stopSample();
     setMessage(null);
-    const r = await startHdDownload();
+    const r = await startHdDownload().catch((): HdStart => ({ ok: false, message: 'The HD voice download could not start. You can try again in Settings.' }));
     if (!r.ok) {
       // Refused: the question stays, so the learner can try again or say Not now.
       setMessage(r.message);
@@ -145,32 +159,66 @@ export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
 
   const size = mb(HD_TOTAL_BYTES);
   const st = gate.status;
-  if (phase === 'progress') {
-    const busy = st.state === 'downloading' || st.state === 'checking';
-    const pct = st.total ? Math.floor((st.loaded / st.total) * 100) : 0;
-    return (
-      <section class="card hd-offer" ref={card} aria-labelledby="hd-offer-title" data-testid="hd-offer" data-state={st.state}>
-        <h2 id="hd-offer-title" class="card-title" tabIndex={-1}>
-          <Icon name="mic" />
-          HD voice
-        </h2>
-        <p class={`small status-text${st.state === 'ready' ? ' ok' : st.state === 'slow' || st.state === 'error' ? ' warn' : ''}`} role="status" data-testid="hd-offer-status">
-          {st.state === 'downloading' && 'Downloading the HD voice. The usual voice reads each step until it’s ready.'}
-          {st.state === 'checking' && 'Checking how fast this device speaks…'}
-          {st.state === 'ready' && 'The HD voice is on. The next step uses it.'}
-          {st.state === 'slow' && 'This device is too slow for the HD voice, so Waymark keeps the usual voice.'}
-          {st.state === 'error' && `The download failed: ${st.message ?? 'unknown error'}. You can try again in Settings.`}
-          {st.state === 'off' && 'The download was cancelled.'}
+  const progress = phase === 'progress';
+  const busy = st.state === 'downloading' || st.state === 'checking';
+  const pct = st.total ? Math.floor((st.loaded / st.total) * 100) : 0;
+  const tone = !progress ? ' warn' : st.state === 'ready' ? ' ok' : st.state === 'slow' || st.state === 'error' ? ' warn' : '';
+  // One live region, mounted in both phases (keyed, so Preact keeps the same element): pressing
+  // Download changes its text, which screen readers announce (review).
+  const live = progress
+    ? {
+        downloading: 'Downloading the HD voice. The usual voice reads each step until it’s ready.',
+        checking: 'Checking how fast this device speaks…',
+        ready: 'The HD voice is on. The next step uses it.',
+        slow: 'This device is too slow for the HD voice, so Waymark keeps the usual voice.',
+        error: 'The download failed. You can try again in Settings.',
+        off: 'The download was cancelled.',
+      }[st.state]
+    : (message ?? '');
+  return (
+    <section class="card hd-offer" ref={card} aria-labelledby="hd-offer-title" data-testid="hd-offer" data-state={progress ? st.state : 'offer'}>
+      <h2 key="title" id="hd-offer-title" class="card-title" tabIndex={-1} aria-describedby={progress ? 'hd-offer-live' : undefined}>
+        <Icon name="mic" />
+        {progress ? 'HD voice' : 'Try the HD voice'}
+      </h2>
+      {!progress && (
+        <p key="text" class="small" id="hd-offer-text">
+          {about === 'tutorials' ? 'Tutorials' : 'Guides'} sound much better with the HD voice. It runs on your device: one download of about {size}, and after that nothing is sent online.
         </p>
-        {st.state === 'downloading' && (
-          <div class="hd-offer-progress">
-            <progress max={st.total} value={st.loaded} aria-label="HD voice download" data-testid="hd-offer-progress" />
-            <span class="xsmall muted" aria-hidden="true">
-              {pct}%
-            </span>
-          </div>
-        )}
-        <div class="row">
+      )}
+      {!progress && (
+        <div key="ask" class="row">
+          <button type="button" class="sm" data-testid="hd-offer-sample" aria-pressed={sampling} onClick={() => void playSample()}>
+            <Icon name={sampling ? 'stop' : 'play'} />
+            Listen to a sample
+          </button>
+          <button type="button" class="primary sm" data-testid="hd-offer-download" aria-describedby="hd-offer-text" onClick={() => void download()}>
+            <Icon name="download" />
+            Download
+          </button>
+          <button type="button" class="ghost sm" data-testid="hd-offer-later" onClick={() => void notNow()}>
+            Not now
+          </button>
+        </div>
+      )}
+      {!progress && (
+        <p key="note" class="xsmall muted">
+          The usual voice keeps reading meanwhile. You can turn the HD voice on or off at any time in Settings.
+        </p>
+      )}
+      {progress && st.state === 'downloading' && (
+        <div key="bar" class="hd-offer-progress">
+          <progress max={st.total} value={st.loaded} aria-label="HD voice download" data-testid="hd-offer-progress" />
+          <span class="xsmall muted" aria-hidden="true">
+            {pct}%
+          </span>
+        </div>
+      )}
+      <p key="live" id="hd-offer-live" class={`small status-text${tone}`} role="status" data-testid={progress ? 'hd-offer-status' : 'hd-offer-message'}>
+        {live}
+      </p>
+      {progress && (
+        <div key="done" class="row">
           {busy ? (
             <button type="button" class="ghost sm" data-testid="hd-offer-cancel" onClick={() => void cancel()}>
               Cancel the download
@@ -181,37 +229,7 @@ export function HdOffer({ about, contentLang, onClosed }: HdOfferProps) {
             </button>
           )}
         </div>
-      </section>
-    );
-  }
-
-  return (
-    <section class="card hd-offer" ref={card} aria-labelledby="hd-offer-title" data-testid="hd-offer" data-state="offer">
-      <h2 id="hd-offer-title" class="card-title" tabIndex={-1}>
-        <Icon name="mic" />
-        Try the HD voice
-      </h2>
-      <p class="small" id="hd-offer-text">
-        {about === 'tutorials' ? 'Tutorials' : 'Guides'} sound much better with the HD voice. It runs on your device: one download of about {size}, and after that nothing is sent online.
-      </p>
-      <div class="row">
-        <button type="button" class="sm" data-testid="hd-offer-sample" aria-pressed={sampling} onClick={() => void playSample()}>
-          <Icon name={sampling ? 'stop' : 'play'} />
-          Listen to a sample
-        </button>
-        <button type="button" class="primary sm" data-testid="hd-offer-download" aria-describedby="hd-offer-text" onClick={() => void download()}>
-          <Icon name="download" />
-          Download
-        </button>
-        <button type="button" class="ghost sm" data-testid="hd-offer-later" onClick={() => void notNow()}>
-          Not now
-        </button>
-      </div>
-      <p class="xsmall muted">The usual voice keeps reading meanwhile. You can turn the HD voice on or off at any time in Settings.</p>
-      {/* Mounted from the start, so screen readers announce a message when it appears. */}
-      <p class="small status-text warn" role="status" data-testid="hd-offer-message">
-        {message ?? ''}
-      </p>
+      )}
     </section>
   );
 }

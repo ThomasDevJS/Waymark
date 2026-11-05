@@ -15,13 +15,17 @@ let stored: Record<string, unknown>;
 let hd: HdStatus;
 let voice: { autoPlay: boolean; muted: boolean };
 let granted: boolean;
+let enableFails: boolean;
 let listeners: ((c: Record<string, unknown>, area: string) => void)[];
 let root: HTMLElement;
 
 function answer(type: string): unknown {
   if (type === 'hd.status') return hd;
   if (type === 'voice.settings.get') return { rate: 1, allowOnlineVoices: false, voices: {}, ...voice };
-  if (type === 'hd.enable') return (hd = { ...HD_OFF, state: 'downloading' });
+  if (type === 'hd.enable') {
+    if (enableFails) throw new Error('no offscreen');
+    return (hd = { ...HD_OFF, state: 'downloading' });
+  }
   if (type === 'hd.remove') return (hd = HD_OFF);
   return { ok: true };
 }
@@ -37,12 +41,17 @@ beforeEach(() => {
   hd = HD_OFF;
   voice = { autoPlay: true, muted: false };
   granted = true;
+  enableFails = false;
   stored = { [HD_OFFER_TEST_ENV]: { uiLang: 'en-US', cores: 8, memoryGb: 8 } };
   (globalThis as unknown as { chrome: unknown }).chrome = {
     runtime: {
       sendMessage: async (m: { type: string; payload: Record<string, unknown> }) => {
         sent.push(m);
-        return { ok: true, data: answer(m.type) };
+        try {
+          return { ok: true, data: answer(m.type) };
+        } catch (e) {
+          return { ok: false, error: (e as Error).message };
+        }
       },
     },
     permissions: {
@@ -213,5 +222,83 @@ describe('answering', () => {
     // Pressing it again stops the sample.
     await userEvent.click(btn('hd-offer-sample'));
     expect(btn('hd-offer-sample').getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+describe('review fixes', () => {
+  it('one live region stays mounted from the question to the download, so its new text is announced', async () => {
+    await mount();
+    const region = root.querySelector('[role="status"]');
+    expect(region).not.toBeNull();
+    await userEvent.click(btn('hd-offer-download'));
+    await settle();
+    expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(root.querySelector('[role="status"]')).toBe(region);
+    expect(region!.textContent).toContain('Downloading the HD voice');
+    // The focused heading is described by it.
+    expect(document.getElementById('hd-offer-title')!.getAttribute('aria-describedby')).toBe(region!.id);
+  });
+
+  it('a failed download reads as one plain sentence, whatever the service worker says', async () => {
+    await mount();
+    await userEvent.click(btn('hd-offer-download'));
+    await settle();
+    hd = { ...HD_OFF, state: 'error', message: 'The download stopped. Try again.' };
+    setStored({ hdStatus: hd });
+    await settle();
+    expect(root.querySelector('[data-testid="hd-offer-status"]')!.textContent).toBe('The download failed. You can try again in Settings.');
+  });
+
+  it('the sample stops speech the page’s own way (the Practice page: tutorial speech only), never voice.stop', async () => {
+    const stopSpeech = vi.fn(async () => undefined);
+    await mount({ stopSpeech });
+    await userEvent.click(btn('hd-offer-sample'));
+    await settle();
+    expect(stopSpeech).toHaveBeenCalledTimes(1);
+    expect(sent.some((m) => m.type === 'voice.stop')).toBe(false);
+  });
+
+  it('the sample stops when the next step starts, so the step is never talked over', async () => {
+    await mount({ stepKey: 1 });
+    await userEvent.click(btn('hd-offer-sample'));
+    await settle();
+    expect(btn('hd-offer-sample').getAttribute('aria-pressed')).toBe('true');
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+    await mount({ stepKey: 2 });
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(btn('hd-offer-sample').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('a download that fails to start after the hosts were granted says so and keeps the question', async () => {
+    enableFails = true;
+    await mount();
+    await userEvent.click(btn('hd-offer-download'));
+    await settle();
+    expect(card()!.dataset.state).toBe('offer');
+    expect(root.querySelector('[data-testid="hd-offer-message"]')!.textContent).toContain('could not start');
+    expect(stored[HD_OFFER_KEY]).toBeUndefined();
+  });
+
+  it('Close calls onClosed, so the page can put focus back', async () => {
+    const onClosed = vi.fn();
+    await mount({ onClosed });
+    await userEvent.click(btn('hd-offer-download'));
+    await settle();
+    hd = { ...HD_OFF, state: 'ready', loaded: HD_TOTAL_BYTES };
+    setStored({ hdStatus: hd });
+    await settle();
+    await userEvent.click(btn('hd-offer-close'));
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it('without a memory override the real navigator.deviceMemory is used', async () => {
+    stored[HD_OFFER_TEST_ENV] = { uiLang: 'en-US', cores: 8 };
+    Object.defineProperty(navigator, 'deviceMemory', { value: 2, configurable: true });
+    try {
+      await mount();
+      expect(card()).toBeNull();
+    } finally {
+      delete (navigator as unknown as { deviceMemory?: number }).deviceMemory;
+    }
   });
 });

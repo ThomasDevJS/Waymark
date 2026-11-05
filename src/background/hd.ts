@@ -88,12 +88,20 @@ async function releaseHosts(): Promise<void> {
 export async function hdEnable(added: string[]): Promise<HdStatus> {
   const own = added.filter((h) => (HD_HOST_PATTERNS as readonly string[]).includes(h));
   const status: HdStatus = { ...HD_OFF, state: 'downloading' };
-  // The document exists before the status says "downloading", so Settings never sees a
-  // download without its document (which it would call failed).
-  await ensureOffscreen();
-  const started = await enqueue(async () => {
+  // The hosts to give back are recorded first, so a failure below still releases them (D140 review).
+  await enqueue(async () => {
     const prev = ((await chrome.storage.local.get(RELEASE_KEY))[RELEASE_KEY] as string[] | undefined) ?? [];
     await chrome.storage.local.set({ [RELEASE_KEY]: [...new Set([...prev, ...own])] });
+  });
+  // The document exists before the status says "downloading", so Settings never sees a
+  // download without its document (which it would call failed).
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    if (!['downloading', 'checking'].includes((await getHdStatus()).state)) await releaseHosts();
+    throw e;
+  }
+  const started = await enqueue(async () => {
     const now = await getHdStatus();
     if (now.state === 'downloading' || now.state === 'checking') return false; // one download at a time
     await setHdStatus(status);
