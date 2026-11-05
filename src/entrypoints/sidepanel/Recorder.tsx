@@ -6,6 +6,8 @@ import type { RunView } from '../../core/player/run';
 import { Markdown } from './Markdown';
 import { Editor } from './Editor';
 import { Library } from './Library';
+import { Icon } from '../../ui/Icon';
+import { FlagNotes } from './steps';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
@@ -70,12 +72,21 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
   }, [tabId]);
 
   const r = recording.value;
+  const errorBox = error.value && (
+    <p class="alert" role="alert">
+      <Icon name="error" />
+      {error.value}
+    </p>
+  );
   if (!r && editing.value) {
     return (
       <>
         {saved.value && (
-          <p role="status" data-testid="saved">
-            Saved “{saved.value.title}” with {saved.value.count} steps. Review the steps below.
+          <p class="banner success" role="status" data-testid="saved">
+            <Icon name="check" />
+            <span>
+              Saved “{saved.value.title}” with {saved.value.count} steps. Check the steps below, then press Save.
+            </span>
           </p>
         )}
         <Editor
@@ -90,57 +101,48 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
     );
   }
   if (!r) {
+    const rv = run.value;
     return (
-      <section class="site" aria-label="Recorder">
+      <>
         {saved.value && (
-          <p role="status" data-testid="saved">
-            Saved “{saved.value.title}” with {saved.value.count} steps.
+          <p class="banner success" role="status" data-testid="saved">
+            <Icon name="check" />
+            <span>
+              Saved “{saved.value.title}” with {saved.value.count} steps.
+            </span>
           </p>
         )}
-        <form
-          class="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (tabId === null) return;
-            void attempt(async () => {
-              recording.value = await send('rec.start', { tabId, title: title.value });
-              saved.value = null;
-              title.value = '';
-            });
-          }}
-        >
-          <label class="grow">
-            <span class="muted">New guide</span>
-            <input data-testid="guide-title" value={title.value} placeholder="Guide name" onInput={(e) => (title.value = (e.target as HTMLInputElement).value)} />
-          </label>
-          <button type="submit" class="primary" data-testid="record" disabled={tabId === null}>
-            Record
-          </button>
-        </form>
-        {error.value && <p role="alert">{error.value}</p>}
-        {run.value?.active && run.value.status !== 'none' && (
-          <div class="row" data-testid="run-status">
-            <span class="grow">
-              {run.value.status === 'finished'
-                ? `Finished: ${run.value.guideTitle}`
-                : run.value.status === 'paused'
-                  ? `Paused (continued in another tab): ${run.value.guideTitle}`
-                  : `Playing: ${run.value.guideTitle} · step ${run.value.stepIndex + 1} of ${run.value.total}`}
-            </span>
-            <button type="button" data-testid="stop-run" onClick={() => tabId !== null && void attempt(async () => (await send('run.stop', { tabId }), await refresh(tabId)))}>
-              Stop
-            </button>
-          </div>
+        {rv?.active && rv.status !== 'none' && (
+          <section class="card run-card" aria-label="Guide playing" data-testid="run-status">
+            <div class="card-head">
+              <div class="stack-sm">
+                <span class="section-label">
+                  {rv.status === 'finished' ? 'Finished' : rv.status === 'paused' ? 'Paused · continued in another tab' : `Playing · step ${rv.stepIndex + 1} of ${rv.total}`}
+                </span>
+                <strong class="truncate">{rv.guideTitle}</strong>
+              </div>
+              <button type="button" data-testid="stop-run" onClick={() => tabId !== null && void attempt(async () => (await send('run.stop', { tabId }), await refresh(tabId)))}>
+                <Icon name="stop" />
+                Stop
+              </button>
+            </div>
+            {rv.status === 'running' && rv.total > 0 && (
+              <div class="meter" role="progressbar" aria-label="Guide progress" aria-valuemin={1} aria-valuemax={rv.total} aria-valuenow={rv.stepIndex + 1}>
+                <span style={{ width: `${((rv.stepIndex + 1) / rv.total) * 100}%` }} />
+              </div>
+            )}
+          </section>
         )}
         {needsStart.value && tabId !== null && (
-          <div class="row" role="status">
+          <div class="banner" role="status">
+            <Icon name="info" />
             {needsStart.value.reachable ? (
-              <>
+              <div class="row grow">
                 <span class="grow">This guide starts on another page.</span>
-                <button type="button" class="primary" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true)}>
+                <button type="button" class="primary sm" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true)}>
                   Open start page
                 </button>
-              </>
+              </div>
             ) : (
               <span class="grow" data-testid="start-hint">
                 This guide starts on a page like <code>{needsStart.value.pattern}</code>. Open that page, then press Start.
@@ -148,34 +150,48 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             )}
           </div>
         )}
-        <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id) => tabId !== null && void startGuide(tabId, id)} />
-      </section>
+        <section class="card" aria-label="Recorder">
+          <form
+            class="record-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (tabId === null) return;
+              void attempt(async () => {
+                recording.value = await send('rec.start', { tabId, title: title.value });
+                saved.value = null;
+                title.value = '';
+              });
+            }}
+          >
+            <label class="field grow">
+              <span class="label">New guide</span>
+              <input data-testid="guide-title" value={title.value} placeholder="e.g. Create an invoice" onInput={(e) => (title.value = (e.target as HTMLInputElement).value)} />
+            </label>
+            <button type="submit" class="primary record" data-testid="record" disabled={tabId === null}>
+              <span class="rec-dot" aria-hidden="true" />
+              Record
+            </button>
+          </form>
+          {errorBox}
+        </section>
+        <section class="card" aria-label="Guides">
+          <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id) => tabId !== null && void startGuide(tabId, id)} />
+        </section>
+      </>
     );
   }
 
+  const recordingNow = r.status === 'recording';
   return (
-    <section class="site" aria-label="Recorder">
-      <div class="row">
-        <strong class="grow">
-          {r.status === 'recording' ? '● Recording' : 'Paused'}: {r.title}
-        </strong>
-      </div>
-      <div class="row">
-        {r.status === 'recording' ? (
-          <button type="button" data-testid="pause" onClick={() => void attempt(() => send('rec.pause', {}))}>
-            Pause
-          </button>
-        ) : (
-          <button type="button" data-testid="resume" onClick={() => void attempt(() => send('rec.resume', {}))}>
-            Resume
-          </button>
-        )}
-        <button type="button" data-testid="undo" disabled={!r.steps.length} onClick={() => void attempt(() => send('rec.undo', {}))}>
-          Undo last step
-        </button>
-        <button type="button" data-testid="add-note" onClick={() => (noteOpen.value = !noteOpen.value)}>
-          Add note
-        </button>
+    <section class={`card rec-card${recordingNow ? ' is-recording' : ''}`} aria-label="Recorder">
+      <div class="card-head">
+        <div class="stack-sm">
+          <span class={`badge ${recordingNow ? 'rec' : ''}`} data-testid="rec-status">
+            <span class="rec-dot" aria-hidden="true" />
+            {recordingNow ? 'Recording' : 'Paused'}
+          </span>
+          <strong class="truncate">{r.title}</strong>
+        </div>
         <button
           type="button"
           class="primary"
@@ -192,12 +208,34 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             })
           }
         >
+          <Icon name="stop" />
           Stop
+        </button>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="Recording">
+        {recordingNow ? (
+          <button type="button" data-testid="pause" onClick={() => void attempt(() => send('rec.pause', {}))}>
+            <Icon name="pause" />
+            Pause
+          </button>
+        ) : (
+          <button type="button" data-testid="resume" onClick={() => void attempt(() => send('rec.resume', {}))}>
+            <Icon name="play" />
+            Resume
+          </button>
+        )}
+        <button type="button" data-testid="undo" disabled={!r.steps.length} onClick={() => void attempt(() => send('rec.undo', {}))}>
+          <Icon name="undo" />
+          Undo
+        </button>
+        <button type="button" data-testid="add-note" aria-expanded={noteOpen.value} onClick={() => (noteOpen.value = !noteOpen.value)}>
+          <Icon name="note" />
+          Add note
         </button>
       </div>
       {noteOpen.value && (
         <form
-          class="row"
+          class="row nowrap"
           onSubmit={(e) => {
             e.preventDefault();
             void attempt(async () => {
@@ -207,20 +245,37 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             });
           }}
         >
-          <input class="grow" aria-label="Note" placeholder="Note text" value={noteTitle.value} onInput={(e) => (noteTitle.value = (e.target as HTMLInputElement).value)} />
+          <input class="grow" aria-label="Note" placeholder="A tip or instruction for the learner" value={noteTitle.value} onInput={(e) => (noteTitle.value = (e.target as HTMLInputElement).value)} />
           <button type="submit">Add</button>
         </form>
       )}
-      {error.value && <p role="alert">{error.value}</p>}
-      <ol class="steps" data-testid="steps" aria-live="polite">
-        {r.steps.map((s) => (
-          <li key={s.id} data-kind={s.kind}>
-            <Markdown text={s.title} />
-            {s.flags?.length ? <span class="flag" title={s.flags.join(', ')}> ⚠</span> : null}
-          </li>
-        ))}
-      </ol>
-      {!r.steps.length && <p class="muted">Use the app; each action appears here as a step.</p>}
+      {errorBox}
+      {r.steps.length ? (
+        <ol class="live-steps" data-testid="steps" aria-live="polite" aria-label="Recorded steps">
+          {r.steps.map((s, i) => (
+            <li key={s.id} data-kind={s.kind}>
+              <span class="num" aria-hidden="true">
+                {i + 1}
+              </span>
+              <div class="grow">
+                <div class="step-title">
+                  <Markdown text={s.title} />
+                </div>
+                <FlagNotes flags={s.flags} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <ol class="live-steps" data-testid="steps" aria-live="polite" aria-label="Recorded steps" />
+      )}
+      {!r.steps.length && (
+        <div class="empty">
+          <Icon name="crosshair" />
+          <strong>{recordingNow ? 'Do the task in the page' : 'Recording is paused'}</strong>
+          <span class="small">{recordingNow ? 'Each click and field you use appears here as a step. Typed values are never saved.' : 'Resume to record more steps.'}</span>
+        </div>
+      )}
     </section>
   );
 }

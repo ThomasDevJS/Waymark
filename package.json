@@ -29,6 +29,7 @@
     "@floating-ui/dom": "^1.8.0",
     "@huggingface/transformers": "3.8.1",
     "@preact/signals": "^2.11.4",
+    "lucide": "1.59.0",
     "minisearch": "7.2.0",
     "preact": "^10.29.8",
     "ulid": "^3.0.2",

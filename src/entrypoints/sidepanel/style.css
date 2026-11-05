@@ -158,3 +158,304 @@ label.row {
 .banner {
   align-items: center;
 }
+
+/* ---------- panel shell (D91) ---------- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  padding: var(--wm-space-2) var(--wm-space-3) var(--wm-space-2) var(--wm-space-4);
+  background: var(--wm-surface);
+  border-bottom: 1px solid var(--wm-border);
+}
+.brand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  font-size: var(--wm-text-lg);
+}
+.brand > svg {
+  color: var(--wm-accent-text);
+}
+.site-id {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  min-width: 0;
+  color: var(--wm-fg-muted);
+}
+.site-id > .origin {
+  color: var(--wm-fg);
+  min-width: 0;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wm-space-2);
+  align-items: center;
+}
+.push {
+  margin-left: auto;
+}
+.banner.danger {
+  background: var(--wm-danger-soft);
+}
+.banner.danger > svg.wm-icon {
+  color: var(--wm-danger);
+}
+.status-text > svg.wm-icon {
+  vertical-align: -3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wm-icon-loader {
+    animation: wm-spin 1s linear infinite;
+  }
+}
+@keyframes wm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- recorder ---------- */
+.record-form {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: end;
+}
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+button.record .rec-dot {
+  background: var(--wm-accent-fg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm-accent-fg) 35%, transparent);
+}
+.badge.rec {
+  background: var(--wm-danger-soft);
+  color: var(--wm-danger);
+}
+.badge .rec-dot {
+  width: 8px;
+  height: 8px;
+}
+.rec-card.is-recording {
+  border-color: color-mix(in srgb, var(--wm-rec) 55%, var(--wm-border));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .badge.rec .rec-dot {
+    animation: wm-blink 1.4s ease-in-out infinite;
+  }
+}
+@keyframes wm-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+.live-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.live-steps:empty {
+  display: none;
+}
+.live-steps > li {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: flex-start;
+  padding: 6px var(--wm-space-2);
+  border-radius: var(--wm-radius-md);
+}
+.live-steps > li:last-child {
+  background: var(--wm-surface-2);
+}
+.num {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: var(--wm-radius-pill);
+  background: var(--wm-surface-2);
+  color: var(--wm-fg-muted);
+  font-size: var(--wm-text-xs);
+  font-weight: var(--wm-weight-bold);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-steps > li:last-child .num {
+  background: var(--wm-accent-soft);
+  color: var(--wm-accent-text);
+}
+.step-title {
+  font-size: var(--wm-text-md);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.flag-notes {
+  list-style: none;
+  margin: var(--wm-space-1) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--wm-space-1);
+}
+.run-card .meter {
+  height: 4px;
+  border-radius: var(--wm-radius-pill);
+  background: var(--wm-surface-2);
+  overflow: hidden;
+}
+.run-card .meter > span {
+  display: block;
+  height: 100%;
+  background: var(--wm-accent);
+}
+
+/* ---------- library ---------- */
+.guide-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.guide-item {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  padding: 6px var(--wm-space-2);
+  border-radius: var(--wm-radius-md);
+  min-width: 0;
+}
+.guide-item:hover,
+.guide-item:focus-within {
+  background: var(--wm-surface-2);
+}
+.guide-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.guide-title {
+  font-weight: var(--wm-weight-medium);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.guide-meta {
+  font-size: var(--wm-text-xs);
+  color: var(--wm-fg-muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.guide-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex: none;
+}
+.guide-actions .start {
+  margin-left: var(--wm-space-1);
+}
+.library-actions {
+  padding-top: var(--wm-space-3);
+  border-top: 1px solid var(--wm-border);
+}
+.import {
+  border-color: var(--wm-accent);
+}
+
+/* ---------- editor ---------- */
+.edit-step {
+  gap: var(--wm-space-3);
+}
+.edit-step.picking {
+  border-color: var(--wm-accent);
+  box-shadow: 0 0 0 1px var(--wm-accent);
+}
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px -4px -6px 0;
+}
+.step-head .num {
+  background: var(--wm-accent-soft);
+  color: var(--wm-accent-text);
+}
+.step-options {
+  align-items: center;
+  gap: var(--wm-space-3);
+}
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+}
+.step-actions {
+  gap: 6px;
+}
+.clues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.editor-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--wm-space-2);
+  margin: 0 calc(-1 * var(--wm-space-4)) calc(-1 * var(--wm-space-4));
+  padding: var(--wm-space-3) var(--wm-space-4);
+  background: var(--wm-surface);
+  border-top: 1px solid var(--wm-border);
+  border-radius: 0 0 var(--wm-radius-lg) var(--wm-radius-lg);
+}
+
+/* ---------- export review ---------- */
+.review-list .value {
+  font-size: var(--wm-text-sm);
+}
+.review-list .removed .value {
+  text-decoration: line-through;
+  color: var(--wm-fg-muted);
+}
+.export-review .editor-bar {
+  margin: 0 calc(-1 * var(--wm-space-4)) calc(-1 * var(--wm-space-4));
+}
+.stack-sm > .badge {
+  justify-self: start;
+}
+.site-options {
+  align-items: center;
+}
+.site-options .check {
+  flex: 1;
+  min-width: 0;
+}
+textarea {
+  field-sizing: content;
+  min-height: 34px;
+  max-height: 12em;
+}

@@ -11,6 +11,8 @@ import { newId } from '../../core/model/ids';
 import { voiceTextFor } from '../../core/voice/voice';
 import type { TestResult } from '../../background/editor';
 import { Markdown } from './Markdown';
+import { Icon } from '../../ui/Icon';
+import { FlagNotes, KIND } from './steps';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -118,69 +120,139 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
   }, [tabId]);
 
   const g = draft.value;
-  if (!g) return <section class="site">{error.value ? <p role="alert">{error.value}</p> : <p class="muted">Loading…</p>}</section>;
+  if (!g)
+    return (
+      <section class="card">
+        {error.value ? (
+          <p class="alert" role="alert">
+            <Icon name="error" />
+            {error.value}
+          </p>
+        ) : (
+          <p class="status-text">Loading…</p>
+        )}
+      </section>
+    );
   const readOnly = g.source === 'library';
 
+  const save = () => {
+    const sent = draft.value!;
+    const missing = sent.steps.findIndex((x) => !x.title.trim());
+    if (missing >= 0) {
+      error.value = `Step ${missing + 1} needs a title.`;
+      return;
+    }
+    saving.value = true;
+    void attempt(async () => {
+      const saved = await send('guide.save', { guide: sent, baseRevisionId: base.value ?? sent.revisionId });
+      base.value = saved.revisionId;
+      if (draft.value === sent) {
+        draft.value = saved;
+        dirty.value = false;
+      } else {
+        // Edits typed during the save stay; they will go out with the next Save.
+        draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
+      }
+      status.value = `Saved (version ${saved.version}).`;
+    }).finally(() => (saving.value = false));
+  };
+
   return (
-    <section class="site editor" aria-label="Guide editor">
+    <section class="card editor" aria-label="Guide editor">
+      <label class="field">
+        <span class="label">Guide title</span>
+        <input
+          data-testid="guide-title-edit"
+          value={g.title}
+          disabled={readOnly}
+          onInput={(e) => {
+            draft.value = { ...g, title: (e.target as HTMLInputElement).value };
+            dirty.value = true;
+          }}
+        />
+      </label>
       <div class="row">
-        <label class="grow">
-          <span class="muted">Guide title</span>
-          <input
-            data-testid="guide-title-edit"
-            value={g.title}
-            disabled={readOnly}
-            onInput={(e) => {
-              draft.value = { ...g, title: (e.target as HTMLInputElement).value };
-              dirty.value = true;
-            }}
-          />
-        </label>
+        <span class="badge">Version {g.version}</span>
+        <span class="badge">
+          {g.steps.length} {g.steps.length === 1 ? 'step' : 'steps'}
+        </span>
+        {readOnly && <span class="badge accent">Team guide · read-only</span>}
+        {dirty.value && <span class="badge warn">Unsaved changes</span>}
       </div>
-      <p class="muted">
-        Version {g.version}
-        {readOnly ? ' · library guide (read-only)' : ''}
-        {dirty.value ? ' · unsaved changes' : ''}
-      </p>
-      <ol class="edit-steps">
+      {readOnly && <p class="small muted">Team guides can’t be edited here. Close this, then use Duplicate in the list to get your own copy.</p>}
+      <ol class="edit-steps" aria-label="Steps">
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
+          const isPicking = picking.value === s.id;
+          const kind = KIND[s.kind];
+          const titleId = `step-title-${s.id}`;
           return (
-            <li key={s.id} class="edit-step" data-testid={`step-${i}`}>
-              <div class="row">
-                <strong class="grow">
-                  {i + 1}. <Markdown text={s.title} />
-                </strong>
-                <span class="muted">{s.kind}</span>
-                {s.flags?.length ? (
-                  <span class="flag" title={s.flags.join(', ')}>
-                    ⚠ {s.flags.join(', ')}
-                  </span>
-                ) : null}
+            <li key={s.id} class={`edit-step${isPicking ? ' picking' : ''}`} data-testid={`step-${i}`} aria-labelledby={titleId}>
+              <div class="step-head">
+                <span class="num" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span class="badge">
+                  <Icon name={kind.icon} />
+                  {kind.label}
+                </span>
+                {s.optional && <span class="badge">Optional</span>}
+                <span class="push" />
+                <button type="button" class="ghost icon sm" aria-label={`Move step ${i + 1} up`} title="Move up" disabled={readOnly || i === 0} onClick={() => move(i, -1)}>
+                  <Icon name="arrow-up" />
+                </button>
+                <button type="button" class="ghost icon sm" aria-label={`Move step ${i + 1} down`} title="Move down" disabled={readOnly || i === g.steps.length - 1} onClick={() => move(i, 1)}>
+                  <Icon name="arrow-down" />
+                </button>
+                <button
+                  type="button"
+                  class="ghost icon sm danger"
+                  data-testid={`step-${i}-delete`}
+                  aria-label={`Delete step ${i + 1}`}
+                  title="Delete step"
+                  disabled={readOnly}
+                  onClick={() => setSteps((steps) => steps.filter((x) => x.id !== s.id))}
+                >
+                  <Icon name="trash" />
+                </button>
               </div>
-              <label class="grow">
-                <span class="muted">Title</span>
+              <h3 class="step-title" id={titleId}>
+                <span class="visually-hidden">Step {i + 1}: </span>
+                <Markdown text={s.title || 'Untitled step'} />
+              </h3>
+              <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
+              <label class="field">
+                <span class="label">Title</span>
                 <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
               </label>
-              <label class="grow">
-                <span class="muted">Note</span>
-                <textarea data-testid={`step-${i}-note`} rows={2} value={s.note ?? ''} disabled={readOnly} onInput={(e) => patchStep(s.id, { note: (e.target as HTMLTextAreaElement).value })} />
+              <label class="field">
+                <span class="label">Note</span>
+                <textarea
+                  data-testid={`step-${i}-note`}
+                  rows={1}
+                  value={s.note ?? ''}
+                  placeholder="Optional. Shown under the title."
+                  disabled={readOnly}
+                  onInput={(e) => patchStep(s.id, { note: (e.target as HTMLTextAreaElement).value })}
+                />
               </label>
-              <label class="grow">
-                <span class="muted">Voice text</span>
+              <label class="field">
+                <span class="label">
+                  Voice text <span class="hint">· read aloud; empty reads the grey text</span>
+                </span>
                 <textarea
                   data-testid={`step-${i}-voice`}
-                  rows={2}
+                  rows={1}
                   value={s.voiceText ?? ''}
                   placeholder={voiceTextFor({ ...s, voiceText: undefined })}
                   disabled={readOnly}
                   onInput={(e) => patchStep(s.id, { voiceText: (e.target as HTMLTextAreaElement).value })}
                 />
               </label>
-              <div class="row">
-                <label>
-                  <span class="muted">Advance </span>
+              <div class="row step-options">
+                <label class="inline-field">
+                  <span class="label">Moves on</span>
                   <select
                     data-testid={`step-${i}-advance`}
                     value={s.advance}
@@ -191,27 +263,25 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     <option value="next">with the Next button</option>
                   </select>
                 </label>
-                <label>
-                  <input type="checkbox" data-testid={`step-${i}-optional`} checked={!!s.optional} disabled={readOnly} onChange={(e) => patchStep(s.id, { optional: (e.target as HTMLInputElement).checked || undefined })} /> Optional
+                <label class="check small">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    class="switch"
+                    data-testid={`step-${i}-optional`}
+                    checked={!!s.optional}
+                    disabled={readOnly}
+                    onChange={(e) => patchStep(s.id, { optional: (e.target as HTMLInputElement).checked || undefined })}
+                  />
+                  <span>Optional</span>
                 </label>
               </div>
-              <div class="row">
-                <button type="button" aria-label="Move up" disabled={readOnly || i === 0} onClick={() => move(i, -1)}>
-                  ↑
-                </button>
-                <button type="button" aria-label="Move down" disabled={readOnly || i === g.steps.length - 1} onClick={() => move(i, 1)}>
-                  ↓
-                </button>
-                <button type="button" data-testid={`step-${i}-delete`} disabled={readOnly} onClick={() => setSteps((steps) => steps.filter((x) => x.id !== s.id))}>
-                  Delete
-                </button>
-                <button type="button" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
-                  Add note after
-                </button>
+              <div class="toolbar step-actions">
                 {canTarget && (
                   <>
                     <button
                       type="button"
+                      class="sm"
                       data-testid={`step-${i}-test`}
                       disabled={tabId === null}
                       onClick={() => {
@@ -222,11 +292,14 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                         });
                       }}
                     >
+                      <Icon name="test" />
                       Test step
                     </button>
                     <button
                       type="button"
+                      class={`sm${isPicking ? ' primary' : ''}`}
                       data-testid={`step-${i}-repick`}
+                      aria-pressed={isPicking}
                       disabled={readOnly || tabId === null}
                       onClick={() => {
                         if (picking.value === s.id) {
@@ -242,78 +315,110 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                         });
                       }}
                     >
-                      {picking.value === s.id ? 'Cancel picking (click the element on the page)' : 'Re-pick element'}
+                      <Icon name={isPicking ? 'close' : 'crosshair'} />
+                      {isPicking ? 'Cancel picking' : 'Re-pick element'}
                     </button>
                   </>
                 )}
+                <button type="button" class="ghost sm" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
+                  <Icon name="plus" />
+                  Note after
+                </button>
               </div>
-              {t && (
-                <p class="muted" data-testid={`step-${i}-test-result`} role="status">
-                  {t === 'running'
-                    ? 'Looking for the element…'
-                    : t.found
-                      ? `Found (score ${Math.round(t.score)}; matched ${t.matched.join(', ')})${t.fragile ? ' — fragile: only one strong signal matched; consider re-picking or a data-guide-id' : ''}`
-                      : t.reason ?? 'Not found on this page.'}
+              {isPicking && (
+                <p class="banner" role="status">
+                  <Icon name="crosshair" />
+                  <span>
+                    Click the right element on the page. The click won’t reach the app. Press <kbd>Esc</kbd> to cancel.
+                  </span>
                 </p>
               )}
+              {t && <TestResultView t={t} testid={`step-${i}-test-result`} />}
               {suggested.value[s.id] && suggested.value[s.id] !== s.title && (
-                <button type="button" data-testid={`step-${i}-use-title`} onClick={() => patchStep(s.id, { title: suggested.value[s.id]! })}>
-                  Use title “{suggested.value[s.id]}”
-                </button>
+                <div class="row">
+                  <button type="button" class="sm" data-testid={`step-${i}-use-title`} onClick={() => patchStep(s.id, { title: suggested.value[s.id]! })}>
+                    Use title “{suggested.value[s.id]}”
+                  </button>
+                </div>
               )}
             </li>
           );
         })}
       </ol>
-      <div class="row">
-        <button type="button" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
+      <div>
+        <button type="button" class="ghost" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
+          <Icon name="plus" />
           Add note step
         </button>
       </div>
-      {error.value && <p role="alert">{error.value}</p>}
-      {status.value && <p role="status" data-testid="editor-status">{status.value}</p>}
-      <div class="row">
-        <button
-          type="button"
-          class="primary"
-          data-testid="save-guide"
-          disabled={readOnly || !dirty.value || saving.value}
-          onClick={() => {
-            const sent = draft.value!;
-            const missing = sent.steps.findIndex((x) => !x.title.trim());
-            if (missing >= 0) {
-              error.value = `Step ${missing + 1} needs a title.`;
-              return;
-            }
-            saving.value = true;
-            void attempt(async () => {
-              const saved = await send('guide.save', { guide: sent, baseRevisionId: base.value ?? sent.revisionId });
-              base.value = saved.revisionId;
-              if (draft.value === sent) {
-                draft.value = saved;
-                dirty.value = false;
-              } else {
-                // Edits typed during the save stay; they will go out with the next Save.
-                draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
-              }
-              status.value = `Saved (version ${saved.version}).`;
-            }).finally(() => (saving.value = false));
-          }}
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          data-testid="close-editor"
-          onClick={() => {
-            if (picking.value && tabId !== null) void send('pick.cancel', { tabId });
-            endPicking();
-            onClose();
-          }}
-        >
-          {dirty.value ? 'Discard and close' : 'Close'}
-        </button>
+      <div class="editor-bar">
+        {error.value && (
+          <p class="alert" role="alert">
+            <Icon name="error" />
+            {error.value}
+          </p>
+        )}
+        {status.value && (
+          <p class="status-text ok" role="status" data-testid="editor-status">
+            {status.value}
+          </p>
+        )}
+        <div class="row">
+          <button type="button" class="primary" data-testid="save-guide" disabled={readOnly || !dirty.value || saving.value} onClick={save}>
+            {saving.value ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            class="ghost"
+            data-testid="close-editor"
+            onClick={() => {
+              if (picking.value && tabId !== null) void send('pick.cancel', { tabId });
+              endPicking();
+              onClose();
+            }}
+          >
+            {dirty.value ? 'Discard and close' : 'Close'}
+          </button>
+        </div>
       </div>
     </section>
+  );
+}
+
+/** Test step feedback: found (with the clues that matched), fragile, or not found. */
+function TestResultView({ t, testid }: { t: TestResult | 'running'; testid: string }) {
+  if (t === 'running')
+    return (
+      <p class="status-text" data-testid={testid} role="status">
+        <Icon name="loader" /> Looking for the element…
+      </p>
+    );
+  if (!t.found)
+    return (
+      <div class="banner danger" data-testid={testid} role="status">
+        <Icon name="error" />
+        <span>
+          <strong>Not found.</strong> {t.reason ?? 'Not found on this page.'}
+        </span>
+      </div>
+    );
+  return (
+    <div class={`banner ${t.fragile ? 'warn' : 'success'}`} data-testid={testid} role="status">
+      <Icon name={t.fragile ? 'warn' : 'check'} />
+      <div class="stack-sm">
+        <span>
+          <strong>{t.fragile ? 'Found, but fragile.' : 'Found.'}</strong> Score {Math.round(t.score)}.
+          {t.fragile && ' Only one strong clue matched, so a small app change may break it. Re-pick it, or add a data-guide-id to the element.'}
+        </span>
+        <span class="clues">
+          <span class="visually-hidden">Matched: </span>
+          {t.matched.map((m) => (
+            <span key={m} class="badge">
+              {m}
+            </span>
+          ))}
+        </span>
+      </div>
+    </div>
   );
 }
