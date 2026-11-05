@@ -12,6 +12,7 @@ import { HdVoice, hdStatus } from './HdVoice';
 import type { ComponentChildren } from 'preact';
 import { grantedSitePatterns } from '../../core/permissions/registration';
 import { Icon } from '../../ui/Icon';
+import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
 
 const library = signal<LibraryState | null>(null);
@@ -189,7 +190,7 @@ export function Options() {
     <>
       <header class="app-header">
         <h1 class="brand">
-          <Icon name="pin" size={18} />
+          <Mark />
           Waymark settings
         </h1>
       </header>

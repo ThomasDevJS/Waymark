@@ -344,7 +344,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             type="button"
             data-testid="export"
             disabled={selected.value.size === 0}
-            title={selected.value.size ? undefined : 'Tick guides to export them'}
+            title={selected.value.size ? undefined : 'Select guides with their checkboxes to export them'}
             onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
           >
             <Icon name="download" />

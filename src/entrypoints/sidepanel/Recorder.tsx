@@ -283,7 +283,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
       {!r.steps.length && (
         <div class="empty">
           <Icon name="crosshair" />
-          <strong>{recordingNow ? 'Do the task in the page' : 'Recording is paused'}</strong>
+          <strong>{recordingNow ? 'Do the task on the page' : 'Recording is paused'}</strong>
           <span class="small">{recordingNow ? 'Each click and field you use appears here as a step. Typed values are never saved.' : 'Resume to record more steps.'}</span>
         </div>
       )}

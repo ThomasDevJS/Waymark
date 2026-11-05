@@ -6,6 +6,7 @@ import { originToMatchPattern } from '../../core/url/url';
 import { Recorder } from './Recorder';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
+import { Mark } from '../../ui/Mark';
 import { Welcome, welcomeShown } from './Welcome';
 
 const tab = signal<TabInfo | null>(null);
@@ -145,7 +146,7 @@ export function App() {
     <>
       <header class="app-header">
         <h1 class="brand">
-          <Icon name="pin" size={18} />
+          <Mark />
           Waymark
         </h1>
         <button type="button" class="ghost icon" data-testid="open-settings" aria-label="Settings" title="Settings" onClick={() => void chrome.runtime.openOptionsPage()}>
