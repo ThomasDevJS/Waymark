@@ -26,7 +26,10 @@ beforeEach(() => {
   void keys;
   rec = createRecorder({ emit: (op) => ops.push(op) });
 });
-afterEach(() => rec?.stop());
+afterEach(() => {
+  rec?.stop();
+  document.querySelectorAll('.backdrop').forEach((b) => b.remove());
+});
 
 const q = (sel: string) => document.querySelector(sel) as HTMLElement;
 const byText = (tag: string, text: string) => [...document.querySelectorAll(tag)].find((e) => e.textContent?.trim() === text) as HTMLElement;
@@ -78,6 +81,22 @@ describe('merge rules', () => {
     await settle();
     expect(titles()).toEqual(['click: Click **Status**', 'select: Choose **Closed**']);
     expect(steps()[1]!.target?.role).toBe('option');
+  });
+
+  it('a select that opens on mousedown behind a backdrop is still one click step (MUI)', async () => {
+    await userEvent.click(q('[aria-label="Priority"]'));
+    await settle();
+    expect(document.querySelector('.backdrop')).not.toBeNull(); // the click really went to <body>
+    expect(titles()).toEqual(['click: Click **Priority**']);
+    expect(steps()[0]!.target?.role).toBe('combobox');
+  });
+
+  it('a click on an svg icon records the element around the svg, not its <path> (demoqa)', async () => {
+    await userEvent.click(q('#print-record path'));
+    await settle();
+    expect(titles()).toEqual(['click: Click **Print**']);
+    expect(steps()[0]!.target?.tag).toBe('span');
+    expect(steps()[0]!.target?.id).toBe('print-record');
   });
 
   it('a native select records one select step with the visible option label', async () => {

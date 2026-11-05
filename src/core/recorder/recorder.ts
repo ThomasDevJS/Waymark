@@ -147,8 +147,15 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if ((e as MouseEvent).detail > 1) return; // a double-click is one click step
     const path = e.composedPath();
     watchRoots(path);
-    const t = resolveTargetFromPath(path);
+    let t = resolveTargetFromPath(path);
     if (!t) return;
+    // Pressed on a control that opened something over itself (MUI's select opens on mousedown
+    // behind a full-page backdrop): the mouseup lands on the backdrop, so the click goes to the
+    // common ancestor of the two. That ancestor is on the pressed control's path (D49).
+    const pressed = pending;
+    if (t.lowConfidence && pressed && now() - pressed.time <= PENDING_LINK_MS && pressed.path.includes(t.element) && !path.includes(pressed.el)) {
+      t = { element: pressed.el, lowConfidence: false };
+    }
     const el = t.element;
     const tag = tagOf(el);
     if (tag === 'html' || tag === 'body') return;

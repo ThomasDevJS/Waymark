@@ -331,3 +331,28 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - Low-confidence and closed-shadow steps that do have a strong signal (short plain text; a host with an id, a test id, or a role plus a label) are still recorded and flagged. An `aria-label` alone is not enough: role + name needs a role, as in the matcher. The matcher is unchanged. Version 0.2.2.
 - **Merge rules** (independent review): a skipped step still counts as the last action, so typing into an unfindable field reports one skip, not one per key, and a skip never merges with a later submit. With Enter in a field whose form's default button has nothing to find it by (an icon-only button), the submit step targets the field instead of being lost.
 - **Limits**: the pill and the pick banner live in the top frame. A click skipped inside an iframe is not announced on the page (the step is still left out), and a refused Re-pick inside an iframe shows no reason (picking goes on; Esc cancels).
+
+## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
+
+Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
+
+### D48. An input step also advances on Enter in a non-empty one-line field
+- **Spec**: Player, "Advancing" (input: `change`, or blur with a non-empty value, or Next).
+- **Finding**: TodoMVC (React, Vue, Angular) takes the typed text on Enter and clears the field. No `change` fires and focus stays, so the run never left "Enter New Todo Input" until the learner pressed Next.
+- **Change**: a trusted Enter keydown (not Shift+Enter, not while composing) on the target `input`, checked before the app clears it, advances when the field has a value. A `textarea` or rich editor gets a new line and does not advance. The value is only checked for emptiness, never read or stored.
+
+### D49. A press on the target that the app turns into a click on an ancestor still counts
+- **Spec**: Recorder, "Event capture" (use the pending fingerprint when the click target is that node or linked in `composedPath()`); Player, "Advancing" (click: a trusted click lands on the target).
+- **Finding**: MUI's Select opens on `mousedown` and puts a full-page backdrop under the pointer. The `mouseup` lands on the backdrop, so the browser sends `click` to the common ancestor of the two, `<body>`. The recorder dropped the "open the select" step (the guide had only "Choose **Twenty**", which can never be shown with the menu closed), and the player would never advance on it.
+- **Change**: when a click's own target is non-interactive, is an ancestor of the element a trusted `pointerdown` resolved to, and comes within 1 s, the recorder records the pressed element and the player's click rule advances. A click whose path contains another interactive element is unaffected.
+- **Cost**: pressing a control, dragging off it and releasing on its ancestor now records (and advances) as a click on it. Apps that act on mousedown, like MUI, treat that as a click too.
+
+### D50. A click inside an `<svg>` with no interactive ancestor resolves to the element around the svg
+- **Spec**: Element targeting, record step 1 (nearest interactive element within 5 levels; otherwise the click is kept as low-confidence).
+- **Finding**: demoqa's row actions are `<span id="edit-record-2" title="Edit"><svg><path/></svg></span>` with a click handler. A click lands on the `<path>`, which has no id, name or text, so the step was "Click **the element**" with no strong signal (since D47 it is not recorded at all), while the span has a stable id and a title.
+- **Change**: for a low-confidence click, the target climbs out of SVG-namespace elements to the first HTML element around the outermost `<svg>`. It stays low-confidence (flagged), and D47 still skips it when the wrapper has no strong signal either. An svg inside a button or link already resolved to the button or link.
+
+### D51. Ids that component libraries number per page load are generated
+- **Spec**: Element targeting, record step 2 (drop ids that look generated: `ember123`, long digit runs, …).
+- **Finding**: Angular Material's select was recorded with `id="mat-select-10"` and its option with `mat-option-51`. These counters change between page loads, so on replay the id and the CSS path built from it both failed. A perfect role + name match then scored 45 of 80 points (56, under the 60 threshold), and the step was not found on an unchanged page.
+- **Change**: ids, test ids and classes of the form `<library>-[words-]<number>[-…]` are generated, for the prefixes `mat`, `mdc`, `cdk`, `headlessui`, `downshift`, `react-select`, `react-aria`, `rc`, `mui`, `chakra` and `reach` (`mat-select-10`, `cdk-overlay-3`, `headlessui-menu-button-3`, `downshift-0-input`, `rc-tabs-0-tab-1`). Other `word-number` ids (`edit-record-2`, `step-1`) are kept.
