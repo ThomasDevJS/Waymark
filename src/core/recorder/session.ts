@@ -97,8 +97,11 @@ export function isRecordingTab(state: RecordingState | null | undefined, tabId: 
   return !!state && tabId !== undefined && state.tabIds.includes(tabId);
 }
 
+/** At most as many sites as a guide may have (GuideSchema), so the recording stays saveable. */
+export const MAX_ORIGINS = 50;
+
 export function addOrigin(state: RecordingState, origin: string): void {
-  if (!state.appOrigins.includes(origin)) state.appOrigins.push(origin);
+  if (!state.appOrigins.includes(origin) && state.appOrigins.length < MAX_ORIGINS) state.appOrigins.push(origin);
 }
 
 /** Applies a recorder operation. Replace only touches the last step, and only if ids match. */
@@ -138,6 +141,8 @@ export const LEAVING_VALID_MS = 60_000;
  */
 export function navigationStep(state: RecordingState, r: RouteReport, opts: UrlOptions = {}): Step | null {
   if (state.status !== 'recording' || !r.prevUrl || r.prevUrl === urlKey(r.url)) return null;
+  // A page that keeps changing its route must not push the recording past what can be saved (D48).
+  if (state.steps.length >= MAX_STEPS_PER_GUIDE) return null;
   let a: URL;
   let b: URL;
   try {

@@ -332,6 +332,64 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Merge rules** (independent review): a skipped step still counts as the last action, so typing into an unfindable field reports one skip, not one per key, and a skip never merges with a later submit. With Enter in a field whose form's default button has nothing to find it by (an icon-only button), the submit step targets the field instead of being lost.
 - **Limits**: the pill and the pick banner live in the top frame. A click skipped inside an iframe is not announced on the page (the step is still left out), and a refused Re-pick inside an iframe shows no reason (picking goes on; Esc cancels).
 
+## 2026-11-04 — Security and privacy audit
+
+### D48. Fixes from the security audit (threat model in docs/SECURITY.md)
+- **Spec**: Permissions, privacy and security; Sharing and storage ("Import rules", library URL); Discovery ("First-run access"); Data model.
+- **Method**: a written threat model, an audit of the code, and an independent review by a subagent that saw only the code and the threat model. Each fix has a regression test that fails on the previous code.
+- **Medium**:
+  - **Frame nonces could fill session storage.** Every `hello` from an iframe stored a `nonce:<uuid>` key that was never swept, so a page posting `hello` in a loop could fill `chrome.storage.session` (10 MB) and break runs and recordings in every tab. Pending nonces now live in one table per tab (`nonces:<tabId>`). The table is written inside the write queue, expired nonces are dropped, at most 32 stay pending, and it is removed with the tab. A nonce is looked up only in the claiming tab's table, so a foreign tab can no longer burn it. Content scripts ignore hellos from the same iframe less than 250 ms apart. The frame map keeps at most 64 frames per tab, and the oldest go first.
+  - **The library fetch was unbounded.** The whole answer was read before the 5 MB check, with no timeout. Now a declared `Content-Length` over 5 MB is refused, the body is read in chunks and abandoned past 5 MB, the fetch gives up after 30 s, and a redirect must land on an allowed URL (https, or http on localhost).
+  - **One Allow click for sites nobody saw.** A pack or library could queue any number of sites, and the banner showed only a count. Now every site is listed by name with a checkbox (ticked by default; unticked ones count as "Not now"), at most 50 sites are queued, and the import dialog lists the pack's sites. This is still the spec's single request, now with every site shown.
+- **Low**:
+  - Guide, revision, forked-from and step ids must be letters, digits, `-` and `_` (max 64; not `__proto__`). This is the deep link rule, and Waymark's own ULIDs already follow it. A pack guide's `startUrl` must be http(s) on one of its `appOrigins`; before, "Copy link" could point at any URL. `exportedAt` and `startedAt` are length-capped.
+  - On a site that is not one of the guide's, content scripts get a run view without the guide id, title, sites or step token, and the step is not spoken (nor sent to the `speechSynthesis` fallback) there.
+  - Titles from content scripts (`rec.step`, `pick.result`) with a live markdown link become escaped plain text. Recorder titles escape every label, so such a link can only come from a forged message.
+  - Navigate steps stop at the 500-step limit and recording sites at 50, so a page cannot make a recording unsaveable.
+  - The per-site launcher setting accepts only real site origins.
+  - Only a trusted Escape cancels Re-pick.
+  - Test dependency happy-dom 21.0.4 (two advisories that affect only unit tests).
+- **Deferred** (reported to the coordinating session):
+  - Element ids, test ids, `name` and `data-guide-id` skip the data-like filter, so `data-testid="row-jane@acme.com"` is stored. This is a matcher change and must keep the robustness suite at zero wrong matches.
+  - Frame and shadow paths can't be removed in the export review, because the guide needs them to find frames. `rect` and the viewport size are not listed.
+  - The minimatch advisory, which comes in through typescript-eslint and only affects lint. Fixing it needs a major-version override.
+  - Entry caps on records that only extension pages can send.
+- Version 0.2.3.
+
+## 2026-11-04 — Performance and code health
+
+### D49. The side panel, badges and imports work from the guide index
+- **Spec**: Data model, "Storage" (one key per guide plus an index); Discovery (badge, side panel search); Sharing (import rules).
+- **Measured** with `pnpm bench` (new: `test/perf/`, 500 guides of 50 steps, about 22 MB of guides; in-memory storage that copies like `chrome.storage`; not part of `pnpm check`, because timings on shared runners are noisy):
+
+  | Path | Before | After |
+  | --- | --- | --- |
+  | Side panel load (`guide.all` → `guide.list`) | 535 ms and a 22 MB message | 3 ms, 1.3 MB |
+  | Badges for 30 tabs after a change | 96 ms | 22 ms |
+  | Pack check / import / library refresh vs. stored guides | read and validate all 22 MB | index only |
+  | "For this page", one badge, `guide.forPage` | 1 to 3 ms | 1 to 4 ms |
+
+- **Change**:
+  - Each index entry also keeps the revision id, `forkedFrom`, the start URL, and for search the description (first 1,000 characters), up to 20 tags, and the step titles as plain text (80 characters per step, 20,000 per guide, so a 200-step guide stays searchable to its last step). The side panel lists, searches and matches pages from the index. An editor save with 500 guides takes about 8 ms (index included).
+  - The panel fetches full guides only for export, with the new `guide.many` (ids → validated guides; up to 1,000). `guide.all` is removed.
+  - The import rules (`findConflicts`, `planImport`) take index entries.
+  - A badge pass reads the index once (not once per tab) and the recording state once, just before writing, so REC still wins. A failed pass never fails the write that triggered it.
+  - An index written by an older version (no `revisionId`) is rebuilt from the stored guides on its first read, so a missed install-time rebuild can't produce false import conflicts or duplicate forks.
+  - Export fetches the selected guides in library order. Copy link on a guide without a usable start URL says so instead of failing silently.
+- **Review** (independent, no High or Medium findings): the six Lows are fixed as above, each with a unit test (`index-reads.test.ts`: reads, rebuild, caps, badge counts and REC).
+- **Errors**: a request that fails schema validation now answers with one sentence ("Waymark could not use this data (steps.3.title is not valid)."), not Zod's JSON issue list. When the service worker gives no reply, the panel says "Waymark did not answer". Dead code removed: `saveGuide`.
+- **Bundle** (production build, minified; gzip in brackets): content script 165 KB (52 KB), service worker 141 KB (41 KB), shared panel chunk 118 KB (36 KB), side panel 45 KB (14 KB). Zod reaches the content script only through `core/voice/voice.ts` (`VoiceSettingsSchema` is defined at the top level next to `bestSpeechVoice`). That file belongs to the voice work, so moving the schema is left to it.
+
+### D50. Flake hunt: one e2e race under CPU load
+- **Spec**: Tech stack, testing.
+- **Method**: on main at 0.2.3 (local), 5 full e2e runs, 3 unit and 3 browser runs on an idle machine. Then the full e2e suite with all but one core busy, to imitate a slow CI runner (the races in D45 and M4 only showed on CI).
+- **Before**:
+  - Idle: e2e 165/165 (5 runs), unit 585/585, browser 240/240.
+  - Under load: 65/66. In one of two runs, "an author fixes a wrong match by re-picking" timed out after 60 s.
+- **Cause**: the `msg()` helper in the m4 and m5 specs opens an extension page in a popup window from the service worker and waited for its `load` state. Playwright can attach to such a window after its `load` event, and then the wait never returns (the trace showed `networkidle` but no `load`). The test only fails when the attach is slow, so 12 isolated repeats under load did not reproduce it.
+- **Fix**: one shared `ExtensionHelper.message()` in `test/e2e/fixtures.ts` polls the page until it is the extension page and `document.readyState` is `complete`. No retries, skips or longer timeouts.
+- **After**: under load 99/99 (3 runs). CI keeps `retries: 1`. Its logs show no test marked flaky in the runs checked.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).

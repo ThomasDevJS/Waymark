@@ -6,6 +6,7 @@ import { buildSearch, searchGuides } from '../../src/core/discovery/search';
 import { setupPanelFallback } from '../../src/background/panel-fallback';
 import { takeDeepLink } from '../../src/content/launcher';
 import type { Guide } from '../../src/core/model/schema';
+import { indexEntry } from '../../src/core/storage/guides';
 
 const target = { instance: 'unique' as const, matchCount: 1, tag: 'button', text: 'Pay Ada Lovelace', accessibleName: 'Pay', cssPath: 'button', xpath: '/html[1]/body[1]/button[1]', ancestors: [{ tag: 'form', role: 'form', label: 'Billing' }], shadowPath: [], framePath: [], rect: { x: 0, y: 0, w: 1, h: 1, vw: 1, vh: 1 } };
 const guide = (id: string, extra: Partial<Guide> = {}): Guide => ({
@@ -103,7 +104,7 @@ describe('discovery', () => {
 
   it('searches titles, tags and step titles', () => {
     const gs = [guide('a', { title: 'Create an invoice', tags: ['finance'] }), guide('b', { title: 'Invite a teammate', steps: [{ ...guide('x').steps[0]!, title: 'Click **Send invite**' }] })];
-    const ms = buildSearch(gs);
+    const ms = buildSearch(gs.map(indexEntry));
     expect(searchGuides(ms, gs, 'invoice')).toEqual(['a']);
     expect(searchGuides(ms, gs, 'finance')).toEqual(['a']);
     expect(searchGuides(ms, gs, 'send')).toEqual(['b']);
@@ -155,7 +156,7 @@ describe('M5 review: origins and the export review', () => {
       expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [bad] })]))).ok, bad).toBe(false);
     }
     expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: [] })]))).ok).toBe(false);
-    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: ['http://127.0.0.1:4173'] })]))).ok).toBe(true);
+    expect(parsePack(JSON.stringify(makePack([guide('a', { appOrigins: ['http://127.0.0.1:4173'], startUrl: 'http://127.0.0.1:4173/orders' })]))).ok).toBe(true);
   });
 
   it('shows every identifying string, and removing them all leaves none in the pack', () => {
@@ -176,5 +177,25 @@ describe('M5 review: origins and the export review', () => {
     // what remains is only what the review showed as not removable (pages and sites)
     expect(json).toContain('/clients/acme');
     expect(parsePack(JSON.stringify(makePack([out!])))).toMatchObject({ ok: true });
+  });
+});
+
+describe('D48: pack ids and start URLs', () => {
+  const ok = (g: Guide) => parsePack(JSON.stringify(makePack([g]))).ok;
+  it('accepts only id-like guide, revision and step ids', () => {
+    for (const bad of ['__proto__', 'a b', 'a|note', '../x', 'x:y', '', 'é']) {
+      expect(ok(guide('a', { id: bad })), `guide ${bad}`).toBe(false);
+      expect(ok(guide('a', { revisionId: bad })), `revision ${bad}`).toBe(false);
+      expect(ok(guide('a', { forkedFrom: { guideId: bad, revisionId: 'r' } })), `forkedFrom ${bad}`).toBe(false);
+      const g = guide('a');
+      expect(ok({ ...g, steps: [{ ...g.steps[0]!, id: bad }] }), `step ${bad}`).toBe(false);
+    }
+    expect(ok(guide('01JABCDEF_x-1'))).toBe(true);
+  });
+  it('accepts only an http(s) start URL on one of the guide sites', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'https://evil.example/orders', 'chrome://settings', 'not a url', 'file:///etc/passwd']) {
+      expect(ok(guide('a', { startUrl: bad })), bad).toBe(false);
+    }
+    expect(ok(guide('a', { startUrl: 'https://app.test/' }))).toBe(true);
   });
 });

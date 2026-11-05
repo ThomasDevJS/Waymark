@@ -36,7 +36,7 @@ export const RequestSchemas = {
   'problems.list': z.object({}),
   'problems.clear': z.object({}),
   'guide.get': z.object({ id: z.string().max(64) }),
-  'guide.all': z.object({}),
+  'guide.many': z.object({ ids: z.array(z.string().max(64)).max(1000) }),
   'guide.delete': z.object({ id: z.string().max(64) }),
   'guide.duplicate': z.object({ id: z.string().max(64) }),
   'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
@@ -147,7 +147,7 @@ export interface ResponseMap {
   'guide.forPage': { guides: { id: string; title: string }[]; launcher: boolean };
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
-  'guide.all': { guides: Guide[] };
+  'guide.many': { guides: Guide[] };
   'guide.delete': { ok: boolean };
   'guide.duplicate': Guide;
   'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[] };
@@ -203,7 +203,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'site.list',
   'site.sync',
   'guide.list',
-  'guide.all',
+  'guide.many',
   'guide.delete',
   'guide.duplicate',
   'pack.check',

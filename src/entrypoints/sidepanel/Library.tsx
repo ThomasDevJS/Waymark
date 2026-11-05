@@ -7,24 +7,28 @@ import { signal } from '@preact/signals';
 import { useEffect, useMemo } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { Guide } from '../../core/model/schema';
+import type { GuideIndexEntry } from '../../core/storage/guides';
 import { guideMatchesUrl } from '../../core/discovery/match';
 import { buildSearch, searchGuides } from '../../core/discovery/search';
 import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 
-const all = signal<Guide[]>([]);
+/** The guide index (D49): the list, search and "For this page" never need full guides. */
+const all = signal<GuideIndexEntry[]>([]);
 const query = signal('');
 const selected = signal<Set<string>>(new Set());
 const exporting = signal<Guide[] | null>(null);
-const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice> } | null>(null);
+const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice>; origins: string[] } | null>(null);
 const pending = signal<string[]>([]);
+/** Sites the user unticked in the Allow banner (D48: every site is shown and can be left out). */
+const unticked = signal<Set<string>>(new Set());
 const message = signal<string | null>(null);
 const error = signal<string | null>(null);
 
 async function load() {
   try {
-    all.value = (await send('guide.all', {})).guides;
+    all.value = (await send('guide.list', {})).guides;
     pending.value = (await send('allow.pending', {})).origins;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -41,11 +45,19 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-/** One Allow request for every site a pack or library uses (needs this click: SPEC A15). */
+/** The sites one Allow click requests: every listed site the user left ticked. */
+export function originsToAllow(pendingOrigins: string[], untickedOrigins: Set<string>): string[] {
+  return pendingOrigins.filter((o) => !untickedOrigins.has(o));
+}
+
+/** One Allow request for the ticked sites a pack or library uses (needs this click: SPEC A15). */
 async function allowAll() {
-  const origins = pending.value;
+  const origins = originsToAllow(pending.value, unticked.value);
+  if (!origins.length) return;
   const ok = await chrome.permissions.request({ origins: origins.map(originToMatchPattern) }).catch(() => false);
+  // Unticked sites count as "Not now".
   if (ok) await send('allow.dismiss', {});
+  unticked.value = new Set();
   await load();
 }
 
@@ -62,12 +74,17 @@ async function readFile(file: File) {
     error.value = check.error ?? 'This file is not a Waymark pack.';
     return;
   }
-  importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])) };
+  importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])), origins: check.origins };
 }
 
 /** A link to the guide's start page that offers the guide (SPEC: Discovery, "Deep link"). */
-export function deepLinkFor(g: Guide): string {
-  const u = new URL(g.startUrl);
+export function deepLinkFor(g: Pick<Guide, 'id' | 'startUrl'>): string | null {
+  let u: URL;
+  try {
+    u = new URL(g.startUrl);
+  } catch {
+    return null;
+  }
   u.searchParams.set('waymark', g.id);
   return u.href;
 }
@@ -85,7 +102,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   const index = useMemo(() => buildSearch(all.value), [all.value]);
   const ids = searchGuides(index, all.value, query.value);
   const byId = new Map(all.value.map((g) => [g.id, g]));
-  const results = ids.map((id) => byId.get(id)).filter((g): g is Guide => !!g);
+  const results = ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g);
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
 
@@ -93,7 +110,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     return <ExportReview guides={exporting.value} onDone={() => (exporting.value = null)} />;
   }
 
-  const item = (g: Guide) => (
+  const item = (g: GuideIndexEntry) => (
     <li key={g.id} class="row" data-testid={`guide-${g.id}`}>
       <input
         type="checkbox"
@@ -109,7 +126,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       <span class="grow">
         {g.title}{' '}
         <span class="muted">
-          · {g.steps.length} steps{g.source === 'library' ? ' · team library' : ''}
+          · {g.steps} steps{g.source === 'library' ? ' · team library' : ''}
         </span>
       </span>
       {g.source === 'library' ? (
@@ -127,6 +144,10 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
         title="Copy a link that offers this guide when opened"
         onClick={() => {
           const link = deepLinkFor(g);
+          if (!link) {
+            error.value = 'This guide has no start page to link to.';
+            return;
+          }
           void navigator.clipboard.writeText(link).then(
             () => (message.value = 'Link copied. Opening it offers to start the guide.'),
             () => (message.value = link),
@@ -146,10 +167,29 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     <>
       {pending.value.length > 0 && (
         <div class="row banner" role="status" data-testid="allow-banner">
-          <span class="grow">
-            Your guides run on {pending.value.length === 1 ? pending.value[0] : `${pending.value.length} sites`}. Allow Waymark there to see and play them.
-          </span>
-          <button type="button" class="primary" data-testid="allow-all" onClick={() => void allowAll()}>
+          <div class="grow">
+            Your guides run on {pending.value.length === 1 ? 'this site' : `these ${pending.value.length} sites`}. Allow Waymark there to see and play them.
+            <ul class="sites" data-testid="allow-sites">
+              {pending.value.map((o) => (
+                <li key={o}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!unticked.value.has(o)}
+                      onChange={(e) => {
+                        const next = new Set(unticked.value);
+                        if ((e.target as HTMLInputElement).checked) next.delete(o);
+                        else next.add(o);
+                        unticked.value = next;
+                      }}
+                    />{' '}
+                    {o}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <button type="button" class="primary" data-testid="allow-all" disabled={!originsToAllow(pending.value, unticked.value).length} onClick={() => void allowAll()}>
             Allow
           </button>
           <button type="button" onClick={() => void send('allow.dismiss', {}).then(load)}>
@@ -167,6 +207,11 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </li>
             ))}
           </ul>
+          {imp.origins.length > 0 && (
+            <p class="muted" data-testid="import-sites">
+              Runs on: {imp.origins.join(', ')}
+            </p>
+          )}
           {imp.conflicts.map((c) => (
             <label key={c.id} class="grow">
               <span class="muted">You already have a different copy of “{c.existingTitle}”.</span>
@@ -228,7 +273,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           type="button"
           data-testid="export"
           disabled={selected.value.size === 0}
-          onClick={() => (exporting.value = all.value.filter((g) => selected.value.has(g.id)))}
+          onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
         >
           Export {selected.value.size ? `${selected.value.size} selected` : 'selected'}…
         </button>
