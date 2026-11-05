@@ -116,6 +116,9 @@ code {
   border-radius: var(--wm-radius-lg);
   padding: var(--wm-space-4);
   display: grid;
+  /* A column that may shrink below its content: one long unbroken word in a title must wrap or
+     truncate, not widen the card and every field in it past the panel (D88). */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--wm-space-3);
   box-shadow: var(--wm-shadow-1);
   min-width: 0;
@@ -251,6 +254,7 @@ select {
   font-size: var(--wm-text-md);
   min-height: 34px;
   min-width: 0;
+  max-width: 100%;
   padding: 6px 10px;
   border-radius: var(--wm-radius-sm);
   border: 1px solid var(--wm-border-input);

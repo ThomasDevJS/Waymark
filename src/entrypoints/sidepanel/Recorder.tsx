@@ -1,4 +1,4 @@
-import { computed, signal } from '@preact/signals';
+import { computed, effect, signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { RecordingState } from '../../core/recorder/session';
@@ -20,6 +20,10 @@ const run = signal<RunView | null>(null);
 const editing = signal<string | null>(null);
 /** Recording or editing: the panel shows only that (Tutorials step aside). */
 export const recorderBusy = computed(() => !!recording.value || !!editing.value);
+/** The "Saved … with N steps" note describes the saved copy; once the user edits, it is stale (D88). */
+effect(() => {
+  if (editorHasUnsavedEdits()) saved.value = null;
+});
 const needsStart = signal<{ guideId: string; startUrl: string; reachable: boolean; pattern: string; stepIndex?: number } | null>(null);
 
 async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
