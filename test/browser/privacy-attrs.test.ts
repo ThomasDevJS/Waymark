@@ -4,7 +4,7 @@
  * they never reach exported packs.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildFingerprint } from '../../src/core/fingerprint';
+import { buildFingerprint, hostSelector } from '../../src/core/fingerprint';
 
 const EMAIL = 'jane.doe@acme.com';
 const host = document.createElement('div');
@@ -39,6 +39,32 @@ describe('data-like attribute values', () => {
     button.textContent = 'Open';
     root.append(button);
     expect(JSON.stringify(buildFingerprint(button))).not.toContain('jane.doe');
+  });
+
+  it('stay out of CSS path classes, key attributes and anchored ancestors', () => {
+    document.body.append(host);
+    const form = document.createElement('form');
+    form.id = `form-${EMAIL}`; // an anchored ancestor
+    const input = document.createElement('input');
+    input.className = `field user-${EMAIL}`;
+    input.name = EMAIL;
+    input.type = 'text';
+    input.placeholder = 'Search';
+    form.append(input);
+    host.append(form);
+    const fp = buildFingerprint(input);
+    expect(fp.cssPath).toContain('input.field');
+    expect(JSON.stringify(fp)).not.toContain('jane.doe');
+  });
+
+  it('stay out of an iframe selector (frame paths)', () => {
+    document.body.append(host);
+    const frame = document.createElement('iframe');
+    frame.name = EMAIL;
+    frame.id = `frame-${EMAIL}`;
+    frame.className = `embed user-${EMAIL}`;
+    host.append(frame);
+    expect(hostSelector(frame)).not.toContain('jane.doe');
   });
 
   it('ordinary ids and test ids are kept', () => {

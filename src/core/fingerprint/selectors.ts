@@ -1,7 +1,7 @@
 /** Selector builders: CSS path from stable parts, positional XPath, landmarks, shadow paths. */
 import type { Landmark } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { isDataLike, isGeneratedToken, isStateClass, safeLabel } from './filters';
+import { isDataLikeAttr, isGeneratedToken, isStateClass, safeLabel } from './filters';
 import { composedParent, cssEscape, getRole, LANDMARK_ROLES, rawAccessibleName, rootOf, tagOf } from './dom';
 import { cleanText } from '../text/normalize';
 
@@ -14,7 +14,7 @@ export function testIdAttrs(profile: ProfileOptions = {}): string[] {
 
 /** Ids, test ids and key attributes: stable, and never data such as an email or amount (D66). */
 function attrValueOk(v: string | null, profile: ProfileOptions): v is string {
-  return !!v && v.length <= 200 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLike(v);
+  return !!v && v.length <= 200 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLikeAttr(v);
 }
 
 export function stableTestId(el: Element, profile: ProfileOptions = {}): { attr: string; value: string } | undefined {
@@ -27,7 +27,7 @@ export function stableTestId(el: Element, profile: ProfileOptions = {}): { attr:
 
 export function stableGuideId(el: Element): string | undefined {
   const v = el.getAttribute(GUIDE_ID_ATTR);
-  return v && v.length <= 200 && !isDataLike(v) ? v : undefined;
+  return v && v.length <= 200 && !isDataLikeAttr(v) ? v : undefined;
 }
 
 /** An id is stable when it does not look generated and is unique in its root. */
@@ -41,7 +41,7 @@ export function stableId(el: Element, profile: ProfileOptions = {}): string | un
 
 export function stableClasses(el: Element, profile: ProfileOptions = {}): string[] {
   return Array.from(el.classList)
-    .filter((c) => c.length <= 60 && !isStateClass(c) && !isGeneratedToken(c, profile.ignorePatterns) && !isDataLike(c))
+    .filter((c) => c.length <= 60 && !isStateClass(c) && !isGeneratedToken(c, profile.ignorePatterns) && !isDataLikeAttr(c))
     .slice(0, 4);
 }
 
@@ -69,7 +69,7 @@ function segmentFor(el: Element, isTarget: boolean, profile: ProfileOptions): Se
   if (isTarget) {
     for (const a of KEY_ATTRS) {
       const v = el.getAttribute(a);
-      if (v && v.length <= 60 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLike(v)) s += `[${a}="${cssEscape(v)}"]`;
+      if (v && v.length <= 60 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLikeAttr(v)) s += `[${a}="${cssEscape(v)}"]`;
     }
   } else {
     const role = el.getAttribute('role');

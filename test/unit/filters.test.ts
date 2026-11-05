@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isDataLike, isGeneratedToken, isStateClass, safeLabel } from '../../src/core/fingerprint/filters';
+import { isDataLike, isDataLikeAttr, isGeneratedToken, isStateClass, safeLabel } from '../../src/core/fingerprint/filters';
 
 describe('isGeneratedToken', () => {
   it.each(['css-1x9f2k', 'css-1x9f2k-Button', 'sc-bdVaJa', 'jss12', ':r0:', ':R1a2:', '«r3»', '_r_5_', 'ember123', 'Button_primary__3xK9z', 'item-123456', '3f2a9c1e7b', '550e8400-e29b-41d4-a716-446655440000', '01ARZ3NDEKTSV4RRFFQ69G5FAV', 'x7f3k2a', 'prc-Button-ButtonBase-9n-Xk', 'prc-components-UnderlineItem-7fP-n', 'Box-sc-g0xbh4-0'])(
@@ -61,4 +61,15 @@ describe('isDataLike', () => {
     expect(safeLabel('ada@example.com')).toBeUndefined();
     expect(safeLabel('')).toBeUndefined();
   });
+});
+
+describe('isDataLikeAttr (D66: ids, test ids, names, classes)', () => {
+  it.each(['user-row-jane.doe@acme.com', 'jane.doe@acme.com', 'tel-+1 555 123 4567', 'price-$12', '550e8400-e29b-41d4-a716-446655440000', 'order-12345', 'x'.repeat(81)])(
+    'drops %s',
+    (v) => expect(isDataLikeAttr(v)).toBe(true),
+  );
+  it.each(['address1', 'addressLine1', 'password2', 'menuItem3', 'col-1-2-3', 'col-12-6-6', 'AB-12', 'scale-1.25', 'version-1.0.12', 'w-[50%]', 'w-1/2', 'mt-0.5', 'edit-record-2', 'save-button'])(
+    'keeps %s',
+    (v) => expect(isDataLikeAttr(v)).toBe(false),
+  );
 });

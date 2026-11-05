@@ -151,3 +151,19 @@ export function safeLabel(text: string | null | undefined): string | undefined {
   if (!t || isDataLike(t)) return undefined;
   return t;
 }
+
+/**
+ * Data in an attribute value (ids, test ids, `name`, `data-guide-id`, classes; D66): only the
+ * unmistakable kinds (an email, a phone number, an amount, a UUID, a run of 4+ digits) or a
+ * value over 80 characters. The looser text rules (long mixed tokens, dates, codes, decimals)
+ * would drop ordinary author ids such as `address1`, `col-1-2-3` or `scale-1.25`.
+ */
+export function isDataLikeAttr(value: string): boolean {
+  const t = value.trim();
+  if (t.length > MAX_TEXT) return true;
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(t)) return true; // email
+  if (/[$€£¥₹₩₽¢]\s?\d|\d\s?[$€£¥₹₩₽¢]/.test(t)) return true; // money
+  if (UUID.test(t) || /\d{4,}/.test(t)) return true;
+  const phone = /\+?\d[\d\s().-]{6,}\d/.exec(t);
+  return !!phone && (phone[0].match(/\d/g) ?? []).length >= 7;
+}
