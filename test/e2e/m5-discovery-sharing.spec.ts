@@ -178,7 +178,8 @@ test('on-page launcher (off by default, on per site) and deep links start a guid
   expect(await app.locator('waymark-overlay .wm-offer').count()).toBe(0);
 });
 
-test('on-page launcher with the production closed shadow root: a guide in the menu starts (#42)', async ({ context, ext, site, extensionId }) => {
+for (const reduced of [false, true]) {
+test(`on-page launcher with the production closed shadow root: a guide in the menu starts (#42), ${reduced ? 'reduced motion' : 'with motion (D134)'}`, async ({ context, ext, site, extensionId }) => {
   await ext.grant('http://127.0.0.1/*');
   const app = await openApp(context, `${site.main}/app/orders?static`);
   const { guideId } = await recordOrdersGuide(ext, app, 'Closed root guide');
@@ -190,11 +191,12 @@ test('on-page launcher with the production closed shadow root: a guide in the me
   await panel.getByTestId('site-options').click();
   await panel.getByTestId('launcher-toggle').check();
   await app.bringToFront();
+  await app.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
   await app.goto(`${site.main}/app/orders?static&waymark-test-closed`);
   await expect.poll(() => marker(app, 'launcher')).toBe('1');
   expect(await app.evaluate(() => [!!document.querySelector('waymark-overlay'), !!document.querySelector('waymark-overlay')?.shadowRoot])).toEqual([true, false]); // closed
   const vp = app.viewportSize()!;
-  await app.waitForTimeout(400); // the ? button pops in (200 ms animation)
+  // No waiting for the pop-in (D134): it scales about its centre, so the press lands mid-animation.
   await app.mouse.click(vp.width - 16 - 22, vp.height - 16 - 22); // the ? button, bottom right
   await expect.poll(() => marker(app, 'launcher-item')).not.toBeNull();
   const [x, y] = (await marker(app, 'launcher-item'))!.split(',').map(Number);
@@ -202,6 +204,7 @@ test('on-page launcher with the production closed shadow root: a guide in the me
   await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
   void guideId;
 });
+}
 
 test('library URL: subscribe, read-only team guides, refresh on chrome.alarms, updates and removals', async ({ context, ext, site, extensionId }) => {
   await ext.grant('http://127.0.0.1/*');

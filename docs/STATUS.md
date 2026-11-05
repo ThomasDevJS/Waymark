@@ -38,7 +38,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Adding a tutorial: add it to the pack; any new target needs a `data-guide-id` on the practice page (and an entry in `VIEW_OF` if it lives in a view). `test/browser/practice.test.ts` fails if a target is missing or not found uniquely.
 - Tests: `test/unit/tutorials.test.ts`, `test/browser/practice.test.ts`, e2e `test/e2e/t1-tutorials.spec.ts` (test hook: `data-waymark-test-practice` = `drawn:N`, `not-found:N`, `off-track:N`, `done:N`, `finished`, `exited`).
 
-## Motion (D130–D133, issue #43)
+## Motion (D130–D134, issue #43)
 - Tokens (durations, easings, distances, press scales) and the reduced-motion path are in `src/ui/tokens.css`; the CSS rules are the "motion" section of `src/ui/components.css`. JS helpers: `src/ui/motion.ts` (`reducedMotion`, `flipList`), `src/ui/useMotion.ts` (`useFlipList` for reorderable lists).
 - Rules: animate only transform and opacity (a unit test reads every stylesheet), 80–240 ms, nothing moves under reduced motion, never move something the player may be measuring, never take focus or change what screen readers hear.
 - On the page (D133): the ring's glide, the tooltip's exit copy, the progress ease and the click ripple are in `src/content/player/ui.ts` (`glide`, `leave`, `watchPress`); the REC halo is in `src/content/overlay/pill.ts`. Test builds count glides and ripples in `data-waymark-test-motion`.
