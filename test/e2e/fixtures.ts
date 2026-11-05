@@ -50,6 +50,32 @@ export class ExtensionHelper {
     readonly sw: () => Promise<Worker>,
   ) {}
 
+  /**
+   * Sends a runtime message from an extension page in a separate, unfocused popup window, so the
+   * app tab stays the active tab of the last-focused normal window (as with the side panel, D39).
+   *
+   * The popup is opened by the service worker, and Playwright can attach to it after its `load`
+   * event, so waiting for a load state could hang until the test timed out (found under CPU load,
+   * D50). The page is polled instead: it is ready once it is the extension page and complete.
+   */
+  async message<T>(type: string, payload: object): Promise<T> {
+    const sw = await this.sw();
+    const url = `chrome-extension://${this.extensionId}/sidepanel.html`;
+    const [page] = await Promise.all([
+      this.context.waitForEvent('page', { timeout: 15_000 }),
+      sw.evaluate((u) => chrome.windows.create({ url: u, type: 'popup', focused: false }), url),
+    ]);
+    let r: { ok: boolean; data?: unknown; error?: string } | undefined;
+    try {
+      await page.waitForFunction((u) => location.href.startsWith(u) && document.readyState === 'complete', url, { polling: 50, timeout: 15_000 });
+      r = await page.evaluate(([t, p]) => chrome.runtime.sendMessage({ type: t, payload: p }), [type, payload] as const);
+    } finally {
+      await page.close();
+    }
+    if (!r?.ok) throw new Error(r?.error ?? `no reply to ${type}`);
+    return r.data as T;
+  }
+
   async extensionPage(): Promise<Page> {
     const page = await this.context.newPage();
     await page.goto(`chrome-extension://${this.extensionId}/sidepanel.html`);
