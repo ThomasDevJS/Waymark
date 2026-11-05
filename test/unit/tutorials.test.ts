@@ -70,7 +70,7 @@ describe('copy to my guides', () => {
 
 describe('voice text and messages (D129)', () => {
   it('reads only bundled text, by id', () => {
-    expect(tutorialVoiceText('tour', 'tour-1')).toMatch(/^Welcome to the practice page/);
+    expect(tutorialVoiceText('tour', 'tour-1')).toMatch(/^Welcome to the tutorial page/);
     expect(tutorialVoiceText('tour', 'tour-2')).toBe('Click New invoice. The bright frame shows where to act. Click it yourself: the guide moves on when you do.');
     expect(tutorialVoiceText('tour', 'nope')).toBeNull();
     expect(tutorialVoiceText('nope', 'tour-1')).toBeNull();

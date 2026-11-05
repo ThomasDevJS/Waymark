@@ -243,7 +243,7 @@ export function App() {
               >
                 <Icon name="tutorial" />
                 <span class="grow">Tutorial: how Waymark works (1 min)</span>
-                <span class="visually-hidden"> (opens the practice page in a new tab)</span>
+                <span class="visually-hidden"> (opens the tutorial page in a new tab)</span>
               </button>
             </li>
             </>

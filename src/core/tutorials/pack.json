@@ -11,9 +11,9 @@
         {
           "id": "tour-1",
           "kind": "note",
-          "title": "Welcome to the practice page",
-          "note": "This is a pretend invoicing app, made for practice. Waymark guides you through it one step at a time. Press **Next**.",
-          "voiceText": "Welcome to the practice page. This is a pretend invoicing app. Waymark guides you through it one step at a time. Press Next.",
+          "title": "Welcome to the tutorial page",
+          "note": "This is a sample invoicing app, made for learning. Waymark guides you through it one step at a time. Press **Next**.",
+          "voiceText": "Welcome to the tutorial page. This is a sample invoicing app. Waymark guides you through it one step at a time. Press Next.",
           "advance": "next"
         },
         {
@@ -112,7 +112,7 @@
           "id": "record-7",
           "kind": "note",
           "title": "Press **Stop** when you’re done",
-          "note": "The guide is saved and opens in the editor. This practice page can’t be recorded, so try it on your own app next. (This is a picture: you do it in the real panel.)",
+          "note": "The guide is saved and opens in the editor. This tutorial page can’t be recorded, so try it on your own app next. (This is a picture: you do it in the real panel.)",
           "target": "pic-stop",
           "advance": "next"
         }
