@@ -178,6 +178,31 @@ test('on-page launcher (off by default, on per site) and deep links start a guid
   expect(await app.locator('waymark-overlay .wm-offer').count()).toBe(0);
 });
 
+test('on-page launcher with the production closed shadow root: a guide in the menu starts (#42)', async ({ context, ext, site, extensionId }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await openApp(context, `${site.main}/app/orders?static`);
+  const { guideId } = await recordOrdersGuide(ext, app, 'Closed root guide');
+  // From now on the overlay's shadow root is closed, as in the store build.
+
+  const tabId = await tabIdFor(ext, app);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId('site-options').click();
+  await panel.getByTestId('launcher-toggle').check();
+  await app.bringToFront();
+  await app.goto(`${site.main}/app/orders?static&waymark-test-closed`);
+  await expect.poll(() => marker(app, 'launcher')).toBe('1');
+  expect(await app.evaluate(() => [!!document.querySelector('waymark-overlay'), !!document.querySelector('waymark-overlay')?.shadowRoot])).toEqual([true, false]); // closed
+  const vp = app.viewportSize()!;
+  await app.waitForTimeout(400); // the ? button pops in (200 ms animation)
+  await app.mouse.click(vp.width - 16 - 22, vp.height - 16 - 22); // the ? button, bottom right
+  await expect.poll(() => marker(app, 'launcher-item')).not.toBeNull();
+  const [x, y] = (await marker(app, 'launcher-item'))!.split(',').map(Number);
+  await app.mouse.click(x!, y!);
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  void guideId;
+});
+
 test('library URL: subscribe, read-only team guides, refresh on chrome.alarms, updates and removals', async ({ context, ext, site, extensionId }) => {
   await ext.grant('http://127.0.0.1/*');
   const app = await openApp(context, `${site.main}/app/orders?static`);

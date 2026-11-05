@@ -5,8 +5,9 @@
  * that guide; it is read at document_start and removed with history.replaceState.
  */
 import { send } from '../core/messaging/client';
-import { overlayLayer, overlayRoot } from './overlay/host';
+import { overlayHost, overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
+import { dlog } from './debug';
 import { CircleQuestionMark, MapPin, Play } from 'lucide';
 import { buildSvg } from '../ui/svg';
 
@@ -88,6 +89,15 @@ function takeDeepLinkUnsafe(loc: Location, hist: History): string | null {
   return id;
 }
 
+/**
+ * True when a press is on the launcher or its menu, or anywhere in Waymark's overlay. In production
+ * the overlay's shadow root is closed, so a document listener sees a press inside it only as a
+ * press on the overlay host, never on the menu (#42). Test builds use an open root and hid this.
+ */
+export function pressInsideLauncher(path: EventTarget[], menu: Element | null, button: Element | null, host: Element | null): boolean {
+  return (!!menu && path.includes(menu)) || (!!button && path.includes(button)) || (!!host && path.includes(host));
+}
+
 export function startLauncher(): { refresh(): void; offerDeepLink(id: string): void; dispose(): void } {
   if (window !== window.top) return { refresh() {}, offerDeepLink() {}, dispose() {} };
   let button: HTMLButtonElement | null = null;
@@ -107,8 +117,7 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
 
   // Focus goes back to the button when it was inside the menu, so it never drops to <body>.
   const onOutsidePress = (e: Event) => {
-    const path = e.composedPath();
-    if (menu && !path.includes(menu) && !(button && path.includes(button))) closeMenu(false);
+    if (menu && !pressInsideLauncher(e.composedPath(), menu, button, overlayHost())) closeMenu(false);
   };
   const closeMenu = (refocus = !!menu && menu.contains(overlayRoot().activeElement)) => {
     document.removeEventListener('pointerdown', onOutsidePress, true);
@@ -143,8 +152,18 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
         note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then press Start.`;
         host.append(note);
       }
-    } catch {
-      // not available here
+    } catch (e) {
+      // Never fail silently (#42): the menu stays and says so.
+      dlog('play', 'launcher.failed', () => ({ why: e instanceof Error ? e.message : String(e) }));
+      const host = into ?? menu ?? offer;
+      if (host) {
+        const note = document.createElement('div');
+        note.className = 'wm-note';
+        note.setAttribute('role', 'alert');
+        note.textContent = e instanceof Error && e.message ? `Couldn’t start this guide: ${e.message}` : 'Couldn’t start this guide here.';
+        host.append(note);
+      }
+      testMark('launcher-error', '1');
     }
   };
 
@@ -186,6 +205,11 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     button?.setAttribute('aria-controls', menu.id);
     document.addEventListener('pointerdown', onOutsidePress, true);
     menu.querySelector('button')?.focus();
+    if (__WAYMARK_TEST__) {
+      // With a closed root (production) tests cannot query inside: they click where the first guide is.
+      const r = menu.querySelector('button[data-guide]')?.getBoundingClientRect();
+      if (r) testMark('launcher-item', `${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}`);
+    }
   };
 
   const render = (show: boolean) => {
