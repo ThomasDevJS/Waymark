@@ -17,6 +17,10 @@ import type { Conflict } from '../sharing/pack';
 
 const url = z.string().max(4096);
 
+/** A record with at most `max` entries (Zod records have no size limit of their own; D52). */
+const boundedRecord = <V extends z.ZodType>(key: z.ZodString, value: V, max: number) =>
+  z.record(key, value).refine((o) => Object.keys(o).length <= max, `at most ${max} entries`);
+
 export const RequestSchemas = {
   // ---- extension pages (side panel, options) ----
   'tab.current': z.object({ windowId: z.number().int().optional(), tabId: z.number().int().optional() }),
@@ -40,7 +44,7 @@ export const RequestSchemas = {
   'guide.delete': z.object({ id: z.string().max(64) }),
   'guide.duplicate': z.object({ id: z.string().max(64) }),
   'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
-  'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: z.record(z.string().max(64), z.enum(['keep', 'replace', 'both'])) }),
+  'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: boundedRecord(z.string().max(64), z.enum(['keep', 'replace', 'both']), 10_000) }),
   'allow.pending': z.object({}),
   'allow.dismiss': z.object({}),
   'site.settings.get': z.object({ origin: z.string().max(500) }),
@@ -62,7 +66,7 @@ export const RequestSchemas = {
         rate: z.number().min(0.5).max(2),
         allowOnlineVoices: z.boolean(),
         muted: z.boolean(),
-        voices: z.record(z.string().max(35), z.string().max(200)),
+        voices: boundedRecord(z.string().max(35), z.string().max(200), 200),
       })
       .partial(),
   }),
