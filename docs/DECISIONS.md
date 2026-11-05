@@ -355,3 +355,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - The minimatch advisory, which comes in through typescript-eslint and only affects lint. Fixing it needs a major-version override.
   - Entry caps on records that only extension pages can send.
 - Version 0.2.3.
+
+### D50. Flake hunt: one e2e race under CPU load
+- **Spec**: Tech stack, testing.
+- **Method**: on main at 0.2.3 (local), 5 full e2e runs, 3 unit and 3 browser runs on an idle machine. Then the full e2e suite with all but one core busy, to imitate a slow CI runner (the races in D45 and M4 only showed on CI).
+- **Before**:
+  - Idle: e2e 165/165 (5 runs), unit 585/585, browser 240/240.
+  - Under load: 65/66. In one of two runs, "an author fixes a wrong match by re-picking" timed out after 60 s.
+- **Cause**: the `msg()` helper in the m4 and m5 specs opens an extension page in a popup window from the service worker and waited for its `load` state. Playwright can attach to such a window after its `load` event, and then the wait never returns (the trace showed `networkidle` but no `load`). The test only fails when the attach is slow, so 12 isolated repeats under load did not reproduce it.
+- **Fix**: one shared `ExtensionHelper.message()` in `test/e2e/fixtures.ts` polls the page until it is the extension page and `document.readyState` is `complete`. No retries, skips or longer timeouts.
+- **After**: under load 99/99 (3 runs). CI keeps `retries: 1`. Its logs show no test marked flaky in the runs checked.
