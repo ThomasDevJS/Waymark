@@ -73,7 +73,7 @@ The e2e tests that grant site access need a display, because Chrome's permission
 **Releases** (`.github/workflows/release.yml`):
 1. `pnpm release X.Y.Z` bumps the version in `package.json`, `CHANGELOG.md`, `docs/STATUS.md` and this README.
 2. Run `pnpm check`, open a PR and merge it to `main`.
-3. Push a tag `vX.Y.Z` on the merge commit.
+3. In **Actions → Release → Run workflow** (on `main`), enter `X.Y.Z`. The workflow tags `main`'s latest commit, or the commit you give, as `vX.Y.Z` (D160). Pushing a tag `vX.Y.Z` on the merge commit yourself does the same.
 
 The workflow then checks and builds the commit and publishes a GitHub Release with the zip and the changelog notes (D56).
 

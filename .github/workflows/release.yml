@@ -4,11 +4,25 @@ name: Release
 # and the notes for that version from CHANGELOG.md (D56). Release pages and their files cost no
 # Actions storage and give a stable download link.
 #
-# To cut a release: `pnpm release X.Y.Z`, merge that PR, then tag the merge commit:
-#   git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z
+# To cut a release: `pnpm release X.Y.Z`, merge that PR, then either
+#   - run this workflow from the Actions tab (Run workflow, on main, version X.Y.Z): it creates the
+#     tag itself on main's latest commit, or on the commit you give (D160); or
+#   - tag the merge commit yourself:
+#     git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, like 0.4.1. It must match package.json at that commit.'
+        required: true
+        type: string
+      commit:
+        description: 'Commit to release (full SHA, on main). Empty: the latest commit on main.'
+        required: false
+        type: string
+        default: ''
 
 permissions: {}
 
@@ -26,16 +40,45 @@ jobs:
       checks: read # the tagged commit's CI results
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # to check that the tag is on main
           persist-credentials: false
+          # A manual run may name a commit; a tag push checks out the tag (empty = the event's ref).
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit || '' }}
       - name: The tag matches package.json and points at a commit on main
         id: version
         env:
-          TAG: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          PUSHED_TAG: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.commit }}
         run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            # A manual run (D160): only from main, a plain version, a full SHA if any, a new tag.
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::error::Run the release from main (this run is on $GITHUB_REF)."
+              exit 1
+            fi
+            if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::\"$INPUT_VERSION\" is not a version like 0.4.1."
+              exit 1
+            fi
+            if [ -n "$INPUT_COMMIT" ] && ! [[ "$INPUT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::The commit must be a full 40-character SHA."
+              exit 1
+            fi
+            TAG="v$INPUT_VERSION"
+            if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+              echo "::error::$TAG already exists. To redo its release, re-run the failed jobs of the run that made it."
+              exit 1
+            fi
+          else
+            TAG="$PUSHED_TAG"
+          fi
           version=$(node -p "require('./package.json').version")
           if [ "$TAG" != "v$version" ]; then
             echo "::error::Tag $TAG does not match package.json version $version (expected v$version)."
@@ -47,6 +90,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - name: Release notes from CHANGELOG.md
         env:
@@ -115,10 +159,37 @@ jobs:
         with:
           name: release-files
           path: dist-release
+      - name: Create the tag (manual run, D160)
+        # A tag made with this job's token starts no second release run.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          VERSION: ${{ needs.build.outputs.version }}
+        # Re-running this job after the tag was made (say, an upload failed) finds it and goes on,
+        # as long as it points at the same commit.
+        run: |
+          if ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" 2> /dev/null); then
+            target=$(jq -r '.object.sha' <<< "$ref")
+            if [ "$(jq -r '.object.type' <<< "$ref")" = tag ]; then
+              target=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$target" --jq .object.sha)
+            fi
+            if [ "$target" != "$COMMIT" ]; then
+              echo "::error::$TAG already exists and points at $target, not $COMMIT."
+              exit 1
+            fi
+            echo "$TAG already points at $COMMIT."
+            exit 0
+          fi
+          obj=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$TAG" -f message="Waymark $VERSION" \
+            -f object="$COMMIT" -f type=commit --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$obj" > /dev/null
+          echo "Tagged $COMMIT as $TAG."
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
         # A version with a pre-release part (0.4.0-rc.1) is marked as a pre-release. Re-running
         # the job for an existing release replaces its files, title, notes and flags. GitHub marks
