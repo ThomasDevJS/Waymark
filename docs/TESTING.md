@@ -6,10 +6,10 @@ A guide to installing Waymark and trying everything once. It takes about 30 minu
 
 Get the build, either way:
 
-- **From chat:** the file `waymark-0.3.1-chrome.zip`.
-- **From GitHub:** open the repository, then **Actions**, then the latest green run on `waymark-v1`. Under **Artifacts**, download **waymark-extension**. That download is a zip that contains `waymark-0.3.1-chrome.zip`.
+- **From chat:** the file `waymark-0.3.2-chrome.zip`.
+- **From GitHub:** open the repository, then **Actions**, then the latest green run on `waymark-v1`. Under **Artifacts**, download **waymark-extension**. That download is a zip that contains `waymark-0.3.2-chrome.zip`.
 
-Unzip `waymark-0.3.1-chrome.zip` into a folder you will keep (for example `Documents/waymark`). The browser loads Waymark from that folder, so don't delete it.
+Unzip `waymark-0.3.2-chrome.zip` into a folder you will keep (for example `Documents/waymark`). The browser loads Waymark from that folder, so don't delete it.
 
 | Browser | Open this page |
 | --- | --- |
@@ -102,7 +102,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - **A step that breaks:** on the "can't find this step" card, click **Report broken step**. Reports are listed in **Settings** under **Problems**; click **Copy** to get the text.
 - **Anything else:** note the following:
   - browser and version (from `chrome://version`);
-  - Waymark's version (on its card in the extensions page; this build is 0.3.1);
+  - Waymark's version (on its card in the extensions page; this build is 0.3.2);
   - the step from section 2 where it happened;
   - what you did, what you expected, and what happened instead;
   - a screenshot.

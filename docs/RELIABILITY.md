@@ -11,7 +11,7 @@ Variants: **reload** (always), **narrow viewport**, and **different items** (ano
 
 ## Results
 
-Last full run: 2026-11-05, version 0.3.1. "Before" is the same harness on main at 0.2.2.
+Last full run: 2026-11-05, version 0.3.2. "Before" is the same harness on main at 0.2.2.
 
 | Site | Task | Steps | Before | After | Notes |
 | --- | --- | --- | --- | --- | --- |

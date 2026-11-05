@@ -455,6 +455,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - Moving the actions to their Node 24 majors is left for a separate change; it was already pending on main.
 - **Measured on GitHub** (first run, cold browser cache): 2 min 39 s, down from about 4.5 minutes. The check job took 1 min 20 s. Shard 1 took 2 min 30 s (tests 1 min 46 s) and shard 2 took 2 min 35 s (tests 2 min 1 s). The browser step took 20–25 s cold.
 
+## 2026-11-05 — Code health
+
+### D53. Records sent by extension pages have entry limits
+- **Spec**: Permissions, privacy and security ("validate everything"); deferred Low from the security audit (D48).
+- **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
+- **Version** 0.3.1.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
