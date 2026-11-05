@@ -7,8 +7,8 @@ name: CI
 # - Docs-only changes skip the check and e2e jobs. On main the `paths` filter below skips the
 #   run altogether. On pull requests the cheap `changes` job decides instead, so that the
 #   check jobs still report (a skipped job counts as passed for a required check) and the
-#   `CI result` job can be the one required check. Keep the two lists in sync with
-#   scripts/ci-changes.mjs.
+#   `CI result` job can be the one required check. The two lists must agree with
+#   scripts/ci-changes.mjs (test/unit/ci-changes.test.ts checks this).
 on:
   push:
     branches: [main]
@@ -20,9 +20,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Superseded pull request runs are cancelled. Runs on main are not: each merge keeps its own zip
+# and its own green or red result (D54).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -46,23 +48,26 @@ jobs:
           sparse-checkout: scripts
           persist-credentials: false
       - id: filter
+        shell: bash # adds pipefail, so a crash in the script fails the step
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         # Renames count both names. If the file list can't be read, run everything.
         run: |
-          if files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)'); then
+          if files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)'); then
             printf '%s\n' "$files" | node scripts/ci-changes.mjs | tee -a "$GITHUB_OUTPUT"
           else
             echo "::warning::Could not list the pull request's files; running the full CI."
             echo "code=true" | tee -a "$GITHUB_OUTPUT"
           fi
+          grep -q '^code=' "$GITHUB_OUTPUT"
 
   check:
     needs: changes
-    # Runs when `changes` was skipped (push, manual run) or found code changes.
-    if: ${{ !cancelled() && (needs.changes.result == 'skipped' || needs.changes.outputs.code == 'true') }}
+    # Skipped only on an explicit docs-only answer; runs when `changes` was skipped (push,
+    # manual run), found code changes, or gave no answer.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -99,7 +104,7 @@ jobs:
 
   e2e:
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result == 'skipped' || needs.changes.outputs.code == 'true') }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -131,13 +136,13 @@ jobs:
           retention-days: 7
 
   result:
-    # The one check to require in branch protection (D54). It only starts when something failed
-    # or was cancelled, and then fails; otherwise it is skipped, which counts as passed. So it
-    # costs no runner time on green and docs-only runs, and a skipped matrix job (whose check
-    # name is not `e2e (1)`) can never leave a required check waiting.
+    # The one check to require in branch protection (D54). It only starts when a job failed or
+    # ended cancelled (a timeout, say), and then fails; otherwise it is skipped, which counts as
+    # passed. So it costs no runner time on green and docs-only runs, and a skipped matrix job
+    # (whose check name is not `e2e (1)`) can never leave a required check waiting.
     name: CI result
     needs: [changes, check, e2e]
-    if: ${{ failure() || cancelled() }}
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
