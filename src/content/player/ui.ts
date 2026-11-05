@@ -3,7 +3,7 @@
  * not-found, off-track and done cards. Everything lives in the overlay host's shadow root and
  * is built with DOM APIs (user strings never reach innerHTML).
  */
-import { arrow, autoUpdate, computePosition, flip, offset, shift, type Placement } from '@floating-ui/dom';
+import { arrow, autoUpdate, computePosition, flip, offset, shift, size, type Placement } from '@floating-ui/dom';
 import { ChevronLeft, ChevronRight, CircleCheck, MapPin, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
 import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
@@ -16,11 +16,14 @@ const CSS = `
 .spot { position: fixed; z-index: 0; border-radius: 8px; pointer-events: none; box-sizing: border-box;
   box-shadow: 0 0 0 9999px var(--wm-scrim); }
 .ring { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box;
-  border: 2px solid var(--wm-ring); box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 6px color-mix(in srgb, var(--wm-ring) 30%, transparent); }
+  border: 2px solid var(--wm-ring); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 6px color-mix(in srgb, var(--wm-ring) 30%, transparent); }
 .tip { position: fixed; z-index: 2; top: 0; left: 0; width: max-content; max-width: min(360px, calc(100vw - 16px));
   box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
-  padding: 14px 16px 12px; pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.45 var(--wm-font); text-align: left; }
+  pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.45 var(--wm-font); text-align: left; }
+.tip-body { padding: 14px 16px 12px; max-height: var(--wm-tip-max, calc(100vh - 16px)); overflow: auto; overscroll-behavior: contain; border-radius: inherit; }
 .tip.centered { left: 50%; top: 24px; transform: translateX(-50%); }
+.tip.centered .tip-body { max-height: calc(100vh - 48px); }
+.arrow[hidden] { display: none; }
 .tip *, .tip *::before, .tip *::after { box-sizing: border-box; }
 .arrow { position: absolute; width: 12px; height: 12px; background: var(--wm-surface); transform: rotate(45deg); pointer-events: none; }
 .arrow[data-side='top'] { border-left: 1px solid var(--wm-border); border-top: 1px solid var(--wm-border); }
@@ -42,6 +45,7 @@ const CSS = `
 .flash { margin: 10px 0 0; padding: 6px 10px; border-radius: var(--wm-radius-sm); background: var(--wm-success-soft); color: var(--wm-success); font-size: 13px; }
 .buttons { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
 .buttons .spacer { flex: 1; }
+.buttons .report { border-color: var(--wm-border-input); }
 button { font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; min-height: 32px; padding: 5px 12px; border-radius: var(--wm-radius-sm);
   border: 1px solid var(--wm-border-input); background: var(--wm-surface); color: var(--wm-fg); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
   margin: 0; text-transform: none; letter-spacing: normal; box-shadow: none; }
@@ -66,7 +70,7 @@ a { color: var(--wm-accent-text); }
 @keyframes wm-card-in { from { opacity: 0; translate: 0 -6px; } }
 @keyframes wm-fade-in { from { opacity: 0; } }
 @keyframes wm-ring-in { from { opacity: 0; } }
-@keyframes wm-ring-pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 10px color-mix(in srgb, var(--wm-ring) 18%, transparent); } }
+@keyframes wm-ring-pulse { 50% { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 10px color-mix(in srgb, var(--wm-ring) 18%, transparent); } }
 @media (forced-colors: active) {
   .tip { border: 2px solid CanvasText; }
   .ring { border-color: Highlight; }
@@ -146,20 +150,37 @@ export class PlayerUI {
       style.textContent = CSS;
       root.append(style);
     }
+    this.ensureAnnouncer();
   }
 
   /**
    * Step changes are announced from one live region that stays in the layer, so screen readers
    * read each new step (a live region inserted already filled is often skipped).
    */
-  private announce(text: string): void {
+  private ensureAnnouncer(): HTMLElement {
     if (!this.announcer?.isConnected) {
       this.announcer = el('div', 'sr');
       this.announcer.setAttribute('role', 'status');
       this.announcer.setAttribute('aria-live', 'polite');
       overlayLayer().append(this.announcer);
     }
-    this.announcer.textContent = text;
+    return this.announcer;
+  }
+
+  /** Empties the region, then fills it on the next frame, so the same text twice (Retry) is read again. */
+  private announce(text: string): void {
+    const live = this.ensureAnnouncer();
+    live.textContent = '';
+    requestAnimationFrame(() => {
+      if (live.isConnected) live.textContent = text;
+    });
+  }
+
+  /** Moves the tooltip's content into a scrolling body, so a long step fits small or zoomed screens and the arrow stays outside it. */
+  private wrapBody(tip: HTMLElement): void {
+    const body = el('div', 'tip-body');
+    body.append(...Array.from(tip.childNodes));
+    tip.append(body);
   }
 
   /** Shows the tooltip for the current step, anchored to `target` with a spotlight, or centered when there is none. */
@@ -175,12 +196,13 @@ export class PlayerUI {
 
     const tip = this.tooltipShell(view);
     const title = el('div', 'title');
-    title.id = 'waymark-step-title';
+    title.dir = 'auto';
     title.append(...renderInline(step.title));
     tip.append(title);
     if (step.note) {
       const note = el('div', 'note');
       note.id = 'waymark-step-note';
+      note.dir = 'auto';
       note.append(...renderInline(step.note));
       tip.append(note);
       tip.setAttribute('aria-describedby', note.id);
@@ -194,6 +216,7 @@ export class PlayerUI {
       buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
     }
     if (buttons.childElementCount > 1) tip.append(buttons);
+    this.wrapBody(tip);
     const arrowEl = el('div', 'arrow');
     layer.append(tip);
     this.tip = tip;
@@ -221,13 +244,22 @@ export class PlayerUI {
       void computePosition(target, tip, {
         strategy: 'fixed',
         placement,
-        middleware: [offset(14), flip(), shift({ padding: 8 }), arrow({ element: arrowEl, padding: 12 })],
+        middleware: [
+          offset(14),
+          flip({ padding: 8 }),
+          // Long steps on small or zoomed screens: the body scrolls instead of running off the edge.
+          size({ padding: 8, apply: ({ availableHeight }) => tip.style.setProperty('--wm-tip-max', `${Math.max(120, Math.floor(availableHeight))}px`) }),
+          shift({ padding: 8, crossAxis: true }),
+          arrow({ element: arrowEl, padding: 12 }),
+        ],
       }).then(({ x, y, placement: final, middlewareData }) => {
         Object.assign(tip.style, { left: `${x}px`, top: `${y}px` });
         // The arrow sits on the tooltip's side that faces the target.
         const side = ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' } as const)[final.split('-')[0] as 'top' | 'bottom' | 'left' | 'right'];
         const a = middlewareData.arrow;
         arrowEl.dataset.side = side;
+        // Shifted so far that the arrow would point past the target: hide it.
+        arrowEl.hidden = !!a?.centerOffset;
         Object.assign(arrowEl.style, { left: a?.x != null ? `${a.x}px` : '', top: a?.y != null ? `${a.y}px` : '', right: '', bottom: '', [side]: '-7px' });
       });
     };
@@ -244,8 +276,8 @@ export class PlayerUI {
     tip.dataset.card = kind;
     const icon = el('div', 'badge-icon');
     const title = el('div', 'title');
-    title.id = 'waymark-step-title';
     const note = el('div', 'note');
+    note.dir = 'auto';
     const buttons = el('div', 'buttons');
     if (kind === 'done') {
       icon.append(buildSvg(CircleCheck));
@@ -257,7 +289,7 @@ export class PlayerUI {
       title.textContent = 'Waymark can’t find this step on the page.';
       note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
       buttons.append(
-        this.button('Report broken step', 'report', this.h.report, 'ghost'),
+        this.button('Report broken step', 'report', this.h.report),
         el('span', 'spacer'),
         this.button('Skip', 'skip', this.h.skip),
         this.button('Retry', 'retry', this.h.retry, 'primary', undefined, true),
@@ -269,6 +301,7 @@ export class PlayerUI {
       buttons.append(el('span', 'spacer'), this.button('Skip', 'skip', this.h.skip), this.button('Go back', 'go-back', this.h.goBack, 'primary', undefined, true));
     }
     tip.append(icon, title, note, buttons);
+    this.wrapBody(tip);
     overlayLayer().append(tip);
     this.tip = tip;
     this.announce(`${title.textContent} ${note.textContent ?? ''}`.trim());
@@ -278,7 +311,9 @@ export class PlayerUI {
   flash(message: string): void {
     if (!this.tip) return;
     const note = el('div', 'flash', message);
-    this.tip.insertBefore(note, this.tip.querySelector('.buttons'));
+    const buttons = this.tip.querySelector('.buttons');
+    if (buttons) buttons.before(note);
+    else this.tip.querySelector('.tip-body')?.append(note);
     this.announce(message);
   }
 

@@ -105,10 +105,17 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     }
   };
 
-  const closeMenu = (refocus = false) => {
+  // Focus goes back to the button when it was inside the menu, so it never drops to <body>.
+  const onOutsidePress = (e: Event) => {
+    const path = e.composedPath();
+    if (menu && !path.includes(menu) && !(button && path.includes(button))) closeMenu(false);
+  };
+  const closeMenu = (refocus = !!menu && menu.contains(overlayRoot().activeElement)) => {
+    document.removeEventListener('pointerdown', onOutsidePress, true);
     menu?.remove();
     menu = null;
     button?.setAttribute('aria-expanded', 'false');
+    button?.removeAttribute('aria-controls');
     if (refocus) button?.focus();
   };
 
@@ -169,8 +176,15 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
         closeMenu(true);
       }
     });
+    // Close when focus or a press goes elsewhere.
+    menu.addEventListener('focusout', (e) => {
+      const to = e.relatedTarget as Node | null;
+      if (to && !menu?.contains(to) && to !== button) closeMenu(false);
+    });
     overlayLayer().append(menu);
     button?.setAttribute('aria-expanded', 'true');
+    button?.setAttribute('aria-controls', menu.id);
+    document.addEventListener('pointerdown', onOutsidePress, true);
     menu.querySelector('button')?.focus();
   };
 
@@ -191,7 +205,6 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
       button.setAttribute('aria-label', 'Waymark guides for this page');
       button.title = 'Guides for this page';
       button.setAttribute('aria-expanded', 'false');
-      button.setAttribute('aria-controls', 'wm-launcher-menu');
       button.addEventListener('click', () => openMenu());
       overlayLayer().append(button);
     }

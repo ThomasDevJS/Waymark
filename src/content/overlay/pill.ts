@@ -7,7 +7,7 @@ import { renderInline } from '../../core/text/markdown';
 import { overlayLayer, overlayRoot } from './host';
 
 const CSS = `
-.pill { position: fixed; left: 16px; bottom: 16px; max-width: min(440px, calc(100vw - 32px)); display: flex; gap: 8px; align-items: center; box-sizing: border-box;
+.pill { position: fixed; left: 16px; bottom: 16px; max-width: min(440px, calc(100vw - 92px)); display: flex; gap: 8px; align-items: center; box-sizing: border-box;
   padding: 6px 14px 6px 10px; border-radius: 999px; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border);
   box-shadow: var(--wm-shadow-2); pointer-events: none; font: 13px/1.4 var(--wm-font); }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--wm-rec); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--wm-rec) 25%, transparent); }

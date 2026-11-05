@@ -190,15 +190,32 @@ describe('overlay drawing', () => {
     await new Promise((r) => setTimeout(r, 50));
     const root = overlayHost()!.shadowRoot!;
     const live = root.querySelector('[role="status"][aria-live="polite"]')!;
+    await new Promise((r) => requestAnimationFrame(r));
     expect(live.textContent).toBe('Step 2 of 4: Click New order');
     expect(root.querySelector('.tip')!.hasAttribute('aria-live')).toBe(false);
     const arrow = root.querySelector('.tip .arrow') as HTMLElement;
     expect(arrow.dataset.side).toBe('top'); // the tooltip is below, so the arrow is on its top edge
     ui.showStep(view({ ...stepFor('click', target), title: 'Click *Import*' }, { stepIndex: 2 }), target);
     expect(root.querySelector('[role="status"][aria-live="polite"]')).toBe(live); // the same element
+    await new Promise((r) => requestAnimationFrame(r));
     expect(live.textContent).toBe('Step 3 of 4: Click Import');
     ui.showCard('done', view(stepFor('click', target)));
+    await new Promise((r) => requestAnimationFrame(r));
     expect(live.textContent).toContain('Done!');
+    ui.clear();
+  });
+
+  it('keeps a long tooltip inside a small viewport: its body scrolls (D93 review)', async () => {
+    const target = q('tb-new');
+    const ui = new PlayerUI(handlers);
+    const long = 'A long note. '.repeat(600);
+    ui.showStep(view({ ...stepFor('click', target), title: 'Click **New order**', note: long, advance: 'next' }), target);
+    await new Promise((r) => setTimeout(r, 80));
+    const tip = overlayHost()!.shadowRoot!.querySelector('.tip')!.getBoundingClientRect();
+    expect(tip.top).toBeGreaterThanOrEqual(0);
+    expect(tip.bottom).toBeLessThanOrEqual(window.innerHeight);
+    const body = overlayHost()!.shadowRoot!.querySelector('.tip-body') as HTMLElement;
+    expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
     ui.clear();
   });
 
