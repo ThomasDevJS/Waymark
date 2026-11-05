@@ -492,3 +492,96 @@ export function compareDocumentOrder(a: Element, b: Element): number {
   }
   return ca.length - cb.length;
 }
+
+/** List items and table rows: their label names a nameless control inside them (D65). */
+const ITEM_TAGS = new Set(['li', 'tr']);
+const ITEM_ROLES = new Set(['row', 'listitem', 'treeitem']);
+export const ITEM_SELECTOR = 'li, tr, [role="row"], [role="listitem"], [role="treeitem"]';
+const ITEM_NAME_SELECTOR = 'label, h1, h2, h3, h4, h5, h6, [role="heading"]';
+const MAX_ITEM_LEVELS = 4;
+
+/** The list item or row around an element, at most 4 levels up within its own root. */
+function itemOf(el: Element): Element | null {
+  let a = el.parentElement; // stops at a shadow root: record and playback agree on that
+  for (let i = 0; a && i < MAX_ITEM_LEVELS; i++, a = a.parentElement) {
+    if (ITEM_TAGS.has(tagOf(a)) || ITEM_ROLES.has(explicitRole(a) ?? '')) return a;
+  }
+  return null;
+}
+
+/** Visible text of an element, leaving out interactive elements, hidden parts and field values. */
+function plainVisibleText(root: Element): string {
+  let out = '';
+  const walk = (node: Node) => {
+    for (let c = node.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) out += c.nodeValue ?? '';
+      else if (c.nodeType === 1) {
+        const ce = c as Element;
+        const t = tagOf(ce);
+        if (t === 'script' || t === 'style' || t === 'template' || NO_TEXT_TAGS.has(t)) continue;
+        if (ce.getAttribute('aria-hidden') === 'true' || ce.hasAttribute('hidden') || isInteractive(ce) || !isVisible(ce)) continue;
+        out += ' ';
+        walk(ce);
+        out += ' ';
+      }
+    }
+  };
+  walk(root);
+  return cleanText(out);
+}
+
+/**
+ * The name an item gives itself: the text of its first visible label or heading that does not
+ * belong to another control. Status words, counts and other loose text in the row are not names.
+ */
+export function itemName(item: Element, owner?: Element): string | undefined {
+  for (const n of Array.from(item.querySelectorAll(ITEM_NAME_SELECTOR))) {
+    if (n.closest('a[href], button') && item.contains(n.closest('a[href], button'))) continue;
+    if (tagOf(n) === 'label') {
+      const control = labelControl(n);
+      if (control && control !== owner) continue; // it names another field
+    }
+    if (!isVisible(n)) continue;
+    const text = plainVisibleText(n);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+/** Checkboxes, radios and switches: the controls a list item names (a todo's toggle). */
+function isToggle(el: Element): boolean {
+  if (tagOf(el) === 'input') {
+    const t = (el.getAttribute('type') ?? '').toLowerCase();
+    return t === 'checkbox' || t === 'radio';
+  }
+  const role = explicitRole(el);
+  return role === 'checkbox' || role === 'radio' || role === 'switch';
+}
+
+/**
+ * Raw item label of a nameless toggle (D65): its item's label or heading when that is all the
+ * item says, e.g. "Walk the dog" for a TodoMVC toggle. None when:
+ * - the control is not a checkbox, radio or switch (an icon button is an action, not the item);
+ * - the item has other visible text: then the label is status or a category ("Overdue",
+ *   "Books") and the real name is elsewhere;
+ * - a link in the item has a name (the row is named by that link);
+ * - the item contains another item (nested lists) or anything editable (typed text).
+ */
+export function rawItemLabel(el: Element): string | undefined {
+  if (!isToggle(el)) return undefined;
+  const item = itemOf(el);
+  if (!item) return undefined;
+  if ((item as HTMLElement).isContentEditable || item.querySelector('[contenteditable]:not([contenteditable="false"])')) return undefined;
+  if (item.querySelector(ITEM_SELECTOR)) return undefined;
+  for (const c of Array.from(item.querySelectorAll('a[href]'))) {
+    if (c !== el && !c.contains(el) && (rawAccessibleName(c) || rawOwnText(c))) return undefined;
+  }
+  const name = itemName(item, el);
+  if (!name || name !== plainVisibleText(item)) return undefined;
+  return name;
+}
+
+/** Item label, or undefined when missing or data-like. */
+export function itemLabel(el: Element): string | undefined {
+  return safeLabel(rawItemLabel(el));
+}

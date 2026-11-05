@@ -1,7 +1,7 @@
 /** Fingerprint builder (SPEC: Element targeting, "At record time"). */
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
-import { accessibleName, displayBox, getRole, inputTypeOf, isVisible as layoutVisible, ownText, tagOf } from './dom';
+import { accessibleName, displayBox, getRole, inputTypeOf, isVisible as layoutVisible, itemLabel, ownText, tagOf } from './dom';
 import { isGeneratedToken, safeLabel } from './filters';
 import {
   buildAncestors,
@@ -66,6 +66,11 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   if (placeholder) fp.placeholder = placeholder;
   const text = ownText(el);
   if (text) fp.text = text;
+  // A control with no name and no text of its own is named by its list item or row (D65).
+  if (!fp.accessibleName && !fp.text) {
+    const item = itemLabel(el);
+    if (item) fp.itemLabel = item;
+  }
   const href = el.getAttribute('href');
   // A link back to the current page (`#`, `#top`, `?page=2`) has the page's own path: no identity.
   if (href !== null && !isSamePageHref(href)) {

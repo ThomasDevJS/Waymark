@@ -92,7 +92,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     buildFingerprint(el, { profile: opts.profile, framePath: opts.framePath?.() ?? [], ...(opts.isVisible ? { isVisible: opts.isVisible } : {}) });
 
   const nameFor = (el: Element, fp: ElementFingerprint) =>
-    fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? safeLabel(el.getAttribute('title')) ?? roleWord(fp.role);
+    fp.accessibleName ?? fp.text ?? fp.placeholder ?? fp.name ?? safeLabel(el.getAttribute('title')) ?? fp.itemLabel ?? roleWord(fp.role);
 
   const flagsFor = (el: Element, lowConfidence: boolean): StepFlag[] | undefined => {
     const flags: StepFlag[] = [];

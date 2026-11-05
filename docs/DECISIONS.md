@@ -564,6 +564,25 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Independent review**: look-alikes are stored **whatever their score, visibility or enabled state**. A look-alike under 60 at record time can pass 60 at playback on position and XPath once the target is gone. A look-alike in a hidden tab or collapsed demo can be shown later. Both were wrong matches in the first version and have regression tests (`test/browser/lookalikes.test.ts`). An **exact twin** (an element matching every non-positional signal the target has) is not stored, because it would refuse the target itself. MUI's docs keep a second, hidden alert dialog with the same title mounted, and its "Agree" made the real one unfindable. A visible twin is a repeated element (D5); a hidden one cannot be told apart by any signal. Record time scores the page once for both `matchCount` and the look-alikes.
 - **Cost and limits**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Look-alikes that are not in the DOM at record time (lazy or virtualised content) cannot be known, so the rule narrows the risk but does not close it. Fingerprints recorded without look-alikes (before D64) behave as before. Robustness set A: 519/520 found, 0 wrong. The one miss is the new fixture pair `date-basic` / `date-other` under `wrap` (ambiguous), which reproduces the Ant case.
 
+### D65. A nameless control in a list item is named by the item's label
+- **Spec**: Element targeting, record step 2 and playback step 3 (signals and weights); Data model (new optional `ElementFingerprint.itemLabel`).
+- **Finding**: the todo toggles of TodoMVC in Vue and Angular are `<input type=checkbox class=toggle>` next to a `<label>` that is not linked to them. They have no name, text or test id, so since D47 a click on one is not recorded at all. In React they share a test id and were `instance: 'any'` ("check any todo"), and the title was "Check **the checkbox**". What the author meant is in the row: "Walk the dog".
+- **Change**: a **checkbox, radio or switch** with no accessible name and no own text gets an **item label**: the text of the first visible `<label>` or heading in the nearest `li`, `tr`, or `row` / `listitem` / `treeitem` role at most 4 levels up. The label must not belong to another field, and it must be **everything the item says**: the item's visible text, outside interactive elements, is exactly that label. Hidden parts are left out, never field values, and the data-like filter applies. It is a new signal `item`: weight 20, strong, not identifying. The step title uses it ("Check **Walk the dog**").
+- **Why so narrow** (two independent reviews; each case is a regression test in `test/browser/item-label.test.ts`). A label is identity only when it is the item's name, and status or context that moves between rows picked the wrong row:
+  - "Open" next to a named link in an issue list;
+  - an "Overdue" badge next to "Pay rent";
+  - a "Books" category heading over "Dune";
+  - a parent row taking a nested child's label.
+  So there is no item label when:
+  - the item has other visible text;
+  - a link in it has a name;
+  - it contains another item;
+  - anything in it is editable (typed text in rich-text task lists);
+  - the control is not a toggle. A nameless delete icon would otherwise be titled "Click **Walk the dog**".
+- **Not identifying**: rows that share a label are ambiguous (not-found), not interchangeable (`instance: 'any'`). When the item is gone (another list), the other rows' toggles match only what record-time look-alikes matched (D64), so the result is not-found.
+- **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
+- **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 
