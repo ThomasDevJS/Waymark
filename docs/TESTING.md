@@ -29,12 +29,13 @@ To update later, unzip the new build into the same folder and click the reload a
 Use a real web app you can log in to, ideally one with forms and more than one page. Tick each box as you go. If something fails, note the step number and see section 4.
 
 ### A. Allow a site
-- [ ] Open the app, then click the Waymark icon (a white flag on a blue tile). The side panel opens with a short welcome (Allow, Record, Play); read it or press **Skip**. The panel shows the site's address.
-- [ ] Click **Allow on this site** and accept the browser's prompt. The site card now shows a green **Allowed** badge.
+- [ ] Open the app, then click the Waymark icon (a white flag on a blue tile). The side panel opens with a short welcome (Allow, Record, Play on one card); press **Get started**. The panel shows the site's name and "Waymark is off on this site".
+- [ ] Press the small **?** next to that sentence: it explains what Allow does. Click **Allow on this site** and accept the browser's prompt. The site card now shows a green **Allowed** badge.
+- [ ] Press the **?** (Help) next to the gear: Help offers the welcome again, shortcuts, and **What the warnings mean**. Close it with **×**.
 - [ ] Open **Settings** (the gear in the panel). Under **Sites**, the site is listed with **Remove**.
 
 ### B. Record a guide
-- [ ] Type a name under **New guide** (for example "Create an invoice") and press **Record**. The toolbar icon shows **REC**, and a red **REC** pill appears at the bottom left of the page.
+- [ ] Type a name under **Record a guide** (for example "Create an invoice") and press **Record**. The toolbar icon shows **REC**, and a red **REC** pill appears at the bottom left of the page.
 - [ ] Do a real task of 6 to 10 actions. Include:
   - typing into a field;
   - a dropdown;
@@ -46,11 +47,11 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] Press **Stop**. The editor opens with your steps.
 
 ### C. Edit the guide
-- [ ] Rename a step: change the **Title** (`**bold**` and `*italic*` work).
-- [ ] Add a note to a step, and a voice text to another.
-- [ ] Click **Note after** on a step and write a short note step.
+- [ ] Steps are folded to one line each (steps with a warning start open). Click a step's title to open it, then change its **Title** (`**bold**` and `*italic*` work).
+- [ ] Add a note to a step. Open **More options** on another and write a **Spoken text**.
+- [ ] In **More options**, click **Add a note after** and write a short note step.
 - [ ] Move a step with the ↑ ↓ buttons on its card, and delete one you don't need (the bin button).
-- [ ] Click **Test step** on a step. The element is highlighted on the page, and the panel says "Found" with the signals that matched.
+- [ ] Click **Test step** on an open step. The element is highlighted on the page, and the panel says "Found on this page." (**How Waymark found it** lists the clues).
 - [ ] Click **Re-pick element** on a step, then click a different element on the page. The click does not trigger the app. Click **Use title …** if the suggested title is better.
 - [ ] Press **Save**. The panel shows "Saved (version 2)".
 
@@ -61,7 +62,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] With HD voice on, play an English guide. Each step should start speaking within a second or two (the first step can take a few seconds). If a step's HD audio isn't ready in 4 seconds, the system voice reads it instead.
 - [ ] Press **Remove HD voice** in Settings. It says "Off.", and guides use the system voice again.
 - [ ] Go back to the guide's first page and press **Start** in the panel. The page dims around the first element, with a tooltip reading "Step 1 of N". The step is read aloud.
-- [ ] Do each action. The guide moves on by itself. Note steps have a **Next** button.
+- [ ] Do each action. The tooltip says what to do ("Click the highlighted element to continue.") and the guide moves on by itself. Note steps have a **Next** button.
 - [ ] Try **Back** in the tooltip, and the shortcuts `Alt+.` (next) and `Alt+,` (back).
 - [ ] The guide follows you onto the second page.
 - [ ] Press the speaker button at the top of the tooltip to mute; the next step is silent.
@@ -72,11 +73,11 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 ### E. Find guides on the page
 - [ ] On a page where a guide starts, the toolbar icon shows a number: how many guides belong to that page.
 - [ ] In the panel, the guide is listed under **For this page**. Type part of a step title in the search box and it shows up.
-- [ ] Turn on **Show the ? guide button on this site’s pages** and reload the page. A blue **?** button appears at the bottom right; it lists the guide and starts it.
-- [ ] Click **Copy link** next to the guide, paste the link into the address bar and open it. The page offers "Start the guide …?".
+- [ ] Open **Site options** on the site card, turn on **Show a ? button on this site’s pages** and reload the page. A blue **?** button appears at the bottom right; it lists the guide and starts it.
+- [ ] Open the guide's **⋯** (More) menu and click **Copy link**, paste the link into the address bar and open it. The page offers "Start the guide …?".
 
 ### F. Share a guide (export and import)
-- [ ] In the panel, select the guide's checkbox and click **Export 1 selected…**. Read the review: it lists every text and address that will be in the file. Click **Remove** on anything that is business data, then **Download pack**.
+- [ ] In the panel, click **Export…** under the list: checkboxes appear. Select the guide and click **Export 1 selected…**. (For one guide, **⋯ → Share…** does the same.) Read the review: it lists every text and address that will be in the file; element paths are folded under **Technical details**. Click **Remove** on anything that is business data, then **Download guide file**.
 - [ ] Make a second browser profile: Chrome profile menu (top right), then **Add**. Install Waymark there too (section 1).
 - [ ] In the second profile, open the panel, click **Import…** and choose the file. Confirm **Import**.
 - [ ] The panel offers **Allow** for the guide's site. Accept the prompt.
@@ -89,7 +90,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 
 ### H. Library and editor conveniences
 - [ ] Open a guide in the editor and type two **Tags**, separated by a comma (for example `billing, onboarding`). Press **Save**. In the list, the tags appear as chips under the search box. Click one: only guides with that tag are listed. Click **Clear**.
-- [ ] In the editor, click **Duplicate** on a step. A copy appears right after it. Delete a step with the bin button: a message at the bottom says "Deleted step N." with **Undo**. Press **Undo** within 8 seconds: the step is back in its place.
+- [ ] In the editor, open a step's **More options** and click **Duplicate**. A copy appears right after it. Delete a step with the bin button: a message at the bottom says "Deleted step N." with **Undo**. Press **Undo** within 8 seconds: the step is back in its place.
 - [ ] In the list, open a guide's **⋯** (More) menu and click **Duplicate**. A copy named "… (copy)" appears.
 - [ ] In the **⋯** menu, click **Delete**. The guide disappears and "Deleted …" shows with **Undo**. Close the side panel and open it again within a few seconds: the message is still there, and **Undo** brings the guide back. Wait 8 seconds after another delete: the message goes, and the guide is gone for good.
 - [ ] Play a guide to the end. In the list it now has a green **Completed** badge, and its button reads **Restart**.
@@ -97,13 +98,15 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] Open the **⋯** menu of a guide with several steps, pick a step under **Start from**, go to that step's page and press **Start from step N**. The guide starts at that step. On another page the panel tells you which page to open.
 
 ### I. Sharing and playback conveniences
-- [ ] Select a guide and click **Export 1 selected…**. Under **Format**, pick **How-to (Markdown)**. The list now shows only the guide title, its site and the steps' titles and notes. A note with an email, amount or code has a yellow **Looks like data** badge. Remove it, then **Download how-to** and open the `.md` file: numbered steps, and no address except the site's.
-- [ ] Do the same with **How-to (printable page)**, open the `.html` file in the browser, and print it (Ctrl+P or ⌘P): one clean page of numbered steps.
+- [ ] Open a guide's **⋯** menu and click **Share…**. Under **Format**, pick **How-to text (Markdown)**. The list now shows only the guide title, its site and the steps' titles and notes. A note with an email, amount or code has a yellow **Looks like data** badge. Remove it, then **Download how-to** and open the `.md` file: numbered steps, and no address except the site's.
+- [ ] Do the same with **Printable how-to**, open the `.html` file in the browser, and print it (Ctrl+P or ⌘P): one clean page of numbered steps.
 - [ ] On an allowed site, press **Alt+R**. The side panel opens and recording starts (REC). Do two actions, then press **Alt+R** again: recording stops and the editor opens on "Untitled guide". On a site that is not allowed, **Alt+R** opens the panel with "Recording didn't start: Allow Waymark on this site first."
 - [ ] Press **Alt+W** in a window where the side panel is closed: it opens. Change both keys at `chrome://extensions/shortcuts`; **Settings → About** shows the new keys.
 - [ ] While a guide plays, press the speech button in the tooltip (**Replay voice**): the step is read again. Scroll the page away from the highlighted element, Tab to **Repeat step** and press Enter (or click it before scrolling): the page scrolls back, the highlight pulses and the step is read again. Mute: **Replay voice** greys out. Unmute with the same button: it works again in the same step.
 
 ## 3. What the warnings mean
+
+The panel lists these too: **?** (Help) → **What the warnings mean**.
 
 | You see | It means | What to do |
 | --- | --- | --- |
@@ -111,8 +114,16 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 | ⚠ **Hard to find** on a step | You clicked something that isn't a button, link or field (often plain text). It is harder to find again. (A clickable card that the page marks with an id is recorded as the card, without this warning.) | Delete the step if it wasn't needed, or **Re-pick element** to choose the real control. |
 | ⚠ **Drawing area** | The click was on a drawing area (chart, map). There is nothing inside it to point at. | Replace the step with a note step. |
 | ⚠ **Closed component** | The click was inside a closed web component that Waymark can't see into. It recorded the outer box. | **Test step**. If it is wrong, use a note step. |
-| "**Found, but fragile**" after **Test step** | It was found, but only one strong clue matched. A small app change may break it. | **Re-pick element**. If you own the app, add a `data-guide-id` attribute to that element. |
+| "**Found, but it may break**" after **Test step** | It was found, but only one strong clue matched. A small app change may break it. | **Re-pick element**. If you own the app, add a `data-guide-id` attribute to that element. |
 | "Waymark can't find this step" card | The element wasn't found within 8 seconds. Waymark never guesses. | **Retry**, **Skip**, or **Report broken step**. |
+
+### J. First-time clarity (issue #37)
+- [ ] In a fresh profile, the welcome is one card. **Get started** hides it; Help (**?**) → **Show the welcome again** brings it back.
+- [ ] On an allowed site, the site card is one line. **Site options** shows the **?** button switch and **Turn off Waymark on this site**.
+- [ ] Guide rows show only **Edit**, **⋯** and **Start**. Export checkboxes appear only after **Export…**, and **Cancel** hides them.
+- [ ] In the editor, steps are one line each. Open one, and **More options** shows spoken text, when to move on, Optional, Add a note after and Duplicate. **Open all steps** opens every step.
+- [ ] In Settings, the language list shows names ("English (en)").
+- [ ] Open a deep link (**⋯ → Copy link**) on a page where the **?** button is on: the "Start the guide…?" card sits above the button, not under it.
 
 ## 4. Report a problem
 
