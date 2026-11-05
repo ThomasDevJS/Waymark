@@ -24,3 +24,9 @@ export function resolveShade(learner: unknown, guide: unknown): Shade {
   if (isShade(guide)) return guide;
   return DEFAULT_SHADE;
 }
+
+/** The editor's choice for a guide: a level sets it; Default ("") removes the field (D144). */
+export function withGuideShade<T extends { shade?: Shade }>(guide: T, choice: string): T {
+  const { shade: _old, ...rest } = guide;
+  return (isShade(choice) && choice !== DEFAULT_SHADE ? { ...rest, shade: choice } : rest) as T;
+}

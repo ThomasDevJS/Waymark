@@ -29,8 +29,8 @@ const ring = () => overlayRoot().querySelector('.ring') as HTMLElement;
 const token = (name: string) => getComputedStyle(overlayRoot().querySelector('.wm-theme')!).getPropertyValue(name).trim();
 /** The dim's colour, as the browser computed it ("rgba(…) 0px 0px 0px 9999px"). */
 const dim = () => getComputedStyle(spot()).boxShadow;
-const alpha = (css: string) => Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(css)?.[1] ?? 1);
-const tokenFor: Record<Shade, string> = { lighter: '--wm-scrim-lighter', medium: '--wm-scrim', darker: '--wm-scrim-darker' };
+/** The dim's alpha, whether the browser writes rgba(…) or color(srgb … / a) (color-mix). */
+const alpha = (css: string) => Number(/\/\s*([\d.]+)\s*\)/.exec(css)?.[1] ?? /rgba\([^)]*,\s*([\d.]+)\)/.exec(css)?.[1] ?? 1);
 
 for (const closed of [false, true]) {
   describe(`highlight shade, ${closed ? 'closed' : 'open'} overlay root (D144)`, () => {
@@ -52,21 +52,21 @@ for (const closed of [false, true]) {
     });
 
     for (const scheme of ['light', 'dark']) {
-      it(`each level paints its own token, lighter < medium < darker (${scheme})`, async () => {
+      it(`levels follow --wm-scrim with a clear step between them (${scheme})`, async () => {
         await media([{ name: 'prefers-color-scheme', value: scheme }]);
-        const seen: number[] = [];
+        const seen: Record<string, number> = {};
         for (const s of SHADES) {
           ui.showStep(view(s), target);
           expect(spot().dataset.shade).toBe(s);
-          const want = token(tokenFor[s]);
-          expect(want).not.toBe('');
-          expect(dim()).toContain(want.replace(/\s+/g, ' ').replace(/,\s*/g, ', '));
-          seen.push(alpha(dim()));
+          seen[s] = alpha(dim());
         }
-        expect(seen[0]!).toBeLessThan(seen[1]!);
-        expect(seen[1]!).toBeLessThan(seen[2]!);
-        // Within the issue's range: the page is never more than about two thirds dark.
-        expect(Math.max(...seen)).toBeLessThanOrEqual(0.65);
+        // Medium is the scheme's own --wm-scrim (D89's default), whatever its value.
+        expect(seen.medium).toBeCloseTo(alpha(token('--wm-scrim')), 2);
+        // A visible step each way (review: a fixed Darker was only 0.05 above Medium).
+        expect(seen.medium! - seen.lighter!).toBeGreaterThanOrEqual(0.095);
+        expect(seen.darker! - seen.medium!).toBeGreaterThanOrEqual(0.095);
+        expect(seen.lighter!).toBeGreaterThan(0.1); // never "off"
+        expect(seen.darker!).toBeLessThanOrEqual(0.7); // never close to opaque
       });
     }
 

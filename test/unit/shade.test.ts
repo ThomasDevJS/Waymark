@@ -4,10 +4,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GuideSchema, type Guide } from '../../src/core/model/schema';
-import { startRun } from '../../src/core/player/run';
-import { DEFAULT_SHADE, isShade, resolveShade } from '../../src/core/player/shade';
+import { runView, startRun } from '../../src/core/player/run';
+import { DEFAULT_SHADE, isShade, resolveShade, withGuideShade } from '../../src/core/player/shade';
 import { PlayerSettingsSchema } from '../../src/core/player/settings';
-import { makePack, parsePack } from '../../src/core/sharing/pack';
+import { duplicateGuide, makePack, parsePack } from '../../src/core/sharing/pack';
 import { parseMessage } from '../../src/core/messaging/protocol';
 
 const guide = (extra: Record<string, unknown> = {}): Guide =>
@@ -59,6 +59,26 @@ describe('guide files (D146)', () => {
   });
 });
 
+describe('compatibility and copies (D146, review)', () => {
+  it('unknown guide and pack keys are dropped, not rejected: what an older Waymark does with shade', async () => {
+    const { GuidePackSchema } = await import('../../src/core/model/schema');
+    const g = GuideSchema.parse({ ...guide(), futureKey: 1 });
+    expect('futureKey' in g).toBe(false);
+    const p = GuidePackSchema.parse({ ...makePack([{ ...guide(), futureKey: 1 } as Guide]), extra: true });
+    expect('extra' in p).toBe(false);
+    expect('futureKey' in p.guides[0]!).toBe(false);
+  });
+  it('the editor’s Default removes the field; a level sets it; Medium is the default, so it is not stored', () => {
+    expect(withGuideShade(guide({ shade: 'darker' }), '')).not.toHaveProperty('shade');
+    expect(withGuideShade(guide(), 'lighter').shade).toBe('lighter');
+    expect(withGuideShade(guide({ shade: 'darker' }), 'medium')).not.toHaveProperty('shade');
+    expect(withGuideShade(guide(), 'black')).not.toHaveProperty('shade');
+  });
+  it('Duplicate keeps the guide’s shade', () => {
+    expect(duplicateGuide(guide({ shade: 'darker' })).shade).toBe('darker');
+  });
+});
+
 describe('settings and messages (D144)', () => {
   it('defaults to following each guide; an unknown stored value falls back to it', () => {
     expect(PlayerSettingsSchema.parse({}).shade).toBe('guide');
@@ -92,12 +112,16 @@ describe('what content scripts get (D145)', () => {
   it('the run view carries only the resolved level, never the settings or the guide’s own field', async () => {
     const v = await view({ playerSettings: { shade: 'guide' } }, guide({ shade: 'darker' }), 'https://app.test/');
     expect(v.shade).toBe('darker');
-    expect(JSON.stringify(v)).not.toContain('playerSettings');
+    // Exactly the run view's own fields plus muted and shade: no settings object, nothing else (review).
+    expect(Object.keys(v).sort()).toEqual([...new Set([...Object.keys(runView(startRun(guide({ shade: 'darker' })))), 'muted', 'shade'])].sort());
+    expect(JSON.stringify(v)).not.toContain('"guide"');
     const mine = await view({ playerSettings: { shade: 'lighter' } }, guide({ shade: 'darker' }), 'https://app.test/');
     expect(mine.shade).toBe('lighter');
   });
-  it('on another site the view says nothing about the guide’s shade', async () => {
+  it('on another site the view says Medium, whatever the guide or the learner picked', async () => {
     const v = await view({}, guide({ shade: 'darker' }), 'https://other.test/');
     expect(v.shade).toBe('medium');
+    const mine = await view({ playerSettings: { shade: 'darker' } }, guide({ shade: 'lighter' }), 'https://other.test/');
+    expect(mine.shade).toBe('medium');
   });
 });

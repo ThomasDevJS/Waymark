@@ -3,18 +3,30 @@ import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { LearnerShade } from '../../core/player/shade';
-import { LEARNER_SHADE_CHOICES } from '../../ui/shadeCopy';
+import { LEARNER_SHADE_CHOICES, SHADE_NAME } from '../../ui/shadeCopy';
 
 const shade = signal<LearnerShade | null>(null);
+const error = signal<string | null>(null);
 
 async function choose(value: LearnerShade) {
+  const before = shade.value;
   shade.value = value;
-  shade.value = (await send('player.settings.set', { patch: { shade: value } })).shade;
+  error.value = null;
+  try {
+    shade.value = (await send('player.settings.set', { patch: { shade: value } })).shade;
+  } catch {
+    // Not saved: show what is really in use.
+    shade.value = before;
+    error.value = 'The shade could not be saved. Try again.';
+  }
 }
 
 export function ShadeSetting() {
   useEffect(() => {
-    void send('player.settings.get', {}).then((s) => (shade.value = s.shade));
+    void send('player.settings.get', {}).then(
+      (s) => (shade.value = s.shade),
+      () => (shade.value = 'guide'), // the default, so the choices never stay locked
+    );
   }, []);
   const v = shade.value;
   // The preview follows the choice; "Follow each guide" shows the usual shade.
@@ -22,7 +34,7 @@ export function ShadeSetting() {
   return (
     <div class="shade-setting">
       <fieldset class="formats" data-testid="shade" aria-describedby="shade-hint">
-        <legend class="label">Shade around the highlighted step</legend>
+        <legend class="label">{SHADE_NAME}</legend>
         {LEARNER_SHADE_CHOICES.map((c) => (
           <label key={c.value} class={`format lift pressable${v === c.value ? ' on' : ''}`}>
             <input type="radio" name="shade" value={c.value} checked={v === c.value} disabled={v === null} data-testid={`shade-${c.value}`} onChange={() => void choose(c.value)} />
@@ -40,7 +52,10 @@ export function ShadeSetting() {
         <span class="shade-preview-line" />
       </div>
       <p class="hint" id="shade-hint">
-        Your choice here is used for every guide and tutorial. Only the rest of the page gets darker: the highlighted item is never shaded.
+        Pick a shade to use it for every guide and tutorial. Only the rest of the page gets darker; the highlighted item is never shaded.
+      </p>
+      <p class="small status-text warn" role="status" data-testid="shade-error">
+        {error.value ?? ''}
       </p>
     </div>
   );

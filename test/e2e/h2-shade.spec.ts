@@ -15,6 +15,14 @@ async function tabIdFor(ext: ExtensionHelper, page: Page): Promise<number> {
   return (await ext.sw()).evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url === u)!.id!, url);
 }
 
+/** The test build's mark: the drawn level and the dim's alpha (rgba(…) or color(srgb … / a)). */
+async function shadeOf(page: Page): Promise<string> {
+  const m = (await marker(page, 'shade')) ?? '';
+  const [level, css = ''] = m.split('|');
+  const a = /\/\s*([\d.]+)\s*\)/.exec(css)?.[1] ?? /rgba\([^)]*,\s*([\d.]+)\)/.exec(css)?.[1] ?? '1';
+  return `${level}:${Number(a).toFixed(2)}`;
+}
+
 async function openApp(context: BrowserContext, url: string) {
   const app = await context.newPage();
   await app.goto(url);
@@ -57,7 +65,8 @@ test('shade: the editor sets it per guide, the guide file carries it, the page d
   await app.bringToFront();
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
   expect(await app.evaluate(() => document.querySelector('waymark-overlay')?.shadowRoot ?? null)).toBeNull();
-  await expect.poll(() => marker(app, 'shade')).toBe('darker|rgba(10, 13, 20, 0.55) 0px 0px 0px 9999px');
+  await expect.poll(() => shadeOf(app)).toMatch(/^darker:/);
+  const darker = Number((await shadeOf(app)).split(':')[1]);
 
   // The learner picks Lighter in Settings: the step on the page follows at once, without moving on.
   const options = await context.newPage();
@@ -66,18 +75,20 @@ test('shade: the editor sets it per guide, the guide file carries it, the page d
   await options.getByTestId('shade-lighter').check();
   await expect.poll(async () => (await ext.message<{ shade: string }>('player.settings.get', {})).shade).toBe('lighter');
   await app.bringToFront();
-  await expect.poll(() => marker(app, 'shade')).toBe('lighter|rgba(10, 13, 20, 0.25) 0px 0px 0px 9999px');
+  await expect.poll(() => shadeOf(app)).toMatch(/^lighter:/);
+  // Clearly lighter than the guide's Darker (two levels apart).
+  expect(darker - Number((await shadeOf(app)).split(':')[1])).toBeGreaterThan(0.2);
   expect(await marker(app, 'player')).toBe('drawn:0');
 
   // Back to "Follow each guide": the guide's Darker again.
   await options.bringToFront();
   await options.getByTestId('shade-guide').check();
   await app.bringToFront();
-  await expect.poll(() => marker(app, 'shade')).toBe('darker|rgba(10, 13, 20, 0.55) 0px 0px 0px 9999px');
+  await expect.poll(() => shadeOf(app)).toBe(`darker:${darker.toFixed(2)}`);
   // The step still moves on as before.
   await app.getByRole('button', { name: 'Import', exact: true }).click();
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:1');
-  await expect.poll(() => marker(app, 'shade')).toMatch(/^darker\|/);
+  await expect.poll(() => shadeOf(app)).toMatch(/^darker:/);
 });
 
 test('shade: tutorials on the Practice page follow the Settings choice', async ({ context, extensionId, sw }) => {
@@ -87,8 +98,10 @@ test('shade: tutorials on the Practice page follow the Settings choice', async (
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
   await practice.locator('waymark-overlay [data-action="next"]').click(); // step 2 has a target, so a dim
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
-  await expect.poll(() => marker(practice, 'shade')).toMatch(/^darker\|rgba\(10, 13, 20, 0\.55\)/);
+  await expect.poll(() => shadeOf(practice)).toMatch(/^darker:/);
+  const dark = Number((await shadeOf(practice)).split(':')[1]);
   // Changed in Settings while the tutorial plays: the drawn step follows.
   await sw.evaluate(() => chrome.storage.local.set({ playerSettings: { shade: 'lighter' } }));
-  await expect.poll(() => marker(practice, 'shade')).toMatch(/^lighter\|rgba\(10, 13, 20, 0\.25\)/);
+  await expect.poll(() => shadeOf(practice)).toMatch(/^lighter:/);
+  expect(dark - Number((await shadeOf(practice)).split(':')[1])).toBeGreaterThan(0.2);
 });

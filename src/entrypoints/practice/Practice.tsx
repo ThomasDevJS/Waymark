@@ -20,6 +20,8 @@ const sent = signal<string | null>(null);
 const ended = signal<string | null>(null);
 /** The drawn step's revision: the HD voice offer's sample stops when it changes (D141). */
 const stepRev = signal<number | null>(null);
+/** Counts shade changes from Settings, so a slower read at tutorial start never overwrites a newer one. */
+let shadeSeq = 0;
 
 /** Test builds mark the player's state on <html>, as the content script does (data-waymark-test-*). */
 function mark(state: string | null) {
@@ -83,6 +85,7 @@ export async function startTutorial(t: Tutorial): Promise<void> {
   document.querySelector<HTMLFormElement>('[data-guide-id="practice-form"]')?.reset();
   playing.value = t;
   history.replaceState(null, '', `${location.pathname}?tutorial=${t.id}`);
+  const seq = shadeSeq;
   const [muted, shade] = await Promise.all([
     send('voice.settings.get', {}).then(
       (s) => s.muted,
@@ -93,7 +96,8 @@ export async function startTutorial(t: Tutorial): Promise<void> {
       () => 'guide' as const,
     ),
   ]);
-  player.setShade(shade);
+  // A change in Settings arrived while this was read: it is newer, keep it (review).
+  if (seq === shadeSeq) player.setShade(shade);
   // Stopped, or another tutorial started, while the setting was read: don't start this one.
   if (playing.value !== t) return;
   requestAnimationFrame(() => {
@@ -369,7 +373,9 @@ export function Practice() {
     chrome.commands?.onCommand.addListener(onCommand);
     // The shade setting changed in Settings: the drawn step follows it (D145).
     const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && 'playerSettings' in changes) player.setShade((changes.playerSettings!.newValue as { shade?: unknown } | undefined)?.shade);
+      if (area !== 'local' || !('playerSettings' in changes)) return;
+      shadeSeq++;
+      player.setShade((changes.playerSettings!.newValue as { shade?: unknown } | undefined)?.shade);
     };
     chrome.storage.onChanged?.addListener(onStorage);
     // Closing the tab mid-step stops the tutorial's voice.

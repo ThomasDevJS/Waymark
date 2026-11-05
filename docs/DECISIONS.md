@@ -1207,13 +1207,15 @@ A privacy, permissions, accessibility and copy review of the code. Each fix has 
 ### D144. Shade control: three named levels, in Settings and per guide
 *5 Nov 2026 · SPEC: Player and overlay ("Spotlight"); issue #58 (Thomas). Builds on D89's lighter default.*
 
-- **Levels, not a number**: Lighter, Medium (the default, `--wm-scrim`) and Darker. A closed set (`SHADES` in `src/core/player/shade.ts`) in every schema and message, so a guide file or a page can never ask for a black or invisible dim. The issue suggested a range of 0–60 %; the levels sit inside it:
+- **Levels, not a number**: Lighter, Medium (the default, `--wm-scrim`) and Darker. A closed set (`SHADES` in `src/core/player/shade.ts`) in every schema and message, so a guide file or a page can never ask for a black or invisible dim.
+- **Derived from the default**: Lighter is `color-mix(in srgb, var(--wm-scrim) 60%, transparent)` and Darker is `color-mix(in srgb, var(--wm-scrim) 75%, #000)`, so both follow `--wm-scrim` in each scheme, and a later change to the default (D89) moves all three together. With D89's default (0.40 on light pages, 0.50 dark), the alphas are:
 
   | | Lighter | Medium (D89) | Darker |
   | --- | --- | --- | --- |
-  | light pages | 0.25 | 0.40 | 0.55 |
-  | dark scheme | 0.35 | 0.50 | 0.65 |
+  | light pages | 0.24 | 0.40 | 0.55 |
+  | dark scheme | 0.30 | 0.50 | 0.63 |
 
+  The issue suggested about 0–60 %; dark Darker is 63 %, so a step stays visibly darker than the dark scheme's 50 % default. A browser test requires at least 0.1 between neighbouring levels, more than 0.1 for Lighter and at most 0.7 for Darker.
   There is no "off": the dim is half of what says "this is the step", and the ring alone is easy to miss on busy pages.
 - **Drawing**: `.spot` paints `var(--wm-shade, var(--wm-scrim))`; `.spot[data-shade]` sets only that custom property to `--wm-scrim-lighter` or `--wm-scrim-darker` (new tokens, light and dark). So the forced-colours rule (`.spot { box-shadow: none }`) still wins, and the ring, the hole and every animation are untouched. Medium is the token itself, so D89's default carries over.
 - **Settings → Highlight** (new section after HD voice): "Shade around the highlighted step", radio cards Follow each guide (default) / Lighter / Medium / Darker, with a small preview of a page and a highlighted button that uses the same tokens (hidden from screen readers), and one line that only the rest of the page gets darker. Stored as `playerSettings` in `storage.local` (`PlayerSettingsSchema`, an unknown value reads as "Follow each guide"), through `player.settings.get` / `player.settings.set`: Zod-checked, extension pages only.
@@ -1242,3 +1244,13 @@ A privacy, permissions, accessibility and copy review of the code. Each fix has 
 - **Reduced motion**: unaffected; the shade is a colour, and nothing animates when it changes.
 - **High contrast** (`prefers-contrast: more`) and **reduced transparency** (`prefers-reduced-transparency`): no automatic change. The dim is translucent on purpose, so the page around the step stays readable, and making it opaque would hide the context the step is about. Someone who wants more separation picks Darker, which applies everywhere. Revisit with pilot feedback.
 - **Tests**: `test/unit/shade.test.ts` (precedence, the closed set, an old guide file round-trips, the new field round-trips, an unknown value imports without it, settings fallback, message allowlists, the run view carries only the resolved level and Medium off-site); `test/browser/shade.test.ts` (open and closed root: each level paints its token on light and dark schemes and lighter < medium < darker ≤ 0.65; the ring and hole are identical at every level; an unknown or missing level is Medium; `setShade` repaints without a redraw; forced colours drop the dim); e2e `test/e2e/h2-shade.spec.ts` (closed root: the editor sets Darker, the exported guide file carries it, the page draws it, Settings → Lighter overrides it at once and Follow each guide restores it; the Practice page follows Settings, live).
+
+### Fixes from the independent review (D144–D147)
+A security, data, rendering, accessibility and copy review. Tests that fail on the first version: `test/browser/shade.test.ts` (levels), `test/browser/shade-ui.test.ts` (new), and `test/unit/shade.test.ts`.
+- **Darker looked like Medium** (medium): the first version had fixed Lighter and Darker colours. On `main`'s default (0.5 light, 0.6 dark, before D89 lands), Darker was only 0.05 above Medium, and the table described the other branch. The levels are now derived from `--wm-scrim` (D144), and a test requires a visible step between them.
+- **Settings hint** (medium): "Your choice here is used for every guide and tutorial" was false for the default, Follow each guide, and screen readers read it for the whole group. It now says "Pick a shade to use it for every guide and tutorial."
+- **Locked or wrong Settings**: a failed read left every choice disabled. It now falls back to Follow each guide. A failed save showed the new choice although nothing was stored. It now puts back the choice in use and says it could not be saved (a mounted live region).
+- **One name**: the editor says "Shade around the highlighted step", like Settings (`SHADE_NAME`).
+- **Practice page race**: a Settings change that arrives while a tutorial's start reads the setting is no longer overwritten by the older read (a change counter). This one has no deterministic test: the window is one message round trip.
+- **Tests that passed on broken code**: the run view is now checked to have exactly its own fields plus `muted` and `shade`; off-site stays Medium even when the learner picked Darker; unknown guide and pack keys are dropped (what D146's compatibility rests on); the editor's Default removes the field on save (`withGuideShade`); team guides show the select read-only; Duplicate keeps the shade.
+- Not changed: the reviewer noted that the content script already bundles some Zod internals on `main`, before this change (this change adds about 0.7 KB and no Zod). Worth its own issue.
