@@ -1,0 +1,127 @@
+/* Settings page (D92): the side panel's styles plus a two-column layout on wide windows. */
+@import '../sidepanel/style.css';
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 64px;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--wm-space-4);
+  max-width: 920px;
+  margin: 0 auto;
+  padding: var(--wm-space-4);
+}
+.settings {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  min-width: 0;
+}
+.settings-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.settings-nav a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--wm-radius-sm);
+  color: var(--wm-fg-muted);
+  text-decoration: none;
+  font-size: var(--wm-text-sm);
+  font-weight: var(--wm-weight-medium);
+}
+.settings-nav a:hover {
+  background: var(--wm-surface-hover);
+  color: var(--wm-fg);
+}
+@media (min-width: 760px) {
+  .settings-layout {
+    grid-template-columns: 180px minmax(0, 1fr);
+    align-items: start;
+  }
+  .settings-nav {
+    position: sticky;
+    top: 72px;
+  }
+  .settings-nav ul {
+    flex-direction: column;
+  }
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+  font-size: var(--wm-text-lg);
+  margin: 0;
+}
+.section-title > svg {
+  color: var(--wm-accent-text);
+}
+.settings-section {
+  scroll-margin-top: 72px;
+}
+.hint.block {
+  display: block;
+}
+.field-grid {
+  display: grid;
+  gap: var(--wm-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.in-use {
+  display: flex;
+  gap: var(--wm-space-2);
+  align-items: flex-start;
+  padding: var(--wm-space-2) var(--wm-space-3);
+  border-radius: var(--wm-radius-md);
+  background: var(--wm-surface-2);
+  font-size: var(--wm-text-sm);
+}
+.in-use > svg {
+  margin-top: 2px;
+  color: var(--wm-accent-text);
+}
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wm-space-2);
+}
+.problem > svg {
+  color: var(--wm-warn);
+  align-self: flex-start;
+  margin-top: 3px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--wm-space-2) var(--wm-space-4);
+  margin: 0;
+  font-size: var(--wm-text-sm);
+}
+.facts dt {
+  color: var(--wm-fg-muted);
+}
+.facts dd {
+  margin: 0;
+}
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.section-title:focus {
+  outline: none;
+}
