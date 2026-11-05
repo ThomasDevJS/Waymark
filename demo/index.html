@@ -78,7 +78,9 @@
     const c = document.getElementById('chart');
     const g = c.getContext('2d');
     g.clearRect(0, 0, c.width, c.height);
-    const values = Array.from({ length: 12 }, () => 30 + Math.random() * 110);
+    // Fixed values per tab, so screenshots of the page compare (D90).
+    const tab = [...tabs].findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const values = [72, 118, 96, 64, 130, 88, 52, 104, 140, 76, 110, 92].map((v, i) => 30 + ((v + tab * 37 + i * 11) % 110));
     values.forEach((v, i) => { g.fillStyle = '#2a62d6'; g.fillRect(20 + i * 48, c.height - v, 32, v); });
   }
   draw();
