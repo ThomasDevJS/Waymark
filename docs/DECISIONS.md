@@ -533,6 +533,12 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Safety**: when the item is gone (another list), the other rows' controls match only what record-time look-alikes matched (D64), so the result is not-found, never another row. Named row actions ("Edit", "Delete") get no item label and stay `any`. Candidates are gathered per item in one pass.
 - **Cost**: when the item's text changes, the step is not found. That is the same contract as own text.
 
+### D66. Ids, test ids, names and guide ids that look like data are not stored
+- **Spec**: Element targeting, record step 2 (the data-like filter runs on text, names, option labels, link paths and titles); Privacy (never store what the user typed or sees as data).
+- **Finding** (security audit): element ids, test ids, `name` and `data-guide-id` skipped the data-like filter. A value like `data-testid="user-row-jane.doe@acme.com"` went into `testId` and the CSS path, and from a shadow host or iframe into `shadowPath` and `framePath`, and from there into exported packs.
+- **Change**: the data-like filter (`isDataLike`: emails, phone numbers, amounts, dates, codes, long mixed tokens) now also rejects ids, test ids, `data-guide-id`, `name`, the key attributes in CSS path segments, and classes. Such an element is found by its other signals (here its text), or not at all.
+- **Cost**: some author-made ids that look like codes (a long letters-and-digits token such as `section2a3`) are dropped too. Robustness set A: 542/544 before and after, 0 wrong; set B 0 wrong. Real-site harness: unchanged (16/16).
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 

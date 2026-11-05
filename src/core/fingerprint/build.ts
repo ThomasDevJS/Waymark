@@ -2,7 +2,7 @@
 import type { ElementFingerprint } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { accessibleName, displayBox, getRole, inputTypeOf, isVisible as layoutVisible, itemLabel, ownText, tagOf } from './dom';
-import { isGeneratedToken, safeLabel } from './filters';
+import { isDataLike, isGeneratedToken, safeLabel } from './filters';
 import {
   buildAncestors,
   buildCssPath,
@@ -52,7 +52,7 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   const name = accessibleName(el);
   if (name) fp.accessibleName = name;
   const nameAttr = el.getAttribute('name');
-  if (nameAttr && !isGeneratedToken(nameAttr, profile.ignorePatterns) && nameAttr.length <= 200) fp.name = nameAttr;
+  if (nameAttr && !isGeneratedToken(nameAttr, profile.ignorePatterns) && !isDataLike(nameAttr) && nameAttr.length <= 200) fp.name = nameAttr;
   if (tag === 'input') {
     fp.inputType = inputTypeOf(el);
     // A radio's or checkbox's `name` is shared by its whole group; its value attribute (set by
