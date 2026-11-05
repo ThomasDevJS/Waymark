@@ -10,6 +10,15 @@ import { normalizePath, routedPath, stepUrlRule, type UrlOptions } from '../url/
 import { MAX_STEPS_PER_GUIDE } from '../model/schema';
 
 export const NAV_BELONGS_TO_CLICK_MS = 1500;
+/** Page and service worker read the same clock; allow a little slack between their reads. */
+export const CLOCK_SKEW_MS = 250;
+/** Event times from a page further than this from the service worker's clock are not used. */
+export const MAX_EVENT_AGE_MS = 10_000;
+
+/** A page-reported event time, or now when it is missing or implausible (content is untrusted). */
+export function eventTime(at: number | undefined, now = Date.now()): number {
+  return typeof at === 'number' && Number.isFinite(at) && Math.abs(at - now) <= MAX_EVENT_AGE_MS ? at : now;
+}
 
 export interface RecordingState {
   guideId: string;
@@ -29,6 +38,11 @@ export interface RecordingState {
   lastUrl: Record<string, string>;
   /** When each tab's top frame last started leaving the page (cross-document navigation). */
   leavingAt?: Record<string, number>;
+  /**
+   * The navigate step just added from a route report, and when that navigation happened. An
+   * action reported after it, but done up to 1.5 s before it, takes it back (D67).
+   */
+  pendingNav?: { stepId: string; at: number };
 }
 
 /** What content scripts and the pill see. Never the steps themselves. */
@@ -108,15 +122,24 @@ export function addOrigin(state: RecordingState, origin: string): void {
 export function applyOp(state: RecordingState, op: { op: 'add'; step: Step } | { op: 'replace'; stepId: string; step: Step }, now = Date.now()): boolean {
   if (state.status !== 'recording') return false;
   if (op.op === 'add') {
-    if (state.steps.length >= MAX_STEPS_PER_GUIDE) return false;
     if (state.steps.some((x) => x.id === op.step.id)) return false;
+    const isAction = op.step.kind !== 'note' && op.step.kind !== 'navigate';
+    // The route report of a navigation this action caused got here first (D67): the navigation
+    // belongs to the action, so its navigate step goes.
+    const nav = state.pendingNav;
+    const last = state.steps[state.steps.length - 1];
+    // An action on the page the navigation led to cannot have caused it, however close in time.
+    const elsewhere = !!last && JSON.stringify(last.url) !== JSON.stringify(op.step.url);
+    if (isAction && nav && last?.id === nav.stepId && elsewhere && nav.at - now >= -CLOCK_SKEW_MS && nav.at - now <= NAV_BELONGS_TO_CLICK_MS) state.steps.pop();
+    delete state.pendingNav;
+    if (state.steps.length >= MAX_STEPS_PER_GUIDE) return false;
     state.steps.push(op.step);
   } else {
     const last = state.steps[state.steps.length - 1];
     if (!last || last.id !== op.stepId) return false;
     state.steps[state.steps.length - 1] = { ...op.step, id: op.stepId };
   }
-  if (op.step.kind !== 'note' && op.step.kind !== 'navigate') state.lastActionAt = now;
+  if (op.step.kind !== 'note' && op.step.kind !== 'navigate') state.lastActionAt = Math.max(state.lastActionAt, now);
   return true;
 }
 

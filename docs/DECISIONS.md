@@ -600,6 +600,16 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 
 ## 2026-11-05 — Team library access and schedule (issues #21, #22)
 
+### D67. A click and the navigation it caused are matched by event time, in either order
+- **Spec**: Recorder, "Navigation" (a navigation within 1.5 s of a recorded click belongs to that click); CLAUDE.md (read-modify-write through `enqueue`).
+- **Finding** (fixes session): `rec.step` checked site access with an `await` *before* entering the write queue, while `route.report` queued at once. A slower check (one more `chrome.storage` read) let the route report of a click-caused in-app navigation be handled first. It was then compared with an old `lastActionAt`, which was also taken when the service worker handled the step, not when the click happened. Six e2e tests recorded a spurious "Go to Fixture app" step. With a 200 ms delay injected in the site check, 7 of 15 m2/m3 e2e tests failed on the old code. The seventh was a step sent just before Stop being dropped.
+- **Change**:
+  - `rec.step` queues at once and checks site access inside the queue, so steps keep their arrival order relative to route reports and Stop.
+  - Both messages carry the page's event time (`at`). The navigation rule compares event times, not arrival times. A time more than 10 s from the service worker's clock is ignored (content scripts are untrusted).
+  - When a route report still gets in first and adds a navigate step, an action reported afterwards takes that step back if the action came at most 1.5 s before the navigation and was on another page. A click on the page the navigation led to never takes it back.
+- **After**: the same 200 ms injected delay: 15 of 15. Unit tests in `test/unit/recording-race.test.ts` stub `chrome` with a slow permission check.
+- **Limit**: for an in-app navigation between two pages with the same URL rule (`/orders/1` to `/orders/2`, both `/orders/:id`), the take-back cannot tell the pages apart. If such a route report still arrives first, it stays a navigate step. Arrival order covers the usual case.
+
 ### D80. A library site granted only to fetch the pack is not a guide site
 - **Spec**: Sharing, "v1: library URL" (the library's site is requested when it sends no CORS headers), and Architecture, "Content script" (registered for granted sites).
 - **Finding** (issue #21): that grant also registered the content script on the library's site (for example `raw.githubusercontent.com`), and the panel called the site allowed.

@@ -51,6 +51,7 @@ export function startContent(): void {
       player.onRoute(change.url);
       send('route.report', {
         ...change,
+        at: Date.now(),
         title: document.title.slice(0, 500),
         ...(change.via === 'load' ? { timeOrigin: Math.round(performance.timeOrigin) } : {}),
       })

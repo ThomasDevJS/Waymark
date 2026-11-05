@@ -9,6 +9,7 @@ import type { Step } from '../core/model/schema';
 import {
   addOrigin,
   applyOp,
+  eventTime,
   isRecordingTab,
   navigationStep,
   noteStep,
@@ -176,18 +177,22 @@ export const recordingHandlers: Handlers = {
   'rec.step': async (op, ctx: HandlerContext) => {
     const tabId = ctx.tabId;
     const top = ctx.sender.tab?.url;
-    // A script left in a page whose site access was revoked must not keep recording.
-    if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return { ok: false };
     const clean = recorderStep(op.step);
     if (!clean) return { ok: false };
-    const result = await mutate((st) => {
+    // Queued at once, in arrival order, so a step is never overtaken by the route report it
+    // caused or by a Stop sent after it; the site check runs inside the queue (D67).
+    const result = await mutate(async (st) => {
+      // A script left in a page whose site access was revoked must not keep recording.
+      if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return false;
       // Content scripts may send rec.step only while their tab is recording (SPEC: Security).
       if (!st || !isRecordingTab(st, tabId) || st.status !== 'recording') return false;
       const step = clean;
       // Steps belong to the page: a step recorded in a frame gets the top page's URL rule.
       if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top);
       if (top) addOrigin(st, new URL(top).origin);
-      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step });
+      // The action's own time, not when this message got here: a route report it caused may
+      // have been handled first (D67).
+      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at));
     });
     if (result) {
       const st = await getRecording();
@@ -199,7 +204,7 @@ export const recordingHandlers: Handlers = {
 
 /** Route reports from a recording tab's top frame can become navigate steps. */
 export async function onRouteReport(
-  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined; timeOrigin?: number | undefined },
+  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined; timeOrigin?: number | undefined; at?: number | undefined },
   ctx: HandlerContext,
 ): Promise<ReturnType<typeof viewOf>> {
   const tabId = ctx.tabId;
@@ -216,17 +221,21 @@ export async function onRouteReport(
     // (which survives even when the "leaving" report was lost).
     const marks = [st.leavingAt?.[key], payload.timeOrigin].filter((x): x is number => typeof x === 'number');
     const leavingAt = payload.via === 'load' && marks.length ? Math.min(...marks) : undefined;
+    const at = eventTime(payload.at);
     const step = navigationStep(st, {
       url: payload.url,
       prevUrl,
       navigationType: payload.navigationType,
       title: payload.title,
+      now: at,
       ...(leavingAt !== undefined ? { leavingAt } : {}),
     });
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
     st.lastUrl[key] = urlKey(payload.url);
     if (step) {
       st.steps.push(step);
+      // A click reported after this, but done just before the navigation, takes it back (D67).
+      st.pendingNav = { stepId: step.id, at: leavingAt ?? at };
       changed = true;
     }
     return st;

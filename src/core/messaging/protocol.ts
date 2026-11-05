@@ -87,6 +87,8 @@ export const RequestSchemas = {
     navigationType: z.string().max(32).optional(),
     title: z.string().max(500).optional(),
     timeOrigin: z.number().optional(),
+    /** When the page saw the change (ms since epoch), for the navigation rule (D67). */
+    at: z.number().optional(),
   }),
   'guide.forPage': z.object({ url }),
   'launcher.start': z.object({ guideId: z.string().max(64), openStart: z.boolean().optional() }),
@@ -109,8 +111,9 @@ export const RequestSchemas = {
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
   'pick.abort': z.object({}),
   'rec.step': z.discriminatedUnion('op', [
-    z.object({ op: z.literal('add'), step: StepSchema }),
-    z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema }),
+    // `at`: when the page saw the action (ms since epoch), for the navigation rule (D67).
+    z.object({ op: z.literal('add'), step: StepSchema, at: z.number().optional() }),
+    z.object({ op: z.literal('replace'), stepId: z.string().max(64), step: StepSchema, at: z.number().optional() }),
   ]),
 } as const;
 
