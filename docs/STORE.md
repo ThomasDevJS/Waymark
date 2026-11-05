@@ -1,5 +1,7 @@
 # Chrome Web Store listing (draft)
 
+> **Not in use (D58):** Waymark is for internal use for now and is installed from GitHub Releases. This draft is kept for a later store listing.
+
 A draft of everything the Chrome Web Store dashboard asks for, matching Waymark 0.3.2. Copy each block into the matching field. The plan in `docs/SPEC.md` ("Distribution and cost") is a **private** listing first, visible only to your Google Workspace domain or a Google Group, then unlisted or public later.
 
 ## Store listing tab

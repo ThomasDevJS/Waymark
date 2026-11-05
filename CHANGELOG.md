@@ -6,10 +6,17 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-05
+
 ### Added
-- Each version is published on the repository's Releases page, with the extension zip, its SHA-256 checksum and the notes from this file (D56).
-- A privacy policy ([docs/PRIVACY.md](docs/PRIVACY.md)) that says exactly what Waymark stores and what can leave your device, and a draft Chrome Web Store listing ([docs/STORE.md](docs/STORE.md)) (D57).
-- A new README: what Waymark is, how to install it from a release, and a quick start.
+- **Built-in tutorials**: five short tutorials (How Waymark works, Record your first guide, Edit a guide, Share a guide, What the warnings mean) play on a bundled Practice page, so you can learn Waymark without allowing it on any site. They are in the panel under **Tutorials**, and can be hidden (D128, D129, #41, fixes #37).
+- **Debug log**, off by default (Settings → Problems → **Keep a debug log**): what the recorder, matcher and player decided and why, to paste into a bug report. It is kept only until the browser closes and never holds typed values or page text beyond step titles. While it is on, the not-found card can copy that page's part (D110–D112, #35, fixes #33).
+- **Help** in the panel header, and short "?" explanations next to Allow and sharing (D122, #40).
+- Settings lists the **Sites** Waymark may run on, each with Remove (D92, #24).
+- The Waymark mark and extension icons (D94, #28).
+- Light motion and press feedback in the side panel, Settings and the Practice page: buttons squeeze when pressed, rows lift on hover, folds and toasts slide in, reordered steps glide, a check pops in after Saved and Copied, and the REC dot pulses softly. Everything is short (80–240 ms) and turns into plain fades when the system asks for reduced motion (D130, D131).
+- On the page, the spotlight ring glides from one step to the next (the dim no longer flashes between steps), the tooltip rises into place, its progress bar eases, a press on the highlighted element ripples, and the REC pill's dot pulses softly. None of it delays a step or covers the element; all of it is off with reduced motion (D133).
+- The on-page `?` launcher pops in, presses and opens its menu with the same light motion (D134).
 - Undo for deleting a guide or a step: a message with Undo shows for 8 seconds. A deleted guide can still be restored from a side panel opened again in that time (D100).
 - A **Completed** badge on guides you have finished, **Restart** (in the list and while a guide plays), and **Start from step N** in a guide's More menu (D101).
 - Tag chips under the search box filter the library; the editor has a Tags field (D102).
@@ -17,18 +24,42 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - Export a guide as a text how-to, in Markdown or as a printable page, after the same review as packs; text that looks like data is flagged in the review (D104).
 - Keyboard shortcuts: Alt+R starts or stops recording in the current tab, Alt+W opens the side panel. Both can be changed at chrome://extensions/shortcuts (D105).
 - Replay voice and Repeat step buttons in the tooltip (D106).
-- Light motion and press feedback in the side panel, Settings and the Practice page: buttons squeeze when pressed, rows lift on hover, folds and toasts slide in, reordered steps glide, a check pops in after Saved and Copied, and the REC dot pulses softly. Everything is short (80–240 ms) and turns into plain fades when the system asks for reduced motion (D130, D131).
-- On the page, the spotlight ring glides from one step to the next (the dim no longer flashes between steps), the tooltip rises into place, its progress bar eases, a press on the highlighted element ripples, and the REC pill's dot pulses softly. None of it delays a step or covers the element; all of it is off with reduced motion (D133).
-- The on-page `?` launcher pops in, presses and opens its menu with the same light motion (D134).
+- Each version is published on the repository's Releases page, with the extension zip, its SHA-256 checksum and the notes from this file (D56).
+- A privacy policy ([docs/PRIVACY.md](docs/PRIVACY.md)) that says exactly what Waymark stores and what can leave your device (D57).
+- A new README: what Waymark is, how to install it from a release, and a quick start.
+
+### Changed
+- A new look, light and dark, with WCAG AA contrast: the side panel and editor (D91, #19), Settings (D92, #24), and the spotlight, tooltip, REC pill and ? launcher on the page (D93, #26). All icons and fonts are bundled (D90, D94).
+- A simpler panel (#40, part of #37):
+  - one main action per state; site options are folded away, and a site Waymark can't run on says **Off here** instead of "Not allowed" (D120);
+  - the welcome is one card (D121);
+  - library rows show **Edit**, **More** and **Start**; Share…, Copy link and Duplicate are under More, and **Export…** lets you pick guides (D124);
+  - in the editor, steps fold to one line; steps with a warning start open (D125);
+  - the export review lists element paths under **Technical details** (D126);
+  - the tooltip says what to do on the page ("Click the highlighted element to continue."), and names read plainly: sites by their host, "guide file" for a pack (D123, D127).
+- A click on plain content inside a clickable card (such as a dashboard tile) records the card, so a click anywhere on the card moves the guide on (D82, #34, fixes #32).
+- A step is read aloud once its element is found, not while a slow frame is still loading (D83, #34).
+- Element ids, test ids, names and classes that look like data (emails, phone numbers, UUIDs, long numbers) are no longer stored in guides or guide files (D66, #27).
+- Waymark is for internal use for now: install it from a release. There is no store listing; the draft in [docs/STORE.md](docs/STORE.md) is kept for later (D58).
 
 ### Changed
 - The built-in tutorials' page is plainly called **Tutorial page**, with no made-up company names; the done card is compact (the check beside "Done!", one Close); the shade around a highlighted element is 20% lighter (D89).
 
 ### Fixed
+- On pages that rebuild themselves after loading, a step could be drawn on a look-alike element while the real one was briefly gone. A match must now beat every look-alike seen at record time (D64, #18).
+- Check boxes in to-do style lists that have no name of their own are recorded again, named by the item ("Check **Walk the dog**") (D65, #25).
+- A click and the in-app page change it caused are recorded in the right order even when the messages arrive out of order (D67, #30).
+- A page that replaces its frames no longer leaves a step undrawn (D84, #39, fixes #38).
+- The ? launcher starts the chosen guide in the installed build. Before, a click closed the menu and nothing started. If a guide can't start, the menu now says why (D85, #45, fixes #42).
+- Each frame reports its search once per step. Before, frames re-sent their result in waves, which filled the debug log (D87, #48, fixes #36).
+- The team library's site, when it is allowed only to download the guide file, no longer runs Waymark or shows as allowed (D80, #23, fixes #21). The library is downloaded once per browser start, not twice (D81, #23, fixes #22).
+- In the editor, a long step title wraps instead of making the side panel scroll sideways, and the "Saved" note goes away once you edit again (D88, #53, fixes #52).
 - Move up / Move down in the editor no longer drop keyboard focus to the page (D131).
 - The tooltip's mute button can be pressed again in the same step to unmute; before, it kept the state from when the step was drawn (D106).
 
 ### For developers
+- Design tokens and components in `src/ui/`, and `pnpm screens`, a screenshot harness for every panel and on-page state, light and dark (D90, #15).
+- E2E tests see the overlay's event paths the way the installed build does, and ESLint bans `composedPath()` in content code; a closed-root e2e stays as a canary (D85, D86, #45, #47, fixes #46).
 - CI runs once per change instead of twice, cancels superseded pull request runs and skips docs-only changes, to stay within the Free plan's Actions minutes (D54).
 - GitHub Actions moved to their Node 24 majors (D55).
 - `pnpm motion:bench` measures frame times of the animations with the CPU slowed 4×; `pnpm screens` also shoots motion frame sequences (D132).
@@ -128,7 +159,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/commits/main
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.0
 [0.3.2]: https://github.com/ThomasDevJS/Waymark/pull/13
 [0.3.1]: https://github.com/ThomasDevJS/Waymark/pull/14
 [0.3.0]: https://github.com/ThomasDevJS/Waymark/pull/10

@@ -532,6 +532,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
 - **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
 
+### D58. Internal use for now: install from GitHub Releases, no store listing
+*5 Nov 2026 · SPEC: Distribution and cost; D57*
+
+- **Decision** (Thomas): Waymark is for internal use for now. The team installs the zip from the repository's Releases page in developer mode (README, "Install"). There is no Chrome Web Store listing, private or public, and the repository stays private.
+- **What this changes**: the spec's plan of a private store listing first is on hold. `docs/STORE.md` stays as a draft for later, and D57's open items (a contact address and a host for the privacy policy) are not needed until then. `docs/PRIVACY.md` still describes what the code does and stays current.
+- **Cost of the choice**: no automatic updates. Each person replaces the unzipped folder with a newer release and reloads the extension. Developer mode shows Chrome's "developer mode extensions" notice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
@@ -1104,3 +1111,4 @@ CSS only (`src/content/launcher.ts`); no listener, message or focus rule changes
 - Reduced motion: nothing animates or transitions; a pressed control still shows its inset shade.
 - The pop scales about the button's centre, so a press lands while it is still popping in: the closed-root e2e test (#42) no longer waits 400 ms first, and runs twice, with motion and with reduced motion. `test/browser/launcher-motion.test.ts` checks the CSS in a closed root.
 - **Keyframe names** (review): the launcher's and the player's stylesheets share the overlay's shadow root, so a `@keyframes` name defined in both resolves to whichever was added last. The launcher's `wm-pop` (a plain pop) and the player's `wm-pop` (the done tick, with a turn) collided, as did `wm-focus-in`. The launcher's are now `wm-launch-*`, and a unit test fails if any `@keyframes` name appears twice across the content-script stylesheets.
+- **Found at release (0.4.0)**: the closed-root launcher e2e pressed `?` as soon as the launcher marker appeared. With motion on, about 1 run in 12 the press landed within ~20 ms of the overlay's insertion and went to the page; reduced motion passed 24 of 24. A person can't press a button that early (it is still near-invisible), so the test now waits until the point hits the overlay (`elementFromPoint`), which is still during the 240 ms pop-in. With the wait: 24 of 24 with motion.
