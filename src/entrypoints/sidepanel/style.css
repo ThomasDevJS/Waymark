@@ -307,9 +307,7 @@ button.record .rec-dot {
   overflow-wrap: anywhere;
 }
 .flag-notes {
-  list-style: none;
   margin: var(--wm-space-1) 0 0;
-  padding: 0;
   display: grid;
   gap: var(--wm-space-1);
 }
