@@ -295,6 +295,7 @@ The player draws on top of the real app without touching its styles, and the lea
 - Only the frame that contains the target draws the overlay (see Element targeting, step 8).
 - `pointer-events: none` except on the tooltip. The host stops pointer, mouse and click events from reaching the app, so the app's "click outside" handlers do not close its menus. The tooltip calls `preventDefault` on `mousedown`, so the app's field keeps focus.
 - Spotlight: four dimmed panels around the target's box plus 6 px padding. The target stays clickable through the gap.
+- Shade (D144–D147): how dark the dimmed area is comes from a closed set, Lighter / Medium (default) / Darker. A guide may set its own (`shade`, optional, carried in guide files); a learner's choice in Settings → Highlight wins over the guide's for every guide and tutorial. Content scripts get only the resolved level in the run view. The ring, the hole and forced colours never change with it.
 - Default is relaxed mode: the dimmed area does not block clicks, so scrolling and side actions still work. A strict mode that blocks clicks outside the target is a later option.
 
 **Tooltip**

@@ -39,6 +39,9 @@
   /* the dim around a spotlighted element, and its ring (seen on light and dark pages alike) */
   --wm-scrim: rgba(10, 13, 20, 0.4);
   --wm-ring: #3d6cf0;
+  /* the learner's or the guide's shade, derived from --wm-scrim in each scheme (D144) */
+  --wm-scrim-lighter: color-mix(in srgb, var(--wm-scrim) 60%, transparent);
+  --wm-scrim-darker: color-mix(in srgb, var(--wm-scrim) 75%, #000);
 
   /* spacing (4 px grid) */
   --wm-space-1: 4px;

@@ -1200,3 +1200,57 @@ A privacy, permissions, accessibility and copy review of the code. Each fix has 
 - **Change**: the engine passes NaN through (`kokoro.ts`). The offscreen player (`player.ts`, `silenceNaN`) turns NaN into silence and counts them. If more than 1 % of the clip was NaN (`MAX_NAN_SHARE`, the same rule as `scripts/hd-sample.mjs`), it answers `failed` ("no sound: the voice model returned N% NaN samples"). D51's fallback then reads the step with the system voice, only while it is still the newest speech and not muted. A few stray NaN samples still play as silence, as before. The service worker's debug log now records why an HD speak failed (`voice.hd.failed`, with the reason: NaN, timeout or an engine error).
 - **Not known yet**: whether the extension's WebAssembly runtime produces the same NaN as onnxruntime-node for that sentence. Either way, a NaN clip can no longer play as a silent step.
 - **Tests**: `test/unit/hd-voice.test.ts`: an all-NaN clip answers `failed` and plays nothing; 1 % stray NaN still plays, as zeros. Both fail on the old player.
+
+
+## 2026-11-05 — Highlight shade (issue #58)
+
+### D144. Shade control: three named levels, in Settings and per guide
+*5 Nov 2026 · SPEC: Player and overlay ("Spotlight"); issue #58 (Thomas). Builds on D89's lighter default.*
+
+- **Levels, not a number**: Lighter, Medium (the default, `--wm-scrim`) and Darker. A closed set (`SHADES` in `src/core/player/shade.ts`) in every schema and message, so a guide file or a page can never ask for a black or invisible dim.
+- **Derived from the default**: Lighter is `color-mix(in srgb, var(--wm-scrim) 60%, transparent)` and Darker is `color-mix(in srgb, var(--wm-scrim) 75%, #000)`, so both follow `--wm-scrim` in each scheme, and a later change to the default (D89) moves all three together. With D89's default (0.40 on light pages, 0.50 dark), the alphas are:
+
+  | | Lighter | Medium (D89) | Darker |
+  | --- | --- | --- | --- |
+  | light pages | 0.24 | 0.40 | 0.55 |
+  | dark scheme | 0.30 | 0.50 | 0.63 |
+
+  The issue suggested about 0–60 %; dark Darker is 63 %, so a step stays visibly darker than the dark scheme's 50 % default. A browser test requires at least 0.1 between neighbouring levels, more than 0.1 for Lighter and at most 0.7 for Darker.
+  There is no "off": the dim is half of what says "this is the step", and the ring alone is easy to miss on busy pages.
+- **Drawing**: `.spot` paints `var(--wm-shade, var(--wm-scrim))`; `.spot[data-shade]` sets only that custom property to `--wm-scrim-lighter` or `--wm-scrim-darker` (new tokens, light and dark). So the forced-colours rule (`.spot { box-shadow: none }`) still wins, and the ring, the hole and every animation are untouched. Medium is the token itself, so D89's default carries over.
+- **Settings → Highlight** (new section after HD voice): "Shade around the highlighted step", radio cards Follow each guide (default) / Lighter / Medium / Darker, with a small preview of a page and a highlighted button that uses the same tokens (hidden from screen readers), and one line that only the rest of the page gets darker. Stored as `playerSettings` in `storage.local` (`PlayerSettingsSchema`, an unknown value reads as "Follow each guide"), through `player.settings.get` / `player.settings.set`: Zod-checked, extension pages only.
+- **Editor**: "Shade around the highlight · for this guide", a select with Default (Medium) / Lighter / Darker. Default removes the field. Team guides show it read-only.
+
+### D145. Precedence: the learner's choice wins; content scripts get only the result
+*5 Nov 2026 · SPEC: Player and overlay; Security ("content scripts never receive settings"); issue #58 open question*
+
+- **Rule** (`resolveShade`): the learner's pick in Settings, if it is a level; else the guide's `shade`; else Medium. The issue offered two alternatives, "the learner can only make it lighter" and "the guide wins unless the learner turns on an override". Both put the author's taste over the person in front of the screen. Some people need it darker (focus, low vision), others lighter (they read the page around the step), and only they know. "Follow each guide" is the default, so an author's choice still applies to everyone who hasn't chosen.
+- **What content scripts get**: `viewFor` adds `shade`, the resolved level, to the run view, next to `muted`. Not the settings object and not the guide's own field. On another site the view says Medium (it already drops the guide's identity there, D48). The overlay checks the value against the closed set again (`isShade`) and draws anything else as Medium.
+- **Live**: changing the setting re-sends every running tab its view (`broadcastAllRuns`, shared with mute), and `PlayerUI.setShade` repaints the drawn step without redrawing or moving on.
+- **Tutorials** have no shade of their own: the Practice page reads the setting when a tutorial starts and follows `storage.onChanged` while it plays.
+
+### D146. Guide files: an optional field, no version bump
+*5 Nov 2026 · SPEC: Data model; Sharing ("Import rules")*
+
+- `GuideSchema.shade` is optional, so every older guide and guide file still parses and round-trips unchanged.
+- **Older Waymark versions** parse guides with Zod's default object mode, which drops unknown keys. A file with `shade` imports there without it, and nothing else changes. So the field is not stripped on export, and `schemaVersion` / `formatVersion` stay at 1: a bump would make older versions refuse the whole file ("made by a newer version").
+- **Newer values**: a `shade` this version doesn't know (say, a fourth level later) reads as not set (`.catch(undefined)`) instead of rejecting the guide.
+- The export review doesn't list it: it shows text that could be private, and the shade is one of three fixed words.
+
+### D147. Accessibility modes
+*5 Nov 2026 · SPEC: Accessibility; issue #58 open question*
+
+- **Forced colours**: unchanged; the dim is dropped at every level and the ring uses `Highlight`.
+- **Reduced motion**: unaffected; the shade is a colour, and nothing animates when it changes.
+- **High contrast** (`prefers-contrast: more`) and **reduced transparency** (`prefers-reduced-transparency`): no automatic change. The dim is translucent on purpose, so the page around the step stays readable, and making it opaque would hide the context the step is about. Someone who wants more separation picks Darker, which applies everywhere. Revisit with pilot feedback.
+- **Tests**: `test/unit/shade.test.ts` (precedence, the closed set, an old guide file round-trips, the new field round-trips, an unknown value imports without it, settings fallback, message allowlists, the run view carries only the resolved level and Medium off-site); `test/browser/shade.test.ts` (open and closed root: each level paints its token on light and dark schemes and lighter < medium < darker ≤ 0.65; the ring and hole are identical at every level; an unknown or missing level is Medium; `setShade` repaints without a redraw; forced colours drop the dim); e2e `test/e2e/h2-shade.spec.ts` (closed root: the editor sets Darker, the exported guide file carries it, the page draws it, Settings → Lighter overrides it at once and Follow each guide restores it; the Practice page follows Settings, live).
+
+### Fixes from the independent review (D144–D147)
+A security, data, rendering, accessibility and copy review. Tests that fail on the first version: `test/browser/shade.test.ts` (levels), `test/browser/shade-ui.test.ts` (new), and `test/unit/shade.test.ts`.
+- **Darker looked like Medium** (medium): the first version had fixed Lighter and Darker colours. On `main`'s default (0.5 light, 0.6 dark, before D89 lands), Darker was only 0.05 above Medium, and the table described the other branch. The levels are now derived from `--wm-scrim` (D144), and a test requires a visible step between them.
+- **Settings hint** (medium): "Your choice here is used for every guide and tutorial" was false for the default, Follow each guide, and screen readers read it for the whole group. It now says "Pick a shade to use it for every guide and tutorial."
+- **Locked or wrong Settings**: a failed read left every choice disabled. It now falls back to Follow each guide. A failed save showed the new choice although nothing was stored. It now puts back the choice in use and says it could not be saved (a mounted live region).
+- **One name**: the editor says "Shade around the highlighted step", like Settings (`SHADE_NAME`).
+- **Practice page race**: a Settings change that arrives while a tutorial's start reads the setting is no longer overwritten by the older read (a change counter). This one has no deterministic test: the window is one message round trip.
+- **Tests that passed on broken code**: the run view is now checked to have exactly its own fields plus `muted` and `shade`; off-site stays Medium even when the learner picked Darker; unknown guide and pack keys are dropped (what D146's compatibility rests on); the editor's Default removes the field on save (`withGuideShade`); team guides show the select read-only; Duplicate keeps the shade.
+- Not changed: the reviewer noted that the content script already bundles some Zod internals on `main`, before this change (this change adds about 0.7 KB and no Zod). Worth its own issue.

@@ -325,6 +325,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     if (view && next.runId && view.runId === next.runId && next.rev < view.rev) return;
     view = next;
     ui.setMuted(next.muted);
+    ui.setShade(next.shade);
     if (!next.active || next.status === 'none' || next.status === 'paused') {
       clearStep();
       stepToken = null;

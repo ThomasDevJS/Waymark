@@ -13,6 +13,7 @@ import { composedParent } from '../../core/fingerprint/dom';
 import { claimOverlay, eventPath, isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot, releaseOverlay } from '../overlay/host';
 import { DUR, EASE, reducedMotion } from '../../ui/motion';
 import { testMark } from '../test-hooks';
+import { DEFAULT_SHADE, isShade, type Shade } from '../../core/player/shade';
 
 /** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
 const motionCount = { glide: 0, ripple: 0 };
@@ -34,7 +35,10 @@ interface Box {
 
 const CSS = `
 .spot { position: fixed; z-index: 0; border-radius: 8px; pointer-events: none; box-sizing: border-box;
-  box-shadow: 0 0 0 9999px var(--wm-scrim); }
+  box-shadow: 0 0 0 9999px var(--wm-shade, var(--wm-scrim)); }
+/* The shade (D144) changes only the dim's colour: the hole, the ring and forced colours stay as they are. */
+.spot[data-shade='lighter'] { --wm-shade: var(--wm-scrim-lighter); }
+.spot[data-shade='darker'] { --wm-shade: var(--wm-scrim-darker); }
 .ring { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box; transform-origin: 0 0;
   border: 2px solid var(--wm-ring); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 6px color-mix(in srgb, var(--wm-ring) 30%, transparent); }
 .tip, .tip-out { position: fixed; z-index: 2; top: 0; left: 0; width: max-content; max-width: min(360px, calc(100vw - 16px));
@@ -287,6 +291,7 @@ export class PlayerUI {
 
   /** Shows the tooltip for the current step, anchored to `target` with a spotlight, or centered when there is none. */
   showStep(view: RunView, target: Element | null, onLost?: () => void): void {
+    this.shade = isShade(view.shade) ? view.shade : DEFAULT_SHADE;
     this.clear();
     this.dropLeaving();
     claimOverlay(this, () => this.clear());
@@ -345,6 +350,7 @@ export class PlayerUI {
     }
     tip.append(arrowEl);
     this.spot = el('div', 'spot');
+    this.paintShade();
     this.ring = el('div', 'ring');
     // Moving on from a step that was just on screen: the ring glides from there, and the dim
     // stays (no fade-in flash). The hole itself is at the new target at once, so the target is
@@ -620,6 +626,7 @@ export class PlayerUI {
   }
 
   private muted = false;
+  private shade: Shade = DEFAULT_SHADE;
 
   /** The mute and Replay voice buttons for the current state; Replay voice says why it is off. */
   private paintMute(scope: ParentNode, muted: boolean): void {
@@ -638,6 +645,22 @@ export class PlayerUI {
   }
 
   /** A mute change during a step updates the tooltip in place (no redraw, no new announcement). */
+  /** The run's shade (D145), resolved by the service worker; anything unknown is the default. */
+  setShade(shade: unknown): void {
+    this.shade = isShade(shade) ? shade : DEFAULT_SHADE;
+    this.paintShade();
+  }
+
+  private paintShade(): void {
+    if (!this.spot) return;
+    this.spot.dataset.shade = this.shade;
+    // Test builds: the dim's real colour, read from outside the closed root.
+    if (__WAYMARK_TEST__) {
+      const spot = this.spot;
+      requestAnimationFrame(() => spot.isConnected && testMark('shade', `${this.shade}|${getComputedStyle(spot).boxShadow}`));
+    }
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     if (this.tip) this.paintMute(this.tip, muted);
