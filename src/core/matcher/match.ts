@@ -203,6 +203,9 @@ export function recordTimeScan(doc: Document, fp: ElementFingerprint, target: El
   for (const s of all) {
     if (s.element === target || !s.strongMatched) continue;
     const keys = s.matched.filter((k) => !POSITIONAL.has(k)).sort();
+    // An exact twin (every core signal) would refuse the target itself. A visible twin is a
+    // repeated element (count, D5); a hidden one cannot be told apart by any signal.
+    if (core.every((k) => keys.includes(k))) continue;
     sets.set(keys.join(','), { keys, weight: s.coreWeight });
   }
   const list = [...sets.values()];
