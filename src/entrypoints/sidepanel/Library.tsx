@@ -16,6 +16,7 @@ import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
 import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
 import { showToast, ToastSlot, toast } from './Toast';
+import { UNDO_MS } from '../../core/storage/trash';
 
 /** The guide index (D49): the list, search and "For this page" never need full guides. */
 const all = signal<GuideIndexEntry[]>([]);
@@ -47,14 +48,23 @@ async function load() {
   }
 }
 
+/** Deletes whose toast this panel already showed (and the user dismissed or used): not shown again. */
+const shownUndo = new Set<string>();
+
 /** A panel opened during the undo window shows the Undo toast again (D100). */
 async function resumeUndo() {
   const items = (await send('trash.list', {}).catch(() => ({ items: [] }))).items;
   const last = items[items.length - 1];
-  if (last && !toast.value) undoToast(last.id, last.title, last.undoUntil, false);
+  if (last && !toast.value && !shownUndo.has(`${last.id}@${last.deletedAt}`)) undoToast(last.id, last.title, last.undoUntil, false, last.deletedAt);
 }
 
-function undoToast(id: string, title: string, until: number, focus: boolean) {
+/** After Undo, focus goes to the restored guide's Start button (the toast's button is gone). */
+function focusGuide(id: string) {
+  requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="start-${CSS.escape(id)}"]`)?.focus());
+}
+
+function undoToast(id: string, title: string, until: number, focus: boolean, deletedAt = until - UNDO_MS) {
+  shownUndo.add(`${id}@${deletedAt}`);
   showToast({
     scope: 'library',
     text: `Deleted “${title}”.`,
@@ -69,6 +79,7 @@ function undoToast(id: string, title: string, until: number, focus: boolean) {
         if (r && !r.ok) error.value = r.error ?? 'Could not undo.';
         if (r?.ok) message.value = `Restored “${title}”.`;
         await load();
+        if (r?.ok) focusGuide(id);
       },
     },
   });
@@ -202,7 +213,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   const item = (g: GuideIndexEntry) => {
     const done = completed.value[g.id];
     const open = moreOpen.value === g.id;
-    const from = startFrom.value[g.id] ?? 0;
+    // The guide may have fewer steps than when the choice was made.
+    const from = Math.min(startFrom.value[g.id] ?? 0, Math.max(0, g.steps - 1));
     const moreId = `more-${g.id}`;
     return (
       <li key={g.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`guide-${g.id}`}>
@@ -470,7 +482,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       )}
       {forPage.length > 0 && (
         <section class="stack-sm" aria-labelledby="for-page-label">
-          <h2 class="section-label" id="for-page-label">
+          <h2 class="section-label" id="for-page-label" tabIndex={-1}>
             <Icon name="pin" />
             For this page <span class="badge accent">{forPage.length}</span>
           </h2>
@@ -481,7 +493,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       )}
       {(others.length > 0 || !forPage.length) && (
         <section class="stack-sm" aria-labelledby="all-label">
-          <h2 class="section-label" id="all-label">
+          <h2 class="section-label" id="all-label" tabIndex={-1}>
             <Icon name="library" />
             {forPage.length ? 'Other guides' : 'All guides'}
             {others.length > 0 && <span class="badge">{others.length}</span>}

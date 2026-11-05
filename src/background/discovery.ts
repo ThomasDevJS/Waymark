@@ -8,7 +8,7 @@ import { badgeText, guideMatchesUrl, guidesForUrl } from '../core/discovery/matc
 import { duplicateGuide, findConflicts, packOrigins, parsePack, planImport, type Choice } from '../core/sharing/pack';
 import { getGuides, guideKey, listGuides, writeGuides, type GuideIndexEntry } from '../core/storage/guides';
 import { enqueue } from '../core/storage/queue';
-import { addToTrash, liveTrash, TRASH_KEY, trashItems, UNDO_MS } from '../core/storage/trash';
+import { addToTrash, liveTrash, TRASH_KEY, trashIsStale, trashItems, UNDO_MS } from '../core/storage/trash';
 import { lastCompletions } from '../core/storage/problems';
 import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
@@ -64,6 +64,24 @@ export async function updateAllBadges(): Promise<void> {
   } catch {
     // Badges are best effort: a failed pass never fails the write that triggered it.
   }
+}
+
+// ---------- trash (D100) ----------
+
+/**
+ * Drops trash entries whose undo window is over, so a deleted guide does not stay on disk. Runs
+ * when the panel asks (trash.list), at browser start and install, and on every delete or restore.
+ */
+export function purgeTrash(now = Date.now()) {
+  return enqueue(async () => {
+    const raw = (await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY];
+    const live = liveTrash(raw, now);
+    if (trashIsStale(raw, now)) {
+      if (live.length) await chrome.storage.local.set({ [TRASH_KEY]: live });
+      else await chrome.storage.local.remove(TRASH_KEY);
+    }
+    return live;
+  });
 }
 
 // ---------- settings: launcher per site, pending Allow, library ----------
@@ -291,7 +309,7 @@ export const discoveryHandlers: Handlers = {
   },
   'trash.list': async () => {
     const now = Date.now();
-    const entries = liveTrash((await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY], now);
+    const entries = await purgeTrash(now);
     return { items: trashItems(entries).filter((i) => i.undoUntil > now) };
   },
   'completions.list': async () => ({ completed: await lastCompletions() }),

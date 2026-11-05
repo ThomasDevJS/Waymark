@@ -44,6 +44,11 @@ export function addToTrash(entries: TrashEntry[], guides: Guide[], now: number):
   return [...entries.filter((e) => !ids.has(e.guide.id)), ...guides.map((guide) => ({ guide, deletedAt: now }))].slice(-MAX_TRASH);
 }
 
+/** True when the stored trash holds entries that are over (or junk): it should be rewritten. */
+export function trashIsStale(raw: unknown, now: number): boolean {
+  return Array.isArray(raw) && liveTrash(raw, now).length !== raw.length;
+}
+
 export function trashItems(entries: TrashEntry[]): TrashItem[] {
   return entries.map((e) => ({ id: e.guide.id, title: e.guide.title, deletedAt: e.deletedAt, undoUntil: e.deletedAt + UNDO_MS }));
 }

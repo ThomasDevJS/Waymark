@@ -707,19 +707,22 @@ Only the look and the accessibility semantics change; every handler, advance rul
 - **Steps**: deleting a step in the editor shows the same toast in the editor's sticky bar; Undo puts the step back at its place in the draft. It is a draft change like any other, so closing the editor discards it with the rest of the unsaved edits; the stored guide still has the step until Save. The step toast goes when the editor closes.
 - **Toast**: one at a time, a polite live region that stays mounted. Focus moves to Undo, because the control that was pressed has gone; when the toast disappears with focus on it, focus goes to the list or Steps heading. Dismiss (×) is a separate button.
 - **Messages**: `guide.restore`, `trash.list` (extension pages only). `guide.delete` now answers `{ ok, undoUntil }`.
+- **Fixes from the independent review**: expired trash entries are removed from storage (by `trash.list`, at browser start and install, and on every delete or restore), not only hidden, so a deleted guide does not stay on disk. After Undo, focus goes to the restored guide's Start button; the list headings take focus when the toast expires. A toast the panel already showed (dismissed, or used) does not come back when the library mounts again, for example after closing the editor. Any side panel opened during the 8 seconds shows the toast, in any window. Saving the guide ends the step's Undo.
 
 ### D101. Completed guides, Restart, and Start from step N
 *5 Nov 2026 · SPEC: User flows (Play, step 7: "completion is saved locally"); Side panel*
 
 - **Checkmark**: the library shows a green **Completed** badge on guides the learner has finished (the `completions` list the player already stores; `completions.list` sends only guide ids and the last time). A finished guide's Start button reads **Restart** (same action: start from step 1).
 - **Restart** in the "playing" card starts the run again from step 1 (it goes through `run.start`, so a learner on another page is offered the start page). When the run has finished, the card's Stop reads Close.
-- **Start from step N**: the row's More menu has a step picker (titles from the guide index, D49, so no full guide is read) and "Start from step N". `run.start` takes an optional `stepIndex` (0–499). The learner must be on that step's page: only the start page can be opened for them (D33, D36), so otherwise the panel says "Step N is on a page like `/x`. Open that page, then press Start."
+- **Start from step N**: the row's More menu has a step picker (titles from the guide index, D49, so no full guide is read) and "Start from step N". `run.start` takes an optional `stepIndex` (0–499). The learner must be on that step's page: only the start page can be opened for them (D33, D36), so otherwise the panel says "Step N is on a page like `/x`. Open that page, then press Start from step N." A choice larger than the guide's step count (the guide got shorter) is clamped to the last step.
+- **Completion**: a run that started at a later step and reached the end counts as finished, like any other run (the learner did reach the end).
+- **Review fix**: the guide index keeps each step title on one line (line breaks become spaces), so a title typed with a line break no longer shifts the "Start from" labels of the steps after it.
 
 ### D102. Tag filter chips, and tags in the editor
 *5 Nov 2026 · SPEC: Discovery ("Side panel": search over title, description, tags and step titles); Data model (`tags`)*
 
 - **Chips**: under the search box, one toggle chip per tag (`aria-pressed`), with its guide count, sorted by count, at most 30. Tags are compared case-insensitively. A guide must carry every selected tag, and the chips combine with the search. Clear resets them. A chip whose last guide went away stops filtering.
-- **Editor**: guides had `tags` in the data model and in packs, but no way to set them. The editor gets a Tags field (comma-separated; trimmed, de-duplicated, at most 50 of 100 characters, the schema's limits). Tags are already in the export review, so a pack never carries a tag the author didn't see.
+- **Editor**: guides had `tags` in the data model and in packs, but no way to set them. The editor gets a Tags field (comma-separated; trimmed, de-duplicated, at most 20 of 100 characters). 20, not the schema's 50, because the guide index keeps 20 (D49) and the chips work from the index; an imported guide with more keeps them, but only the first 20 filter. Tags are already in the export review, so a pack never carries a tag the author didn't see.
 
 ### D103. Duplicate guide and duplicate step
 *5 Nov 2026 · SPEC: Side panel; User flows (Edit)*

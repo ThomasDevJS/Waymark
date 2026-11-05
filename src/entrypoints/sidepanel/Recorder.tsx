@@ -162,7 +162,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             ) : (
               <span class="grow" data-testid="start-hint">
                 {needsStart.value.stepIndex ? `Step ${needsStart.value.stepIndex + 1} is on a page like ` : 'This guide starts on a page like '}
-                <code>{needsStart.value.pattern}</code>. Open that page, then press Start.
+                <code>{needsStart.value.pattern}</code>. Open that page, then press {needsStart.value.stepIndex ? `Start from step ${needsStart.value.stepIndex + 1}` : 'Start'}.
               </span>
             )}
           </div>

@@ -1,7 +1,7 @@
 /**
  * Tag filter chips in the library (D102). Pure, so the panel and unit tests share it.
  */
-import type { GuideIndexEntry } from '../storage/guides';
+import { MAX_INDEX_TAGS, type GuideIndexEntry } from '../storage/guides';
 
 /** Chips shown at most; the rest are still found by search. */
 export const MAX_TAG_CHIPS = 30;
@@ -34,7 +34,10 @@ export function withTags<T extends Pick<GuideIndexEntry, 'tags'>>(entries: T[], 
   });
 }
 
-/** Tags typed as "billing, onboarding": trimmed, de-duplicated, within the guide schema's limits. */
+/**
+ * Tags typed as "billing, onboarding": trimmed, de-duplicated, at most 100 characters each, and
+ * at most 20, which is what the guide index keeps (so every tag gets a chip and filters).
+ */
 export function parseTags(text: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -45,7 +48,7 @@ export function parseTags(text: string): string[] {
     seen.add(k);
     out.push(t);
   }
-  return out.slice(0, 50);
+  return out.slice(0, MAX_INDEX_TAGS);
 }
 
 /** The "Start from step" choices, from the index's step titles (one per line, possibly cut short). */

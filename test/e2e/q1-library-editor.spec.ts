@@ -55,6 +55,11 @@ test('a deleted guide can be restored with Undo, even from a panel opened after 
   // The panel closes before Undo: the guide is in the trash, not lost.
   await panel.close();
   expect(await ext.message<{ guides: unknown[] }>('guide.list', {})).toMatchObject({ guides: [] });
+  // CI can be slow: restart the 8 s window now, so the reopened panel is surely inside it.
+  await (await ext.sw()).evaluate(async () => {
+    const t = (await chrome.storage.local.get('guides:trash'))['guides:trash'] as { deletedAt: number }[];
+    await chrome.storage.local.set({ 'guides:trash': t.map((e) => ({ ...e, deletedAt: Date.now() })) });
+  });
   panel = await openPanel(context, extensionId, tabId);
   await expect(panel.getByTestId('guide-undo-toast')).toContainText('Keep me safe');
   await panel.getByTestId('toast-undo').click();
@@ -70,6 +75,8 @@ test('a deleted guide can be restored with Undo, even from a panel opened after 
   await expect(panel.getByTestId('guide-undo-toast')).toBeVisible();
   await expect(panel.getByTestId('guide-undo-toast')).toHaveCount(0, { timeout: 12_000 });
   await expect.poll(async () => (await ext.message<{ items: unknown[] }>('trash.list', {})).items).toEqual([]);
+  // The deleted guide is gone from disk too, not only hidden.
+  expect(await (await ext.sw()).evaluate(async () => Object.keys(await chrome.storage.local.get('guides:trash')))).toEqual([]);
 });
 
 test('duplicate a guide and a step; tags filter the library', async ({ context, ext, site, extensionId }) => {

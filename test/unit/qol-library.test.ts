@@ -84,6 +84,23 @@ describe('guide delete and Undo through the service worker (D100)', () => {
     expect((await getGuides([g2.id]))[0]?.title).toBe('Imported again');
   });
 
+  it('an expired trash entry is removed from storage, not only hidden (review)', async () => {
+    const { discoveryHandlers: h, purgeTrash } = await import('../../src/background/discovery');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(10_000);
+    await h['guide.delete']!({ id: g1.id }, {} as never);
+    expect((await local.get('guides:trash'))['guides:trash']).toHaveLength(1);
+    vi.setSystemTime(10_000 + UNDO_MS + RESTORE_GRACE_MS + 1);
+    await h['trash.list']!({}, {} as never);
+    expect(local.m.has('guides:trash')).toBe(false);
+    // Browser start purges too.
+    vi.setSystemTime(100_000);
+    await h['guide.delete']!({ id: g2.id }, {} as never);
+    vi.setSystemTime(200_000);
+    await purgeTrash();
+    expect(local.m.has('guides:trash')).toBe(false);
+  });
+
   it('a missing guide deletes nothing and offers no Undo', async () => {
     const { discoveryHandlers: h } = await import('../../src/background/discovery');
     expect(await h['guide.delete']!({ id: 'NOPE' }, {} as never)).toEqual({ ok: true, undoUntil: null });
@@ -132,7 +149,14 @@ describe('tags (D102)', () => {
   it('parses typed tags within the schema limits', () => {
     expect(parseTags(' billing, Onboarding ,, billing,BILLING ')).toEqual(['billing', 'Onboarding']);
     expect(parseTags('x'.repeat(150))[0]).toHaveLength(100);
-    expect(parseTags(Array.from({ length: 80 }, (_, i) => `t${i}`).join(','))).toHaveLength(50);
+    // At most the 20 the index keeps, so every tag gets a chip (review).
+    expect(parseTags(Array.from({ length: 80 }, (_, i) => `t${i}`).join(','))).toHaveLength(20);
+  });
+  it('a step title with line breaks keeps one index line per step (review)', async () => {
+    const { indexEntry } = await import('../../src/core/storage/guides');
+    const g = { ...g1, steps: g1.steps.map((s, i) => (i === 0 ? { ...s, title: 'Open billing\nthen  wait' } : { ...s, title: `Step title ${i}` })) };
+    const choices = stepChoices(indexEntry(g));
+    expect(choices.map((c) => c.label)).toEqual(['1. Open billing then wait', '2. Step title 1', '3. Step title 2']);
   });
   it('step choices come from the index, with numbers when titles are cut short', () => {
     expect(stepChoices({ steps: 3, stepTitles: 'Open\nClick **Save**' })).toEqual([

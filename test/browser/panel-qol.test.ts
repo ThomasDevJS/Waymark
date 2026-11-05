@@ -7,7 +7,7 @@ import { h, render } from 'preact';
 import { userEvent } from 'vitest/browser';
 import { Library } from '../../src/entrypoints/sidepanel/Library';
 import { Editor } from '../../src/entrypoints/sidepanel/Editor';
-import { dismissToast } from '../../src/entrypoints/sidepanel/Toast';
+import { dismissToast, showToast, ToastSlot } from '../../src/entrypoints/sidepanel/Toast';
 import type { GuideIndexEntry } from '../../src/core/storage/guides';
 import type { Guide } from '../../src/core/model/schema';
 
@@ -146,10 +146,24 @@ describe('library (D100–D102)', () => {
     expect(sent.some((m) => m.type === 'guide.restore' && m.payload.id === 'C')).toBe(true);
     expect(byTest('guide-undo-toast')).toBeNull();
     expect(byTest('library-message')!.textContent).toContain('Restored');
+    // Focus lands on the restored guide, not on <body> (review).
+    await tick(100);
+    expect(document.activeElement).toBe(byTest('start-C'));
+  });
+
+  it('a dismissed toast does not come back when the library mounts again (review)', async () => {
+    trash = [{ id: 'Z', title: 'Gone guide', deletedAt: Date.now(), undoUntil: Date.now() + 3000 }];
+    mount();
+    await tick(100);
+    await userEvent.click(root.querySelector<HTMLElement>('.toast [aria-label="Dismiss"]')!);
+    render(null, root);
+    mount();
+    await tick(100);
+    expect(byTest('guide-undo-toast')).toBeNull();
   });
 
   it('a panel opened during the undo window shows the toast again', async () => {
-    trash = [{ id: 'Z', title: 'Gone guide', deletedAt: Date.now(), undoUntil: Date.now() + 3000 }];
+    trash = [{ id: 'Y', title: 'Gone guide', deletedAt: Date.now(), undoUntil: Date.now() + 3000 }];
     mount();
     await tick(100);
     expect(byTest('guide-undo-toast')!.textContent).toContain('Gone guide');
@@ -165,6 +179,21 @@ describe('library (D100–D102)', () => {
     await tick();
     expect(sent.some((m) => m.type === 'guide.duplicate' && m.payload.id === 'A')).toBe(true);
     expect(byTest('library-message')!.textContent).toContain('Made a copy');
+  });
+});
+
+describe('toast (D100)', () => {
+  it('expires on its own and hands focus to the fallback', async () => {
+    const heading = document.createElement('h2');
+    heading.tabIndex = -1;
+    document.body.append(heading);
+    render(h(ToastSlot, { scope: 'library' }), root);
+    showToast({ scope: 'library', text: 'Gone', until: Date.now() + 300, focus: true, fallbackFocus: () => heading, action: { label: 'Undo', run: () => undefined } });
+    await tick();
+    expect(document.activeElement).toBe(byTest('toast-undo'));
+    await expect.poll(() => byTest('toast'), { timeout: 2000 }).toBeNull();
+    expect(document.activeElement).toBe(heading);
+    heading.remove();
   });
 });
 

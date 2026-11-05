@@ -81,7 +81,7 @@ export function restoreStepIn(steps: Step[], step: Step, index: number): Step[] 
   return copy;
 }
 
-/** Deletes a step from the draft; the toast's Undo puts it back until the draft is saved or closed. */
+/** Deletes a step from the draft; the toast's Undo puts it back until the draft is saved or the editor closes. */
 function deleteStep(index: number) {
   const g = draft.value;
   const step = g?.steps[index];
@@ -203,6 +203,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
       }
       status.value = `Saved (version ${saved.version}).`;
+      // The saved copy no longer has the step: its Undo would only make the draft dirty again.
+      dismissScope('editor');
     }).finally(() => (saving.value = false));
   };
 
