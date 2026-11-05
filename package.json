@@ -2,7 +2,7 @@
   "name": "waymark",
   "description": "Record click-by-click walkthroughs of web apps and replay them on the live page.",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
@@ -21,6 +21,7 @@
     "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json && node scripts/check-no-cdn.mjs .output/chrome-mv3 && node scripts/check-no-cdn.mjs .output-test/chrome-mv3-test",
     "fixture": "node test/fixtures/server.mjs",
     "test:e2e:xvfb": "pnpm build:test && xvfb-run -a playwright test",
+    "test:real": "bash scripts/test-real.sh",
     "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm build:test && pnpm check:manifest && pnpm test",
     "demo": "node demo/serve.mjs",
     "screens": "pnpm build:test && xvfb-run -a playwright test -c playwright.screens.config.ts"

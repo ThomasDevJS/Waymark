@@ -12,7 +12,7 @@ import { watchAdvance } from '../../core/player/advance';
 import type { RunOp, RunView } from '../../core/player/run';
 import { urlMatches } from '../../core/url/url';
 import { isOverlayPath, onOverlayReleased } from '../overlay/host';
-import { testMark } from '../test-hooks';
+import { testMark, testSpot } from '../test-hooks';
 import { bestSpeechVoice } from '../../core/voice/voice';
 import { PlayerUI } from './ui';
 
@@ -108,6 +108,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     drawnFor = null;
     result = null;
     searchDone = false;
+    testSpot(null);
     testMark('player', 'idle');
   };
 
@@ -141,6 +142,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     stopAdvance?.(); // the previous match's elements no longer count while searching again
     stopAdvance = null;
     ui.clear();
+    testSpot(null);
     drawnFor = null;
     searchDone = false;
     result = null;
@@ -202,6 +204,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       // A click on the spotlighted box (e.g. the label of a hidden checkbox) also counts.
       const targets = r.tied.includes(target) ? r.tied : [...r.tied, target];
       stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
+      testSpot(target, v.stepIndex);
       testMark('player', `drawn:${v.stepIndex}`);
       return;
     }
@@ -215,6 +218,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       stopAdvance?.();
       stopAdvance = null;
       drawnFor = null;
+      testSpot(null);
     }
     // The top frame shows "not found" when its own search gave up and no frame found the target.
     if (isTop && searchDone && result?.status === 'not-found' && !v.winner && onStartPageUrl(v)) {

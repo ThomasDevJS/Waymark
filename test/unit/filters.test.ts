@@ -19,6 +19,12 @@ describe('isGeneratedToken', () => {
     'still flags hash %s',
     (t) => expect(isGeneratedToken(t)).toBe(true),
   );
+  // Real sites (D63): component libraries number their ids per page load.
+  it.each(['mat-select-10', 'mat-option-51', 'mat-mdc-form-field-label-9', 'cdk-overlay-3', 'cdk-describedby-message-ng-1-12', 'headlessui-menu-button-3', 'downshift-0-input', 'react-select-2-input', 'react-aria-7', 'rc-tabs-0-tab-1', 'mui-12', 'chakra-modal-4'])(
+    'flags library counter id %s',
+    (t) => expect(isGeneratedToken(t)).toBe(true),
+  );
+  it.each(['edit-record-2', 'step-1', 'h-4', 'material-select', 'react-root', 'rc-slider', 'mat-toolbar', 'mat-display-1', 'mat-headline-2', 'mat-h1', 'mat-elevation-z8'])('keeps %s', (t) => expect(isGeneratedToken(t)).toBe(false));
   it('applies profile ignore patterns', () => {
     expect(isGeneratedToken('foo-bar', [/^foo-/])).toBe(true);
   });
