@@ -96,7 +96,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
           const open = moreOpen.value === t.id;
           const moreId = `tutorial-more-${t.id}`;
           return (
-            <li key={t.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`tutorial-${t.id}`}>
+            <li key={t.id} class={`guide-item lift${open ? ' open' : ''}`} data-testid={`tutorial-${t.id}`}>
               <div class="guide-row">
                 <div class="guide-main">
                   <span class="tutorial-title">{t.title}</span>
@@ -126,14 +126,23 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
                 </div>
               </div>
               {open && (
-                <div class="guide-more" id={moreId}>
+                <div class="guide-more unfold" id={moreId}>
                   <p class="small muted">{t.summary}</p>
                   <p class="small muted">Copy to my guides puts an editable draft on this site, made of note steps, to see how a guide is written.</p>
                   {tabUrl ? (
                     <div class="toolbar">
                       <button type="button" class="sm" data-testid={`tutorial-copy-${t.id}`} disabled={copied.value.has(t.id)} onClick={() => void copyToGuides(t, tabUrl)}>
-                        <Icon name={copied.value.has(t.id) ? 'check' : 'duplicate'} />
-                        {copied.value.has(t.id) ? 'Copied' : 'Copy to my guides'}
+                        {copied.value.has(t.id) ? (
+                          <span class="swap" key="copied">
+                            <Icon name="check" class="tick" />
+                            Copied
+                          </span>
+                        ) : (
+                          <>
+                            <Icon name="duplicate" />
+                            Copy to my guides
+                          </>
+                        )}
                       </button>
                     </div>
                   ) : (
@@ -147,6 +156,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
       </ul>
       {/* Stays mounted, so the message is read when it appears. */}
       <p class="status-text ok" role="status" data-testid="tutorials-message">
+        {message.value && message.value !== 'Nothing was copied.' && <Icon key={message.value} name="check" class="tick" />}
         {message.value ?? ''}
       </p>
       {error.value && (

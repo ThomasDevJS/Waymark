@@ -113,7 +113,7 @@ function Chart() {
 
 function Dashboard() {
   return (
-    <section class="card stack" aria-labelledby="dash-title">
+    <section class="card stack fade-in" aria-labelledby="dash-title">
       <h2 id="dash-title">Dashboard</h2>
       <div class="row">
         <button type="button" class="primary" data-guide-id="practice-new-invoice" onClick={() => (view.value = 'new')}>
@@ -141,11 +141,11 @@ const INVOICES = [
 
 function Invoices() {
   return (
-    <section class="card stack" aria-labelledby="inv-title">
+    <section class="card stack fade-in" aria-labelledby="inv-title">
       <h2 id="inv-title">Invoices</h2>
       {sent.value && (
         <p class="banner success" role="status">
-          <Icon name="check" />
+          <Icon name="check" class="tick" />
           {sent.value}
         </p>
       )}
@@ -174,7 +174,7 @@ function Invoices() {
 
 function NewInvoice() {
   return (
-    <section class="card stack" aria-labelledby="new-title">
+    <section class="card stack fade-in" aria-labelledby="new-title">
       <h2 id="new-title">New invoice</h2>
       <form
         class="stack"
@@ -324,7 +324,7 @@ function TutorialList() {
         <>
           <ol class="tutorial-list">
             {TUTORIALS.map((x) => (
-              <li key={x.id}>
+              <li key={x.id} class="lift">
                 <div class="grow">
                   <strong>{x.title}</strong>
                   <span class="small muted block">

@@ -4,7 +4,8 @@
  * that keyboard users reach with Tab (focus moves to it when the deleted control disappears).
  */
 import { signal } from '@preact/signals';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { DUR, reducedMotion } from '../../ui/motion';
 import { Icon } from '../../ui/Icon';
 
 export interface ToastSpec {
@@ -54,8 +55,36 @@ export function ToastSlot({ scope }: { scope: ToastSpec['scope'] }) {
   useEffect(() => {
     if (t?.focus) btn.current?.focus();
   }, [t?.key]);
+  // When the toast goes, a copy stays for one short exit animation (D130). It is inert and
+  // hidden from screen readers, so focus and announcements are exactly as without it.
+  const last = useRef<typeof t>(null);
+  const [ghost, setGhost] = useState<typeof t>(null);
+  useLayoutEffect(() => {
+    const was = last.current;
+    last.current = t;
+    if (!was || t || reducedMotion()) {
+      setGhost(null);
+      return;
+    }
+    setGhost(was);
+    const id = setTimeout(() => setGhost(null), DUR.fast + 60);
+    return () => clearTimeout(id);
+  }, [t?.key]);
   return (
     <div class={`toast-slot ${scope}`} role="status" aria-live="polite">
+      {!t && ghost && (
+        <div class="toast leaving" key={`ghost-${ghost.key}`} aria-hidden="true" inert>
+          <Icon name="trash" />
+          <span class="grow">{ghost.text}</span>
+          <span class="btn sm" aria-hidden="true">
+            <Icon name="undo" />
+            {ghost.action.label}
+          </span>
+          <span class="btn ghost icon sm" aria-hidden="true">
+            <Icon name="close" />
+          </span>
+        </div>
+      )}
       {t && (
         <div class="toast" key={t.key} data-testid={t.testid ?? 'toast'}>
           <Icon name="trash" />

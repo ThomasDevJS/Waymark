@@ -71,10 +71,45 @@
   --wm-shadow-2: 0 4px 12px rgba(16, 24, 40, 0.12), 0 1px 3px rgba(16, 24, 40, 0.08);
   --wm-shadow-3: 0 12px 32px rgba(16, 24, 40, 0.22), 0 2px 6px rgba(16, 24, 40, 0.12);
 
-  /* motion */
-  --wm-ease: cubic-bezier(0.2, 0, 0, 1);
-  --wm-fast: 120ms;
-  --wm-slow: 240ms;
+  /*
+   * motion (D130). Animate transform and opacity only. Durations stay between 80 and 240 ms so
+   * the UI answers at once; distances are a few px. JS mirrors these in src/ui/motion.ts.
+   */
+  --wm-dur-press: 80ms; /* press, tiny state changes */
+  --wm-dur-fast: 120ms; /* hover, focus, toggles */
+  --wm-dur-base: 180ms; /* things that enter: toasts, folds, the tooltip */
+  --wm-dur-slow: 240ms; /* things that move: list reorder, the spotlight glide, progress */
+  --wm-ease-standard: cubic-bezier(0.2, 0, 0, 1); /* moves from one place to another */
+  --wm-ease-enter: cubic-bezier(0, 0, 0.2, 1); /* decelerates into place */
+  --wm-ease-exit: cubic-bezier(0.4, 0, 1, 1); /* accelerates away */
+  --wm-ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1); /* a small overshoot: ticks, presses released */
+  --wm-move-sm: 2px;
+  --wm-move-md: 4px;
+  --wm-move-lg: 8px;
+  --wm-lift: -1px; /* hover lift of cards and rows */
+  --wm-press: 0.97; /* scale of a pressed button */
+  --wm-press-lg: 0.99; /* scale of a pressed card or row (large things move more per percent) */
+  /* the D90 names, kept */
+  --wm-ease: var(--wm-ease-standard);
+  --wm-fast: var(--wm-dur-fast);
+  --wm-slow: var(--wm-dur-slow);
+}
+
+/*
+ * Reduced motion (D130): nothing moves or scales; fades stay (opacity only), so state changes
+ * are still visible. Infinite animations (spinners, the REC pulse) are off in their own rules.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  .wm-theme {
+    --wm-move-sm: 0px;
+    --wm-move-md: 0px;
+    --wm-move-lg: 0px;
+    --wm-lift: 0px;
+    --wm-press: 1;
+    --wm-press-lg: 1;
+    --wm-ease-spring: var(--wm-ease-standard);
+  }
 }
 
 @media (prefers-color-scheme: dark) {

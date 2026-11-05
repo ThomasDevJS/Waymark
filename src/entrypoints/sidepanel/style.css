@@ -255,14 +255,29 @@ button.record .rec-dot {
 .rec-card.is-recording {
   border-color: color-mix(in srgb, var(--wm-rec) 55%, var(--wm-border));
 }
+/* REC: a soft halo grows out of the dot and fades (D130): transform and opacity on its own
+   layer, slow (1.6 s) and low contrast, so it never flashes. Off under reduced motion. */
+.badge.rec .rec-dot {
+  position: relative;
+}
 @media (prefers-reduced-motion: no-preference) {
-  .badge.rec .rec-dot {
-    animation: wm-blink 1.4s ease-in-out infinite;
+  .badge.rec .rec-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: currentColor;
+    animation: wm-rec-pulse 1.6s var(--wm-ease-exit) infinite;
   }
 }
-@keyframes wm-blink {
-  50% {
-    opacity: 0.3;
+@keyframes wm-rec-pulse {
+  from {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.4);
   }
 }
 .live-steps {

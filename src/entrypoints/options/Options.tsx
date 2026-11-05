@@ -87,8 +87,17 @@ function DebugLog() {
       </p>
       <div class="row">
         <button type="button" data-testid="debug-copy" disabled={!d.count} onClick={() => void copyDebug()}>
-          <Icon name="copy" />
-          {debugCopied.value === 'copied' ? 'Copied' : 'Copy debug log'}
+          {debugCopied.value === 'copied' ? (
+            <span class="swap" key="copied">
+              <Icon name="check" class="tick" />
+              Copied
+            </span>
+          ) : (
+            <>
+              <Icon name="copy" />
+              Copy debug log
+            </>
+          )}
         </button>
         <button type="button" class="ghost danger" data-testid="debug-clear" disabled={!d.count} onClick={() => void send('debug.clear', {}).then((r) => (debug.value = r))}>
           <Icon name="trash" />
@@ -536,8 +545,17 @@ export function Options() {
                       })
                     }
                   >
-                    <Icon name="copy" />
-                    {copied.value ? 'Copied' : 'Copy as text'}
+                    {copied.value ? (
+                      <span class="swap" key="copied">
+                        <Icon name="check" class="tick" />
+                        Copied
+                      </span>
+                    ) : (
+                      <>
+                        <Icon name="copy" />
+                        Copy as text
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"

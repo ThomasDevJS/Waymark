@@ -223,14 +223,6 @@ button:disabled {
   outline: 2px solid var(--wm-focus);
   outline-offset: 2px;
 }
-@media (prefers-reduced-motion: no-preference) {
-  button,
-  .btn {
-    transition:
-      background-color var(--wm-fast) var(--wm-ease),
-      border-color var(--wm-fast) var(--wm-ease);
-  }
-}
 svg.wm-icon {
   width: 16px;
   height: 16px;
@@ -362,14 +354,8 @@ input.switch:checked {
   background: var(--wm-accent);
 }
 input.switch:checked::after {
-  left: 16px;
+  transform: translateX(14px);
   background: var(--wm-accent-fg);
-}
-@media (prefers-reduced-motion: no-preference) {
-  input.switch,
-  input.switch::after {
-    transition: all var(--wm-fast) var(--wm-ease);
-  }
 }
 
 progress {
@@ -615,22 +601,217 @@ button.chip.on .chip-count {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .toast {
-    animation: wm-toast-in var(--wm-fast) var(--wm-ease);
-  }
-}
-@keyframes wm-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
 @media (forced-colors: active) {
   button.chip.on {
     border-width: 2px;
   }
   .toast {
     border-color: CanvasText;
+  }
+}
+
+/*
+ * ---------- motion (D130) ----------
+ * Feedback that makes the controls feel physical, kept light: only transform and opacity animate
+ * (plus the colour fades D90 already had, and a focus outline that settles in; both paint only,
+ * never layout). Durations, easings and distances are tokens; under reduced motion the
+ * distances and scales are zero, so what is left is a fade.
+ */
+button,
+.btn,
+.button-like {
+  transition:
+    background-color var(--wm-dur-fast) var(--wm-ease-standard),
+    border-color var(--wm-dur-fast) var(--wm-ease-standard),
+    color var(--wm-dur-fast) var(--wm-ease-standard),
+    transform var(--wm-dur-fast) var(--wm-ease-spring);
+}
+/* Pressed: a small squeeze and a pressed-in shade, at once (80 ms); it springs back on release. */
+button:active:not(:disabled),
+.btn:active,
+.button-like:active {
+  transform: scale(var(--wm-press));
+  transition-duration: var(--wm-dur-press);
+  transition-timing-function: var(--wm-ease-standard);
+  box-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.18);
+}
+button.primary:active:not(:disabled),
+.btn.primary:active {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+/* Wide buttons (full-width, list toggles) squeeze less: 3% of 360 px is a visible jump. */
+button.block:active:not(:disabled),
+button.step-toggle:active:not(:disabled),
+button.help-link:active:not(:disabled) {
+  transform: scale(var(--wm-press-lg));
+}
+
+/* Focus rings settle in from a little further out, once per focus. */
+:focus-visible {
+  animation: wm-focus-in var(--wm-dur-fast) var(--wm-ease-enter);
+}
+@keyframes wm-focus-in {
+  from {
+    outline-offset: 5px;
+    outline-color: transparent;
+  }
+}
+
+/* Toggles: the switch's thumb slides (transform), the track fades its colour. */
+input.switch {
+  transition: background-color var(--wm-dur-fast) var(--wm-ease-standard);
+}
+input.switch::after {
+  transition: transform var(--wm-dur-fast) var(--wm-ease-spring);
+}
+input.switch:active::after {
+  transform: scale(0.9);
+}
+input.switch:checked:active::after {
+  transform: translateX(14px) scale(0.9);
+}
+input[type='checkbox']:not(.switch),
+input[type='radio'] {
+  transition: transform var(--wm-dur-fast) var(--wm-ease-spring);
+}
+input[type='checkbox']:not(.switch):active,
+input[type='radio']:active {
+  transform: scale(0.88);
+}
+
+/* Cards and rows you act on lift a pixel on hover; the stronger shadow fades in on a layer. */
+.lift {
+  position: relative;
+  transition: transform var(--wm-dur-fast) var(--wm-ease-standard);
+}
+.lift::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--wm-shadow-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--wm-dur-fast) var(--wm-ease-standard);
+}
+@media (hover: hover) {
+  .lift:hover {
+    transform: translateY(var(--wm-lift));
+  }
+  .lift:hover::after {
+    opacity: 1;
+  }
+}
+.lift.pressable:active {
+  transform: scale(var(--wm-press-lg));
+  transition-duration: var(--wm-dur-press);
+}
+
+/* Things that unfold (step bodies, More panels, inline help, <details>) settle in from above. */
+.unfold,
+details[open] > :not(summary) {
+  animation: wm-unfold var(--wm-dur-base) var(--wm-ease-enter);
+}
+@keyframes wm-unfold {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--wm-move-md)));
+  }
+}
+/* A chevron that turns rather than swaps. */
+.chev {
+  transition: transform var(--wm-dur-base) var(--wm-ease-standard);
+}
+[aria-expanded='true'] > .chev,
+details[open] > summary > .chev {
+  transform: rotate(180deg);
+}
+
+/* List items arrive with a short rise; items that move glide there (useFlipList, src/ui/useMotion.ts). */
+.enter {
+  animation: wm-item-in var(--wm-dur-base) var(--wm-ease-enter) backwards;
+}
+@keyframes wm-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wm-move-md));
+  }
+}
+
+/* Toast: slides up and fades in; on its way out it fades and drops (Toast.tsx keeps a ghost). */
+.toast {
+  animation: wm-toast-in var(--wm-dur-base) var(--wm-ease-spring);
+}
+.toast.leaving {
+  animation: wm-toast-out var(--wm-dur-fast) var(--wm-ease-exit) forwards;
+  pointer-events: none;
+}
+@keyframes wm-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wm-move-lg)) scale(0.98);
+  }
+}
+@keyframes wm-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--wm-move-md));
+  }
+}
+
+/* Success: a tick pops in next to "Saved", "Copied", "Completed". */
+.tick {
+  color: var(--wm-success);
+  animation: wm-tick var(--wm-dur-slow) var(--wm-ease-spring) backwards;
+}
+@keyframes wm-tick {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-20deg);
+  }
+}
+/* A changed label (Copy → Copied) swaps with a quick fade and rise. */
+.swap {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  animation: wm-swap var(--wm-dur-fast) var(--wm-ease-enter);
+}
+@keyframes wm-swap {
+  from {
+    opacity: 0;
+    transform: translateY(var(--wm-move-sm));
+  }
+}
+/* Status lines (Saved, Copied, errors) fade in where they appear. */
+.status-text,
+.alert {
+  animation: wm-fade-in var(--wm-dur-base) var(--wm-ease-enter);
+}
+@keyframes wm-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Views that replace each other (the Practice page's app) only fade: the player may be
+   measuring what is in them, so nothing moves under the spotlight. */
+.fade-in {
+  animation: wm-fade-in var(--wm-dur-base) var(--wm-ease-enter);
+}
+
+/* A progress fill eases to its new value (scaleX, not width). */
+.fill {
+  transform-origin: left center;
+  transition: transform var(--wm-dur-slow) var(--wm-ease-standard);
+}
+:dir(rtl) .fill {
+  transform-origin: right center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The token path already removed every distance; a fade of a focus ring is not useful. */
+  :focus-visible {
+    animation: none;
   }
 }
