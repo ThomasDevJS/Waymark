@@ -598,6 +598,34 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Numbers**: robustness set A 542/544 before; 559/560 after with the address pair added; 0 wrong. Set B: 0 wrong. Real-site harness: 16/16, 0 wrong.
 - **Not covered here**: link paths and step URLs keep path segments that are not key-like, such as `/users/jane.doe` (`isKeyLikeSegment` in `src/core/url/url.ts` replaces numbers, codes and emails only). Names in visible text and item labels pass by design, as before.
 
+## 2026-11-05 — Team library access and schedule (issues #21, #22)
+
+### D80. A library site granted only to fetch the pack is not a guide site
+- **Spec**: Sharing, "v1: library URL" (the library's site is requested when it sends no CORS headers), and Architecture, "Content script" (registered for granted sites).
+- **Finding** (issue #21): that grant also registered the content script on the library's site (for example `raw.githubusercontent.com`), and the panel called the site allowed.
+- **Change**:
+  - Settings marks the site "fetch-only" (`fetchOnlyOrigins` in `chrome.storage.local`, `src/background/site-access.ts`) before it asks for it. The mark comes first so the permission event never registers the script there. If the user denies the prompt, the mark is cleared. A site the user had already allowed is not marked.
+  - Fetch-only sites get no content script (`grantedSitePatterns(origins, exclude)`). The panel, recording, playback and the pending-Allow list all treat them as not allowed (`siteAllowed`).
+  - When the user clicks **Allow** on such a site, or ticks it in the one-click Allow, the panel sends `site.allowed`. That clears the mark, registers the script and injects it into open tabs. Chrome fires no permission event for an origin that is already granted, which is why the panel has to send this message.
+  - Unsubscribing, or moving the library to another site, gives back a permission that was held only for fetching.
+  - **Review fixes**:
+    - **Migration:** after an update, a granted library site that no stored guide uses is marked fetch-only. Subscriptions made before this change are covered.
+    - **Giving a permission back:** the permission is removed first, and the mark is cleared only once that succeeded. A failed removal never leaves an unmarked guide site behind.
+    - **Marking:** the service worker never marks a site that is already granted.
+    - **Clean-up at browser start:** fetch-only sites other than the current library's site are given back. This covers a subscription that never finished.
+    - **Injection:** `site.allowed` injects only into sites it actually un-marked, because a fresh grant is already injected by `permissions.onAdded`.
+  - The per-step `rec.step` check keeps the raw permission call. A fetch-only site has no content script, and an extra storage read there reordered a click and its route change in e2e. That ordering is a latent race in the recorder, reported to the real-sites lane.
+- **Limits**:
+  - A site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+  - If the library's site is also an HD-voice download host (D51), the two grants are not coordinated. Both hosts are expected to send CORS headers, so this should not come up.
+
+### D81. One library fetch per browser start
+- **Spec**: Sharing, "v1: library URL" (refreshed with `chrome.alarms`).
+- **Finding** (issue #22): `onStartup` and `onInstalled` fetched the library immediately, and also set an alarm that fetched it again a minute later. Subscribing did the same.
+- **Change**: at browser start and install, the alarm (delay 1 minute) does the only fetch. After a fetch caused by subscribing, the next alarm waits a full period (`scheduleLibrary({ fetchedNow: true })`).
+
+## 2026-11-05 — Design
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 
@@ -634,3 +662,27 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Removing a site** asks first (an inline "Remove access" / Cancel) and then moves focus to the Sites heading. A failure is shown. The site the team library is read from (granted when the library host sends no CORS headers) says so, because removing it stops library refreshes. Clear in Problems asks first too.
 - **About (new)**: the version, the keyboard shortcuts as the browser has them now (`chrome.commands.getAll()`, since users can change them) and a Change shortcuts button (`chrome://extensions/shortcuts`).
 - **First-run welcome** in the side panel: three short cards, Allow, Record and Play, with Back / Next, step tabs, Skip and Get started. It shows until finished or skipped; the flag is `ui:welcomeDone` in `storage.local`. It has nothing to do with guides, so the guide index and storage code ignore it. It sits above the site card. The panel's cards wait until the flag is read, so they don't jump down when the welcome appears. Finishing or skipping moves focus to the panel's next control. The e2e m0 test now checks the welcome and that it stays dismissed; its heading lookup uses `exact: true` ("Welcome to Waymark" also contains "Waymark").
+
+### D93. On-page UI: tooltip, spotlight, REC pill, launcher
+*5 Nov 2026 · SPEC: Player and overlay; Recorder ("State"); Discovery; Accessibility*
+
+Only the look and the accessibility semantics change; every handler, advance rule and message is the same.
+
+- **Tokens on the page**: the overlay's styles use the D90 tokens (scoped to the layer in the closed shadow root), so the tooltip, cards, pill, launcher and banners follow the browser's light or dark scheme. Every surface is opaque, with its own text colour, border and shadow, so it reads the same on light and dark pages. Buttons reset `margin`, `text-transform`, `letter-spacing` and `box-shadow`, which host pages sometimes set. Under `forced-colors: active` the overlay uses system colours.
+- **Spotlight**: one element the size of the hole dims the page with a large `box-shadow` (`--wm-scrim`), instead of four panels. The hole now has rounded corners that match the ring. It still takes no pointer events, so the target stays clickable, and the hole geometry is the same (`spotlightPanels`, 6 px padding). The ring has an accent border, a white halo that shows on dark pages, and a soft outer glow. It fades in and pulses twice. `prefers-reduced-motion: reduce` turns every animation off. The stacking order is scrim, then ring, then tooltip.
+- **Tooltip**: the header has "Step n of N", a mute icon button (`aria-pressed`) and an Exit icon button ("Exit guide", the same `data-action="exit"`). A thin progress bar sits under it. Then come the title (15 px, semibold) and the note. The footer has Back on the left and Skip and Next/Done on the right. A Floating UI `arrow` points at the target from whichever side the tooltip ends up on. Exit moved from the footer to the header, so every card still has exactly one exit.
+- **Cards**: each card has an icon: done (success), can't find (warn), another page (pin). Not found shows "Report broken step" on the left and Skip and Retry (primary) on the right. Off track shows Skip and Go back (primary). The report confirmation appears as a green line.
+- **Screen readers**: steps are announced from one hidden `role="status"` region that stays in the layer: "Step 3 of 7: Click Import", then the card titles and the report confirmation. Before, the tooltip itself was the live region, and it was replaced at every step, so screen readers often skipped it. The tooltip is a `dialog` labelled with the guide title, described by the note. Focus never moves into it, so the learner's field keeps focus (unchanged).
+- **REC pill**: a light or dark chip with a blinking red dot, a red "REC" (grey "Paused") and the newest step with its number. When nothing has been recorded yet it says "Use the page; each action becomes a step". Notices such as "Not recorded…" show in the warn colour.
+- **Launcher**: a 44 px button (touch target) with a question-mark icon. It is a disclosure (`aria-expanded`, `aria-controls`) rather than an ARIA menu, because it had no arrow-key handling. Opening it moves focus to the first guide, and Esc closes it and returns focus to the button. The deep-link offer and the menu share one card style; in the offer, Not now comes before Start.
+- **Pick banner** uses the tokens, and the pick box gets a white halo.
+- **Icons** in the content script are imported one by one from Lucide (`src/ui/svg.ts`), so only the six it uses are bundled. The content script (test build) grew from 80.7 KB to 91.4 KB, mostly CSS.
+- **Test change**: the browser test counted four `.panel` elements. It now checks that the `.spot` box matches the ring and takes no pointer events. A new test checks the persistent announcement and the arrow side.
+- **Fixes from the independent review**:
+  - At 200% zoom and on phones, a long step ran off the bottom of the screen. The tooltip's content is now a scrolling body, sized with Floating UI's `size` middleware to the space beside the target. It is never shifted across the target: an e2e run caught a vertical shift covering a target near the bottom of the page. The arrow sits outside the body, so it is not clipped, and it hides when the tooltip had to move past the target. A browser test fills a small viewport with a long note.
+  - The live region now exists before the first step, and its text is set on the next frame after being emptied, so the first step and a repeated step (Retry) are both read.
+  - The overlay is `direction: ltr`, so an RTL page no longer mirrors the button rows; step titles and notes are `dir="auto"`.
+  - The REC pill stops short of the launcher on narrow screens.
+  - The launcher menu returns focus to the button when it closes with focus inside, closes on an outside press or when focus leaves it, and sets `aria-controls` only while open.
+  - The ring has a thin dark inner line, so it shows against white content in dark mode as well.
+  - "Report broken step" has a border, like the other buttons.

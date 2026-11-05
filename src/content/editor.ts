@@ -18,9 +18,13 @@ import { testMark } from './test-hooks';
 export const PICK_REJECTED = 'Waymark could not find that again. Click a button, link or field · Esc to cancel';
 
 const PICK_CSS = `
-.pick-box { position: fixed; border: 2px dashed #e8710a; background: rgba(232,113,10,.08); pointer-events: none; border-radius: 4px; box-sizing: border-box; }
-.pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: #1d1f23; color: #fff; padding: 6px 14px; border-radius: 999px;
-  font: 13px/1.4 system-ui, sans-serif; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.pick-box { position: fixed; border: 2px dashed #e8710a; background: rgba(232,113,10,.10); pointer-events: none; border-radius: 6px; box-sizing: border-box;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.8); }
+.pick-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); box-sizing: border-box;
+  background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); padding: 8px 16px; border-radius: 999px;
+  font: 500 13px/1.4 var(--wm-font); pointer-events: none; box-shadow: var(--wm-shadow-3); text-align: center; }
+.pick-banner::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e8710a; margin-right: 8px; vertical-align: 1px; }
+@media (forced-colors: active) { .pick-box { border-color: Highlight; } .pick-banner { border: 1px solid CanvasText; } }
 `;
 
 const BLOCKED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'];

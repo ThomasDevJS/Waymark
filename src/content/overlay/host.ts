@@ -13,7 +13,7 @@ const ISOLATED_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'cl
 
 const BASE_CSS = `
 :host { all: initial; }
-.layer { position: fixed; inset: 0; pointer-events: none; font: 13px/1.4 var(--wm-font); color: var(--wm-fg); -webkit-font-smoothing: antialiased; }
+.layer { position: fixed; inset: 0; pointer-events: none; direction: ltr; font: 13px/1.4 var(--wm-font); color: var(--wm-fg); -webkit-font-smoothing: antialiased; }
 `;
 
 /**
