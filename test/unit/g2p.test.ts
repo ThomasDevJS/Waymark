@@ -38,6 +38,8 @@ const LEX: Record<string, LexEntry> = {
   acme: 'ˈækmi',
   corp: 'kˈɔɹp',
   example: 'ɪɡzˈæmpəl',
+  visit: 'vˈɪzət',
+  now: 'nˈW',
   one: 'wˈʌn',
   two: 'tˈu',
   three: 'θɹˈi',
@@ -88,6 +90,9 @@ describe('G2P', () => {
     expect(say('Gmail').phonemes).toBe('ʤˈimˌAl');
     expect(say('QuickBooks').phonemes).toBe('kwˈɪkbˌʊks');
     expect(say('Waymark').guessed).toEqual([]);
+    // A compound whose first part has only secondary stress still gets a primary one.
+    const weak = new G2P({ get: (w) => ({ whats: 'wˌʌts', app: 'ˈæp' })[w as 'whats' | 'app'] });
+    expect(weak.phonemize('WhatsApp').phonemes).toBe('wˈʌtsˌæp');
   });
   it('spells acronyms, reads known ones and shouted words, and spells plural acronyms', () => {
     expect(say('CSV').phonemes).toBe('sˌiˌɛsvˈi');
@@ -101,6 +106,8 @@ describe('G2P', () => {
     expect(say('1,250.75').phonemes).toBe('wˈʌn θˈWzᵊnd tˈu hˈʌndɹəd fˈɪfti pˈYnt sˈɛvən fˈIv');
     expect(say('support@acme-corp.com').phonemes).toBe('səpˈɔɹt æt ˈækmi kˈɔɹp dˈɑt kˈɑm');
     expect(say('https://www.example.com/help').phonemes).toBe('ɪɡzˈæmpəl dˈɑt kˈɑm');
+    // A bare www address is read as its domain, and its dots don't end the sentence.
+    expect(say('Visit www.example.com now').phonemes).toBe(`vˈɪzət ɪɡzˈæmpəl dˈɑt kˈɑm ${say('now').phonemes}`);
   });
   it('guesses unknown words with letter rules, and says so', () => {
     const r = say('Open Jira.');

@@ -38,6 +38,7 @@ export function normalize(text: string): string {
     .replace(/[–]/g, '—')
     .replace(/\.\.\./g, '…')
     .replace(/https?:\/\/([^\s/]+)\S*/gi, (_m, host: string) => host.replace(/^www\./i, ''))
+    .replace(/\bwww\.(?=[a-z0-9-]+\.)/gi, '')
     .replace(/\b([\w.+-]+)@([\w-]+(?:\.[\w-]+)+)\b/g, (_m, user: string, domain: string) => `${user.replace(/[._+-]/g, ' ')} at ${domain.replace(/\./g, ' dot ')}`)
     .replace(/\b([a-z0-9-]+)\.(com|org|net|io|dev|app|co|ai|gov|edu)\b/gi, '$1 dot $2')
     .replace(/\s&\s/g, ' and ')
@@ -188,7 +189,9 @@ export class G2P {
 
 /** The second part of a compound gets secondary stress: "wˈAmˌɑɹk". */
 function joinCompound(parts: string[]): string {
-  return parts.map((p, i) => (i === 0 ? p : p.replace('ˈ', 'ˌ'))).join('');
+  const joined = parts.map((p, i) => (i === 0 ? p : p.replace('ˈ', 'ˌ'))).join('');
+  // Every word keeps one primary stress, even when its first part had only a secondary one.
+  return joined.includes('ˈ') ? joined : joined.replace('ˌ', 'ˈ');
 }
 
 const VOICELESS = 'ptkfθ';
