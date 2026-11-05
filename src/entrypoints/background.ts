@@ -11,7 +11,7 @@ import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
 import { editorHandlers, endPick } from '../background/editor';
-import { discoveryHandlers, LIBRARY_ALARM, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
+import { discoveryHandlers, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site-access';
 import { isSiteOrigin } from '../core/model/schema';
 import { rebuildIndex } from '../core/storage/guides';
@@ -74,11 +74,13 @@ const handlers: Handlers = {
   // The user allowed these sites (panel). A library site granted only for fetching becomes a
   // guide site now: no permission event fires for it, so register and inject here (D80).
   'site.allowed': async ({ origins }) => {
-    const sites = origins.filter(isSiteOrigin);
+    const marked = await fetchOnlyPatterns();
+    // Only sites that were fetch-only: a fresh grant is already handled by permissions.onAdded,
+    // and injecting twice would restart the content script in open tabs.
+    const sites = origins.filter((o) => isSiteOrigin(o) && marked.includes(originToMatchPattern(o)));
     for (const o of sites) await setFetchOnly(o, false);
     const registered = await sync();
-    const pats = sites.map(originToMatchPattern).filter((p) => registered.includes(p));
-    await injectIntoOpenTabs(pats);
+    if (sites.length) await injectIntoOpenTabs(sites.map(originToMatchPattern).filter((p) => registered.includes(p)));
     return { registered };
   },
   'route.report': async (payload, ctx) => {
@@ -129,8 +131,10 @@ export default defineBackground(() => {
   void chrome.storage.session.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
   void (chrome.storage.local as chrome.storage.StorageArea).setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
 
-  chrome.runtime.onInstalled.addListener(async () => {
+  chrome.runtime.onInstalled.addListener(async (details) => {
     await rebuildIndex();
+    // Subscribed before fetch-only marks existed: mark the library site now (D80).
+    if (details.reason === 'update') await migrateLibraryFetchOnly();
     await onBrowserStartLibrary();
     const patterns = await sync();
     // After install or update, already-open tabs of granted sites get the new script.

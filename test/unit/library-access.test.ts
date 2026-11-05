@@ -92,3 +92,45 @@ describe('browser start (D81)', () => {
     expect(f.alarms.map((a) => a.info.delayInMinutes)).toEqual([1]);
   });
 });
+
+describe('fetch-only review fixes (D80)', () => {
+  it('after an update, a granted library site no guide uses becomes fetch-only; one a guide uses stays allowed', async () => {
+    const f = fakeChrome(['https://raw.example/*'], 'https://raw.example/pack.json');
+    vi.stubGlobal('chrome', f.chrome);
+    const { migrateLibraryFetchOnly } = await import('../../src/background/discovery');
+    expect(await migrateLibraryFetchOnly()).toBe(true);
+    expect(await fetchOnlyPatterns()).toEqual(['https://raw.example/*']);
+
+    const g = fakeChrome(['https://app.test/*'], 'https://app.test/pack.json');
+    vi.stubGlobal('chrome', g.chrome);
+    await g.chrome.storage.local.set({ 'guides:index': [{ id: 'a', revisionId: 'r', stepTitles: '', title: 'A', appOrigins: ['https://app.test'], matchUrls: [], startUrl: 'https://app.test/', updatedAt: '', source: 'local', steps: 1 }] });
+    expect(await migrateLibraryFetchOnly()).toBe(false);
+  });
+
+  it('keeps the mark when the permission could not be given back', async () => {
+    const f = fakeChrome(['https://raw.example/*'], 'https://raw.example/pack.json');
+    f.chrome.permissions.remove = async () => false;
+    vi.stubGlobal('chrome', f.chrome);
+    await setFetchOnly('https://raw.example', true);
+    await discoveryHandlers['library.set']!({ url: null }, {} as never);
+    expect(await fetchOnlyPatterns()).toEqual(['https://raw.example/*']);
+  });
+
+  it('never marks a site that is already granted', async () => {
+    const f = fakeChrome(['https://app.test/*']);
+    vi.stubGlobal('chrome', f.chrome);
+    await discoveryHandlers['site.fetchOnly']!({ origin: 'https://app.test', on: true }, {} as never);
+    expect(await fetchOnlyPatterns()).toEqual([]);
+  });
+
+  it('at browser start, a fetch-only site that is not the library site any more is given back', async () => {
+    const f = fakeChrome(['https://old.example/*', 'https://raw.example/*'], 'https://raw.example/pack.json');
+    vi.stubGlobal('chrome', f.chrome);
+    await setFetchOnly('https://old.example', true);
+    await setFetchOnly('https://raw.example', true);
+    const { onBrowserStartLibrary } = await import('../../src/background/discovery');
+    await onBrowserStartLibrary();
+    expect(f.removed).toEqual(['https://old.example/*']);
+    expect(await fetchOnlyPatterns()).toEqual(['https://raw.example/*']);
+  });
+});

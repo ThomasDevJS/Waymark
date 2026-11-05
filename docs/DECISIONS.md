@@ -569,7 +569,16 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - Fetch-only sites get no content script (`grantedSitePatterns(origins, exclude)`). The panel, recording, playback and the pending-Allow list all treat them as not allowed (`siteAllowed`).
   - When the user clicks **Allow** on such a site, or ticks it in the one-click Allow, the panel sends `site.allowed`. That clears the mark, registers the script and injects it into open tabs. Chrome fires no permission event for an origin that is already granted, which is why the panel has to send this message.
   - Unsubscribing, or moving the library to another site, gives back a permission that was held only for fetching.
-- **Limit**: a site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+  - **Review fixes**:
+    - **Migration:** after an update, a granted library site that no stored guide uses is marked fetch-only. Subscriptions made before this change are covered.
+    - **Giving a permission back:** the permission is removed first, and the mark is cleared only once that succeeded. A failed removal never leaves an unmarked guide site behind.
+    - **Marking:** the service worker never marks a site that is already granted.
+    - **Clean-up at browser start:** fetch-only sites other than the current library's site are given back. This covers a subscription that never finished.
+    - **Injection:** `site.allowed` injects only into sites it actually un-marked, because a fresh grant is already injected by `permissions.onAdded`.
+  - The per-step `rec.step` check keeps the raw permission call. A fetch-only site has no content script, and an extra storage read there reordered a click and its route change in e2e. That ordering is a latent race in the recorder, reported to the real-sites lane.
+- **Limits**:
+  - A site marked fetch-only and later allowed through `chrome://extensions` (not through the panel) stays fetch-only until the user clicks Allow in the panel.
+  - If the library's site is also an HD-voice download host (D51), the two grants are not coordinated. Both hosts are expected to send CORS headers, so this should not come up.
 
 ### D81. One library fetch per browser start
 - **Spec**: Sharing, "v1: library URL" (refreshed with `chrome.alarms`).

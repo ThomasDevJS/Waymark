@@ -18,7 +18,7 @@ import {
   type RecordingState,
   urlKey,
 } from '../core/recorder/session';
-import { stepUrlRule } from '../core/url/url';
+import { originToMatchPattern, stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
 
 const KEY = 'recording';
@@ -72,9 +72,13 @@ export function recorderStep(step: Step): Step | null {
   return out;
 }
 
+/**
+ * Per-step check from content scripts. The raw permission is enough here: a fetch-only site (D80)
+ * has no content script, and this runs on every recorded step, so it stays one call.
+ */
 async function siteGranted(origin: string): Promise<boolean> {
   try {
-    return await siteAllowed(origin);
+    return await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] });
   } catch {
     return false;
   }

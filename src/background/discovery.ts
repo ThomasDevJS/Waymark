@@ -177,8 +177,53 @@ export async function scheduleLibrary(opts: { fetchedNow?: boolean } = {}): Prom
 }
 
 /** Browser start and install: the alarm does the first fetch, a minute later; one fetch, not two (D81). */
-export function onBrowserStartLibrary(): Promise<void> {
-  return scheduleLibrary();
+export async function onBrowserStartLibrary(): Promise<void> {
+  await cleanUpFetchOnly();
+  await scheduleLibrary();
+}
+
+/**
+ * Fetch-only sites that are not the current library's site (a subscription that never finished,
+ * or one changed elsewhere) are given back (D80).
+ */
+export async function cleanUpFetchOnly(): Promise<void> {
+  const { url } = await libraryState();
+  let current: string | null = null;
+  try {
+    current = url ? originToMatchPattern(new URL(url).origin) : null;
+  } catch {
+    current = null;
+  }
+  for (const pattern of await fetchOnlyPatterns()) {
+    if (pattern === current) continue;
+    await releasePattern(pattern);
+  }
+}
+
+/**
+ * After an update from a version without fetch-only marks: a granted library site that no guide
+ * uses was granted for fetching, so it is marked now (D80). A site a guide uses stays allowed.
+ */
+export async function migrateLibraryFetchOnly(): Promise<boolean> {
+  const { url } = await libraryState();
+  if (!url) return false;
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return false;
+  }
+  if (!(await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) return false;
+  if ((await fetchOnlyPatterns()).includes(originToMatchPattern(origin))) return false;
+  if ((await listGuides()).some((g) => g.appOrigins.includes(origin))) return false;
+  await setFetchOnly(origin, true);
+  return true;
+}
+
+/** Gives back a permission held only for fetching. The mark goes only once the permission is gone. */
+async function releasePattern(pattern: string): Promise<void> {
+  const removed = await chrome.permissions.remove({ origins: [pattern] }).catch(() => false);
+  if (removed) await setFetchOnly(new URL(pattern.replace('/*', '')).origin, false);
 }
 
 /** A library site granted only for fetching is given back when the library moves away from it (D80). */
@@ -193,8 +238,7 @@ async function releaseFetchOnly(oldUrl: string | null, newUrl: string | null): P
   }
   const pattern = originToMatchPattern(oldOrigin);
   if (!(await fetchOnlyPatterns()).includes(pattern)) return;
-  await setFetchOnly(oldOrigin, false);
-  await chrome.permissions.remove({ origins: [pattern] }).catch(() => false);
+  await releasePattern(pattern);
 }
 
 async function loadGuide(id: string): Promise<Guide | null> {
@@ -295,6 +339,8 @@ export const discoveryHandlers: Handlers = {
   // content script there (D80); the panel clears the mark when the user allows the site.
   'site.fetchOnly': async ({ origin, on }) => {
     if (!isSiteOrigin(origin)) throw new Error('Not a site origin');
+    // A site already granted is the user's (or already marked): never turn it into fetch-only.
+    if (on && (await chrome.permissions.contains({ origins: [originToMatchPattern(origin)] }))) return { ok: true };
     await setFetchOnly(origin, on);
     return { ok: true };
   },
