@@ -27,7 +27,7 @@ export interface MatchOptions {
   base?: string;
 }
 
-export type NotFoundReason = 'no-candidates' | 'no-strong-signal' | 'below-threshold' | 'ambiguous';
+export type NotFoundReason = 'no-candidates' | 'no-strong-signal' | 'below-threshold' | 'ambiguous' | 'lookalike';
 
 export type MatchResult =
   | {
@@ -161,6 +161,10 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     // position (XPath, nearby spot) is not enough to pick one of two otherwise identical elements.
     if (coreCovers(runnerUp, best)) return notFound('ambiguous');
   }
+  // The best candidate matched nothing that a look-alike seen at record time lacked: it may be
+  // that look-alike while the real target is missing or not rendered yet (D64).
+  const core = best.matched.filter((k) => !POSITIONAL.has(k));
+  if (fp.lookalikes?.some((set) => core.every((k) => set.includes(k)))) return notFound('lookalike');
   return {
     status: 'found',
     element: best.element,
@@ -173,12 +177,39 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
   };
 }
 
+/** At most this many look-alike profiles are stored per fingerprint. */
+export const MAX_LOOKALIKES = 5;
+
 /**
- * Record-time uniqueness (SPEC record step 3): how many visible elements match every
- * non-positional signal of the fingerprint. More than one means a repeated element.
+ * Record time, in one scoring pass (SPEC record step 3; D64):
+ * - `count`: visible, enabled elements that match every non-positional signal (more than one
+ *   means a repeated element);
+ * - `lookalikes`: for every other element with a strong signal (visible or not, enabled or not:
+ *   a hidden tab or a collapsed demo can be shown later), the non-positional signals it matched.
+ *   Only maximal sets are kept (a set inside another refuses nothing more), most weight first.
+ * Playback refuses a unique match that matched no more than one of these sets. Score is not a
+ * filter: position and XPath can lift a weak look-alike over 60 once the target is gone.
  */
-export function countIndistinguishable(doc: Document, fp: ElementFingerprint, opts: MatchOptions = {}): number {
-  const present = presentSignals(fp).filter((k) => !POSITIONAL.has(k));
-  const scored = scoreAll(doc, fp, opts);
-  return scored.filter((s) => present.every((k) => s.matched.includes(k))).length;
+export function recordTimeScan(doc: Document, fp: ElementFingerprint, target: Element, opts: MatchOptions = {}): { count: number; lookalikes: string[][] } {
+  const isVis = opts.isVisible ?? layoutVisible;
+  const base = opts.base ?? doc.URL;
+  const present = presentSignals(fp);
+  const core = present.filter((k) => !POSITIONAL.has(k));
+  const ctx = { profile: opts.profile, base, isVisible: isVis };
+  const all = gatherCandidates(doc, fp, { profile: opts.profile, base, isVisible: () => true }).map((el) => scoreCandidate(el, fp, ctx, present));
+  const shown = (s: Scored) => displayBox(s.element, isVis) !== null && isEnabled(s.element);
+  const count = all.filter((s) => shown(s) && core.every((k) => s.matched.includes(k))).length;
+  const sets = new Map<string, { keys: string[]; weight: number }>();
+  for (const s of all) {
+    if (s.element === target || !s.strongMatched) continue;
+    const keys = s.matched.filter((k) => !POSITIONAL.has(k)).sort();
+    // An exact twin (every core signal) would refuse the target itself. A visible twin is a
+    // repeated element (count, D5); a hidden one cannot be told apart by any signal.
+    if (core.every((k) => keys.includes(k))) continue;
+    sets.set(keys.join(','), { keys, weight: s.coreWeight });
+  }
+  const list = [...sets.values()];
+  const maximal = list.filter((a) => !list.some((b) => b !== a && b.keys.length > a.keys.length && a.keys.every((k) => b.keys.includes(k))));
+  maximal.sort((a, b) => b.weight - a.weight);
+  return { count, lookalikes: maximal.slice(0, MAX_LOOKALIKES).map((x) => x.keys) };
 }

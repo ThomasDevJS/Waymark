@@ -520,6 +520,18 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
   3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest.
 
+### D57. The privacy policy is not hosted on GitHub Pages; the store listing is a draft
+- **Spec**: Permissions, privacy and security ("A one-page privacy policy (free on GitHub Pages) is required for the store listing"); Distribution and cost.
+- **Finding**: the repository is private on the GitHub Free plan, which has no GitHub Pages for private repositories.
+- **Change**: the policy is `docs/PRIVACY.md`, written against what the code does today (storage keys, the three optional network requests, the permissions). It lists free hosts for the public URL the store needs: a separate public repo with Pages, a public Gist, Cloudflare Pages or Netlify, Google Sites, Codeberg Pages. `docs/STORE.md` drafts the Chrome Web Store listing: descriptions, single purpose, a justification per permission, remote-code and data-use answers, the screenshot list, and the steps for a private (domain or group) listing.
+- **Open items** before submitting:
+  - a contact address in the policy;
+  - a host for the policy;
+  - the screenshots and promo tile (design lane);
+  - **an icon:** the manifest has no `icons` yet, and the store requires a 128×128 one.
+  - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
+- **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
@@ -545,6 +557,13 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Finding**: Angular Material's select was recorded with `id="mat-select-10"` and its option with `mat-option-51`. These counters change between page loads, so on replay the id and the CSS path built from it both failed. A perfect role + name match then scored 45 of 80 points (56, under the 60 threshold), and the step was not found on an unchanged page.
 - **Change**: ids, test ids and classes of the form `<library>-[words-]<number>[-…]` are generated, for the prefixes `mat`, `mdc`, `cdk`, `headlessui`, `downshift`, `react-select`, `react-aria`, `rc`, `mui`, `chakra` and `reach` (`mat-select-10`, `cdk-overlay-3`, `headlessui-menu-button-3`, `downshift-0-input`, `rc-tabs-0-tab-1`). Other `word-number` ids (`edit-record-2`, `step-1`) and Material's typography classes (`mat-display-1`, `mat-headline-2`) are kept.
 
+### D64. A unique match must beat every look-alike seen at record time
+- **Spec**: Element targeting, playback step 4 (score ≥ 60, a strong signal, a 15-point lead); Data model (new optional `ElementFingerprint.lookalikes`).
+- **Finding** (an intermittent wrong match on ant.design): about 3 s after load the docs site remounts the page. For about 1.5 s the "Select date" field of the Basic demo is gone while the same field of another demo, far down the page, is there. That field matched role + name, placeholder and landmarks (69 points). With no runner-up it passed every rule, and the step was drawn on the wrong field. At record time five fields shared that name, and only the CSS path told the target apart.
+- **Change**: at record time, for every other element with a strong signal, the fingerprint stores the non-positional signals it matched. Only maximal sets are kept (at most 5, most weight first). At playback, a unique match whose non-positional matched signals are all in one of those sets is refused with reason `lookalike`, and the wait loop keeps looking. The real target, once there, matches more (here the CSS path) and is found.
+- **Independent review**: look-alikes are stored **whatever their score, visibility or enabled state**. A look-alike under 60 at record time can pass 60 at playback on position and XPath once the target is gone. A look-alike in a hidden tab or collapsed demo can be shown later. Both were wrong matches in the first version and have regression tests (`test/browser/lookalikes.test.ts`). An **exact twin** (an element matching every non-positional signal the target has) is not stored, because it would refuse the target itself. MUI's docs keep a second, hidden alert dialog with the same title mounted, and its "Agree" made the real one unfindable. A visible twin is a repeated element (D5); a hidden one cannot be told apart by any signal. Record time scores the page once for both `matchCount` and the look-alikes.
+- **Cost and limits**: when the target loses everything that told it apart from its look-alikes (here a rehashed CSS path), it is not-found instead of found: the case where the matcher cannot tell it from a look-alike anyway. Look-alikes that are not in the DOM at record time (lazy or virtualised content) cannot be known, so the rule narrows the risk but does not close it. Fingerprints recorded without look-alikes (before D64) behave as before. Robustness set A: 519/520 found, 0 wrong. The one miss is the new fixture pair `date-basic` / `date-other` under `wrap` (ambiguous), which reproduces the Ant case.
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 
@@ -558,6 +577,18 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - control borders (WCAG 1.4.11, ≥3:1): 3.8 / 3.5 on surface, 3.4 / 3.2 on surface-2.
 - **Colour scheme on the page**: the overlay follows the browser's `prefers-color-scheme`, not the host page's colours. Every on-page surface (tooltip, cards, pill, launcher) is opaque with its own text colour, so it reads the same on a light or dark page; the screenshot harness shoots a dark browser on a light page as well.
 - **Screenshots**: `pnpm screens` (`test/screens/screens.spec.ts`, its own Playwright config, not in CI) records a guide on the demo app and shoots every panel, settings and on-page state, light and dark, plus 640×450 (200% zoom of 1280×900) and 375×667. The panel learns the site only from a toolbar click (activeTab), which a test can't make, so for the "not allowed" shot only, the page's `tab.current` answer is rewritten in the test. Shots go to `artifacts/screens/` (git-ignored); `scripts/shots.py` copies chosen light/dark pairs as small 256-colour PNGs into `docs/screenshots/<pr>/`.
+
+### D91. Side panel and editor layout
+*5 Nov 2026 · SPEC: Side panel; User flows (Record, Edit); Discovery*
+
+- **Icons**: Lucide 1.59.0 (ISC; the Feather-derived icons are MIT), bundled. `src/ui/icons.ts` lists the icons used, so only those are built. They are drawn with DOM APIs (`svgIcon`) or Preact (`Icon`), never `innerHTML`, and are always `aria-hidden`; the control carries the label. Notices are in `THIRD_PARTY_NOTICES.md`.
+- **Panel**: a sticky header (Waymark, Settings icon button), then cards: site (origin, an Allowed / Not allowed badge, the `?` button switch, Remove access), playing guide (step n of N with a progress bar), new guide, guides. Without a site: an empty state that says what to do.
+- **Library**: rows with a two-line title, step count, a Team badge, then Copy link, Edit (Duplicate for team guides) as labelled icon buttons and a Start button. "For this page" and "All guides" / "Other guides" have counts. Empty states for "no guides yet" and "no match"; search and Export are hidden until there is a guide.
+- **Recorder**: a Recording / Paused badge, Stop in the card head (the primary action), then Pause, Undo, Add note. The newest step is highlighted. **Warnings are explained inline** under the step (shared text in `sidepanel/steps.tsx`, the same as `docs/TESTING.md` section 3): "Hard to find" (low-confidence), "Drawing area" (canvas), "Closed component" (closed-shadow). Text test changed: m2 checked "● Recording: Update profile"; it now checks the status badge and the title.
+- **Editor**: each step card has a number, a kind badge, Move up / down / Delete icon buttons (labelled "Move step 3 up"…), the rendered title, inline warnings, then Title, Note and Voice text (textareas grow with their text, `field-sizing: content`), "Moves on" and an Optional switch, and Test step, Re-pick, Note after. Re-picking highlights the card and shows how to cancel (Esc). Test step shows Found (with the matched clues as badges), "Found, but fragile" (warn) or Not found (danger). Save and Close stay in a sticky bar at the bottom. The "Saved (version n)." text is unchanged.
+- **Screen readers**: a new recorded step is announced as "Step 5: Check Send me a copy. Warning: Hard to find" from one hidden live region (`lastStepAnnouncement`), not by re-reading the whole list with its help text. Test step results update one live region that stays mounted. Matcher clue names are shown in plain words ("role and name", "page position"). The editor has an `h2`, a "Steps" `h3` and an `h4` per step. The import dialog takes focus when it opens.
+- **Test changes**: m2 checked "● Recording: Update profile"; it now checks the status badge and the title. m4 found the reorder buttons by the names "Move up" / "Move down"; they are now labelled "Move step 3 up", so the test uses the new `step-N-up` / `step-N-down` test ids.
+- **Export review** lists each string as a row with its kind and step above the value, and says the file name it will save.
 
 ## 2026-11-05 — Team library access and schedule (issues #21, #22)
 

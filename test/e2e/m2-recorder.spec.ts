@@ -22,7 +22,8 @@ test('10-action scenario yields exactly the expected steps, recorded from the si
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId('guide-title').fill('Update profile');
   await panel.getByTestId('record').click();
-  await expect(panel.getByText('● Recording: Update profile')).toBeVisible();
+  await expect(panel.getByTestId('rec-status')).toHaveText('Recording');
+  await expect(panel.getByLabel('Recorder')).toContainText('Update profile');
   await expect.poll(() => marker(app, 'recording')).toBe('on');
   expect(await (await ext.sw()).evaluate((id) => chrome.action.getBadgeText({ tabId: id }), tabId)).toBe('REC');
 
