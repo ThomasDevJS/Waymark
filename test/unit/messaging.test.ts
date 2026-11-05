@@ -23,10 +23,29 @@ describe('sender classification', () => {
 
 describe('allowlists', () => {
   it('content scripts may send only their allowlisted types', () => {
-    expect([...CONTENT_ALLOWED].sort()).toEqual(['deeplink.check', 'frame.claim', 'frame.nonce', 'frame.path', 'guide.forPage', 'launcher.start', 'pick.abort', 'pick.result', 'rec.step', 'route.report', 'run.advance', 'run.match', 'run.mute', 'run.problem', 'run.replay']);
+    expect([...CONTENT_ALLOWED].sort()).toEqual(['debug.copy', 'debug.log', 'deeplink.check', 'frame.claim', 'frame.nonce', 'frame.path', 'guide.forPage', 'launcher.start', 'pick.abort', 'pick.result', 'rec.step', 'route.report', 'run.advance', 'run.match', 'run.mute', 'run.problem', 'run.replay']);
     expect(parseMessage({ type: 'route.report', payload: { url: 'https://a/', via: 'load' } }, content, ID)).toMatchObject({ ok: true, kind: 'content' });
     expect(parseMessage({ type: 'site.list', payload: {} }, content, ID)).toEqual({ ok: false, error: 'site.list not allowed from content' });
     expect(parseMessage({ type: 'tab.current', payload: {} }, content, ID)).toMatchObject({ ok: false });
+  });
+  it('the debug log: content scripts append and copy their own; only extension pages switch, read or clear it (D110)', () => {
+    const entry = { t: 1, src: 'match', ev: 'found', d: { score: 82, matched: ['roleName'] } };
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [entry] } }, content, ID)).toMatchObject({ ok: true, kind: 'content' });
+    expect(parseMessage({ type: 'debug.copy', payload: {} }, content, ID)).toMatchObject({ ok: true });
+    for (const type of ['debug.get', 'debug.set', 'debug.text', 'debug.clear']) {
+      expect(parseMessage({ type, payload: type === 'debug.set' ? { on: true } : {} }, content, ID)).toMatchObject({ ok: false });
+      expect(parseMessage({ type, payload: type === 'debug.set' ? { on: true } : {} }, panel, ID)).toMatchObject({ ok: true, kind: 'extension' });
+    }
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [entry] } }, panel, ID)).toMatchObject({ ok: false });
+    // Capped: batch size, keys per entry, event names, string lengths; no run or recorder source.
+    expect(parseMessage({ type: 'debug.log', payload: { entries: Array(51).fill(entry) } }, content, ID)).toMatchObject({ ok: false });
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [] } }, content, ID)).toMatchObject({ ok: false });
+    const manyKeys = Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`k${i}`, 1]));
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [{ ...entry, d: manyKeys }] } }, content, ID)).toMatchObject({ ok: false });
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [{ ...entry, ev: 'Bad Event!' }] } }, content, ID)).toMatchObject({ ok: false });
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [{ ...entry, d: { why: 'x'.repeat(2001) } }] } }, content, ID)).toMatchObject({ ok: false });
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [{ ...entry, src: 'run' }] } }, content, ID)).toMatchObject({ ok: false });
+    expect(parseMessage({ type: 'debug.log', payload: { entries: [{ ...entry, d: { o: { nested: 1 } } }] } }, content, ID)).toMatchObject({ ok: false });
   });
   it('extension pages cannot send content-only reports', () => {
     expect(parseMessage({ type: 'frame.claim', payload: { nonce: 'x' } }, panel, ID)).toMatchObject({ ok: false });

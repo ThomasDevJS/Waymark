@@ -116,6 +116,13 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 
 ## 4. Report a problem
 
+**Debug log** (when something doesn't behave as you expect: a click recorded on the wrong thing, a step that doesn't move on, a step that isn't read aloud):
+1. Open **Settings** (the gear in the panel), go to **Problems** and turn on **Keep a debug log**.
+2. Do again what went wrong: record it, or play the guide up to the step that misbehaves.
+3. Back in **Settings → Problems**, press **Copy debug log** and paste it into the chat. (On a "can’t find this step" card, the copy button copies that page’s part.) Then turn the switch off and press **Clear**.
+
+The log has step titles, element types, scores and page paths, never what you typed, and it is deleted when the browser closes.
+
 - **A step that breaks:** on the "can't find this step" card, click **Report broken step**. Reports are listed in **Settings** under **Problems**; click **Copy as text** to get the text.
 - **Anything else:** note the following:
   - browser and version (from `chrome://version`);

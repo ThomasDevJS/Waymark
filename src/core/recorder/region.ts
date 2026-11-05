@@ -23,13 +23,19 @@ export interface Promoted {
  * The region must be one of a kind (not a card that shares its test id with its siblings), and
  * findable without its own text, which spans titles, counts and live data.
  */
-export function promoteToRegion(t: ResolvedTarget, fpOf: (el: Element) => ElementFingerprint): Promoted | null {
+export function promoteToRegion(t: ResolvedTarget, fpOf: (el: Element) => ElementFingerprint, why?: (reason: string) => void): Promoted | null {
+  // `why` explains a null for the debug log (D110); it never changes the result.
+  const no = (reason: string) => {
+    why?.(reason);
+    return null;
+  };
   if (!t.lowConfidence) return null;
-  const region = clickableRegion(t.element);
-  if (!region || hasInteractiveAncestor(region)) return null;
+  const region = clickableRegion(t.element, why);
+  if (!region) return null;
+  if (hasInteractiveAncestor(region)) return no('the region is inside a control');
   const fp = fpOf(region);
-  if (fp.instance === 'any' || fp.matchCount > 1) return null;
-  if (!hasStrongSignal({ ...fp, text: undefined })) return null;
+  if (fp.instance === 'any' || fp.matchCount > 1) return no(`the region repeats (instance ${fp.instance}, ${fp.matchCount} alike)`);
+  if (!hasStrongSignal({ ...fp, text: undefined })) return no('the region has nothing but its text to find it by');
   const name = ownText(t.element) ?? ownText(region);
   return { element: region, fp, ...(name ? { name } : {}) };
 }

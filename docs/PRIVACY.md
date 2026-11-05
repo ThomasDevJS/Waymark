@@ -5,7 +5,7 @@ _Last updated: 5 November 2026. Applies to Waymark 0.3.2 and later._
 Waymark is a browser extension that records click-by-click walkthroughs ("guides") of web apps and plays them back on the live page. It has no servers and no accounts. **Everything it records stays in your browser unless you export it yourself.**
 
 ## The short version
-- **No telemetry.** Waymark has no analytics, crash reporting, tracking or advertising, and it never phones home.
+- **No telemetry.** Waymark has no analytics, crash reporting, tracking or advertising, and it never phones home. The optional debug log stays in your browser until you copy it yourself.
 - **Your guides stay on your device**, in the browser's extension storage.
 - **Waymark never stores what you type** into a page, never takes screenshots, and keeps no page text beyond the short labels needed to find an element again (such as "Save" or "Invoice number").
 - **Only three things can make a network request**, and each one starts with something you choose to do:
@@ -24,6 +24,7 @@ Everything below is kept in the extension's own browser storage (`chrome.storage
 | **Problems list:** when you press **Report broken step**, the guide, the step, the page's site and path (without query or fragment) and the time | So you can copy a report and send it to the guide's author yourself | The last 200 reports |
 | **Completions:** the date and time you finished a guide | Kept for a future progress view; not shown or sent anywhere today | The last 50 per guide |
 | **Run and recording state:** which guide is playing and on which step, or the steps of a recording in progress | So a guide keeps going across pages and tabs | Cleared when the browser closes (`chrome.storage.session`) |
+| **Debug log** (only while you turn on **Keep a debug log** in Settings → Problems; off by default): what Waymark decided as you recorded and played, such as which kind of element a click picked, match scores, which clues matched, and why a step did or didn't move on or wasn't read aloud. It holds step and guide titles, element types and roles, and page addresses as the site and path only (no part after `?` or `#`, and numbers, ids and emails in the path replaced by `:id`). It never holds what you type, other page text, or your voice's name | So you can copy it and send it to whoever helps you with a problem. Waymark sends it nowhere | The newest 2,000 entries. Cleared when the browser closes (`chrome.storage.session`) or when you press **Clear**. Turning the switch off stops collecting at once |
 | **HD voice files** (only if you turn HD voice on): the voice model and an English word list, about 170 MB | To generate speech on your device | Until you press **Remove HD voice** or remove the extension |
 
 What Waymark keeps out of guides on purpose:

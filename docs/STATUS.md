@@ -24,6 +24,10 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Undo for deleted guides (a trash in `storage.local`, `src/core/storage/trash.ts`) and steps; one toast component (`sidepanel/Toast.tsx`). Completed badge, Restart and Start from step N (`run.start` `stepIndex`). Tag chips and the editor's Tags field (`src/core/discovery/tags.ts`). Duplicate guide and step. E2E: `test/e2e/q1-library-editor.spec.ts`.
 - Text how-to export (`src/core/sharing/howto.ts`, a format choice in the export review). Shortcuts `toggle-recording` / `_execute_action` (`src/background/shortcuts.ts`; e2e presses real keys with `x11-keys.py Alt_L+r`). Tooltip Replay voice / Repeat step (`run.replay`). E2E: `test/e2e/q2-sharing-playback.spec.ts`.
 
+## Debug log (D110–D112)
+- Settings → Problems → **Keep a debug log** (off by default). Core ring buffer, redaction and text format: `src/core/debug/log.ts`. Service worker logger, handlers and the copy header: `src/background/debug.ts` (`dlog`, its own write queue, never `enqueue`). Content logger: `src/content/debug.ts`. Hooks: the recorder's `debug` option, `watchAdvance`'s `debug` option, `promoteToRegion`/`clickableRegion`'s `why`, the player controller, `runs.ts`, `recording.ts` (inside `mutate`) and `voice.ts` (`stopSpeech(why)`).
+- Tests: `test/unit/debug-log.test.ts`, `test/browser/debug-log.test.ts`, the debug-on case in `test/unit/recording-race.test.ts`, e2e `test/e2e/q3-debug-log.spec.ts`. Tester steps: `docs/TESTING.md` section 4.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

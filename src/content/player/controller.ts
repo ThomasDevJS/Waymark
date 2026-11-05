@@ -14,7 +14,28 @@ import { urlMatches } from '../../core/url/url';
 import { isOverlayPath, onOverlayReleased } from '../overlay/host';
 import { testMark, testSpot } from '../test-hooks';
 import { bestSpeechVoice } from '../../core/voice/voice';
+import { presentSignals } from '../../core/matcher/signals';
+import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
+
+/** Why the matcher gave up, in words, for the debug log (D110). */
+const NOT_FOUND_WHY: Record<string, string> = {
+  'no-candidates': 'no visible, enabled element shares any signal',
+  'no-strong-signal': 'the best candidate matched no strong signal',
+  'below-threshold': 'the best score is below 60',
+  ambiguous: 'two candidates are too close (under 15 points apart, or only position differs)',
+  lookalike: 'the best candidate matched nothing a look-alike seen at record time lacked (D64)',
+};
+
+/** Writes text to the clipboard from a click in the page; false when the page does not allow it. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** After any action, wait 300 ms before searching for the next target (SPEC: Advancing). */
 export const AFTER_ACTION_MS = 300;
@@ -104,8 +125,20 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       const v = view;
       if (!v?.step || v.status !== 'running') return;
       testMark('repeat', String(Number(document.documentElement.getAttribute('data-waymark-test-repeat') ?? 0) + 1));
+      dlog('play', 'repeat', { step: v.stepIndex + 1 });
       startSearch(v);
       send('run.replay', { stepId: v.step.id }).catch(() => undefined);
+    },
+    // Not-found card, only while the debug log is on (D111): this tab's entries since the guide
+    // started, on this site. The page may not allow the clipboard; Settings has the full log.
+    debugOn,
+    copyLog: async () => {
+      await flushDebug();
+      const r = await send('debug.copy', {}).catch(() => ({ text: null }));
+      const ok = !!r.text && (await copyText(r.text));
+      testMark('debug-copy', r.text ? (ok ? 'copied' : 'blocked') : 'none');
+      if (__WAYMARK_TEST__ && r.text) testMark('debug-copy-text', r.text);
+      ui.flash(ok ? 'Debug log copied. Paste it into the chat.' : 'Couldn’t copy here. Use Settings → Problems → Copy debug log.', ok ? 'success' : 'warn');
     },
   });
 
@@ -175,28 +208,51 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     if (isTop) {
       later(() => {
         if (view?.stepToken === v.stepToken && !view.winner && !onStartPageUrl(view)) {
+          dlog('play', 'card.off-track', () => ({ step: v.stepIndex + 1, why: `not found for ${OFF_TRACK_MS / 1000} s and the page is not the step’s page`, expected: v.step?.url.value ?? null }));
           ui.showCard('off-track', view);
           testMark('player', `off-track:${v.stepIndex}`);
         }
       }, OFF_TRACK_MS);
     }
+    const started = Date.now();
+    const fp = step.target;
+    dlog('match', 'search', () => ({
+      step: v.stepIndex + 1,
+      kind: step.kind,
+      signals: presentSignals(fp),
+      instance: fp.instance,
+      frame: deps.framePath().length ? 'iframe' : 'top',
+      pathMatches: JSON.stringify(deps.framePath()) === JSON.stringify(fp.framePath),
+    }));
     void waitForMatch(document, step.target, { signal: ac.signal }).then((r) => {
       if (ac.signal.aborted || view?.stepToken !== v.stepToken) return;
+      dlog('match', r.status, () =>
+        r.status === 'found'
+          ? { step: v.stepIndex + 1, score: r.score, margin: r.margin, matched: r.matched, via: r.via, tied: r.tied.length, tag: r.element.tagName.toLowerCase(), ms: Date.now() - started }
+          : { step: v.stepIndex + 1, reason: r.reason, why: NOT_FOUND_WHY[r.reason] ?? r.reason, best: r.bestScore, runnerUp: r.runnerUpScore, margin: r.bestScore - r.runnerUpScore, matched: r.matched, ms: Date.now() - started },
+      );
       result = r;
       searchDone = true;
       report(v, r);
-      render();
+      render(true);
     });
   }
 
-  /** Draws or hides this frame's part of the current step, given the latest view. */
-  function render() {
+  /**
+   * Draws or hides this frame's part of the current step, given the latest view. `afterSearch`:
+   * called right after this frame's own report (only for the debug log, which then does not call
+   * the usual second report a re-send).
+   */
+  function render(afterSearch = false) {
     const v = view;
     if (!v?.step || !v.stepToken) return;
     // The service worker has no winner but this frame finished its search: its report may have
     // been dropped (the board is cleared when a new page loads, possibly after the report
     // arrived). Send it again; the board only broadcasts on a change, so this cannot loop (D45).
-    if (!v.winner && searchDone && result && v.step.target) report(v, result);
+    if (!v.winner && searchDone && result && v.step.target) {
+      if (!afterSearch) dlog('frame', 'report.again', { step: v.stepIndex + 1, why: 'a view without a winner after this frame searched: its report may have been dropped (D45)' });
+      report(v, result);
+    }
     const mine = v.winner === deps.frameToken && result?.status === 'found';
     if (mine && drawnFor !== v.stepToken && result?.status === 'found') {
       const r = result;
@@ -215,7 +271,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       stopAdvance?.();
       // A click on the spotlighted box (e.g. the label of a hidden checkbox) also counts.
       const targets = r.tied.includes(target) ? r.tied : [...r.tied, target];
-      stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done') });
+      stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done'), ...(debugOn() ? { debug: (ev: string, d: () => Record<string, unknown>) => dlog('play', ev, d) } : {}) });
+      dlog('play', 'draw', () => ({ step: v.stepIndex + 1, why: 'this frame won', spotlight: target === r.element ? 'element' : 'its label or box' }));
       testSpot(target, v.stepIndex);
       testMark('player', `drawn:${v.stepIndex}`);
       testMark('draws', String(Number(document.documentElement.getAttribute('data-waymark-test-draws') ?? 0) + 1));
@@ -223,10 +280,12 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     }
     // Another frame found the target: the top frame's off-track or not-found card goes away.
     if (!mine && v.winner && (ui.card === 'off-track' || ui.card === 'not-found')) {
+      dlog('play', 'card.cleared', { step: v.stepIndex + 1, why: 'another frame found the element' });
       ui.clear();
       testMark('player', `elsewhere:${v.stepIndex}`);
     }
     if (!mine && drawnFor === v.stepToken && v.step.target) {
+      dlog('play', 'undraw', { step: v.stepIndex + 1, why: 'another frame won' });
       ui.clear();
       stopAdvance?.();
       stopAdvance = null;
@@ -235,6 +294,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     }
     // The top frame shows "not found" when its own search gave up and no frame found the target.
     if (isTop && searchDone && result?.status === 'not-found' && !v.winner && onStartPageUrl(v)) {
+      if (ui.card !== 'not-found') dlog('play', 'card.not-found', { step: v.stepIndex + 1, why: 'the top frame gave up and no frame found it' });
       ui.showCard('not-found', v);
       testMark('player', `not-found:${v.stepIndex}`);
     }
@@ -261,6 +321,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       return;
     }
     if (next.stepToken !== stepToken) {
+      dlog('play', 'step.view', () => ({ step: next.stepIndex + 1, of: next.total, kind: next.step?.kind ?? null, cause: next.cause, waitMs: next.cause === 'action' ? AFTER_ACTION_MS : 0 }));
       clearStep();
       stepToken = next.stepToken;
       const v = next;

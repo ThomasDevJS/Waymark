@@ -9,6 +9,7 @@ Waymark is a Manifest V3 extension with no backend. It records click-by-click gu
 | **Guides** (titles, notes, voice text, element fingerprints, URLs) | `chrome.storage.local`, one key per guide plus an index; packs on disk; a library URL | They reveal the target app's screens and labels, and they drive what the player highlights and what the voice says. A tampered guide can mislead a learner ("click Delete account"). |
 | **Settings** (granted sites, library URL, per-site launcher, voice choice, Problems list, pending Allow) | `chrome.storage.local` | The library URL and granted sites show which internal apps a user works in. Settings decide which origins get the content script. |
 | **Run and recording state** (guide snapshot, step index, frame map, nonces) | `chrome.storage.session` | A forged state could add steps to a recording or move a run. |
+| **Debug log** (only while the Settings switch is on; D110–D112) | `chrome.storage.session`, 2,000 entries | It describes what the user did on their sites (pages visited, step titles, clicks near targets). It must hold no typed values, no queries or fragments, and no page text beyond the guide's own. |
 | **The user's page data** (typed values, record ids in URLs, names and amounts on screen) | the target page only | Must never be stored, exported, logged or sent anywhere. Only element labels and short own text are kept, after the data-like filter. |
 | **Site access** (optional host permissions and the registered content script) | the browser | Each grant lets the content script read that site. A wrong grant or a stale registration widens access. |
 
@@ -51,6 +52,7 @@ Out of scope: a compromised browser or OS, a malicious extension with `debugger`
 - Content scripts receive only ids and titles of guides for their own origin, and the current step of a run on their tab.
 - Typed values are never stored; the data-like filter is applied to every label-like string that is stored (accessible name, own text, placeholder, option label, link path, URL segment, page title).
 - Nothing about the user's pages goes to logs (`console.*`) in production builds.
+- The debug log (D110–D112) is collected only while its switch is on. Content scripts append through `debug.log` only (Zod-checked, own tab and frame from the sender, 50 entries per message, 100 per tab per second, values capped and redacted again by the service worker). `debug.copy` gives a content script only its own tab's entries since its run started, about its own site or the run, with no settings, and only when that run's guide includes the sender's origin.
 
 ## Audit (4 Nov 2026)
 
