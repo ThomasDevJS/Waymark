@@ -1,6 +1,6 @@
 # Waymark status and handoff
 
-As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D49 and D51 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D49: guide index for the panel and badges, `pnpm bench`; D51: HD voice), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
+As of 5 Nov 2026 the version is 0.3.1, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D49 and D51 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D49: guide index for the panel and badges, `pnpm bench`; D51: HD voice), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
 
 ## What works today
 | Area | State | Main code |

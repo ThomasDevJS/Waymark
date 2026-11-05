@@ -114,3 +114,11 @@ describe('one Allow click (D48)', () => {
     expect(originsToAllow(['https://a.test', 'https://b.test'], new Set(['https://b.test']))).toEqual(['https://a.test']);
   });
 });
+
+describe('pack import choices (D53)', () => {
+  it('sends only the conflicts the user changed; the rest default to keep', async () => {
+    const { changedChoices } = await import('../../src/entrypoints/sidepanel/Library');
+    const all = Object.fromEntries(Array.from({ length: 20_000 }, (_, i) => [`g${i}`, i === 7 ? 'replace' : 'keep'] as const));
+    expect(changedChoices(all)).toEqual({ g7: 'replace' });
+  });
+});

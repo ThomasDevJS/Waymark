@@ -438,6 +438,30 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - **Content script size.** `VoiceSettingsSchema` moved from `core/voice/voice.ts` to `core/voice/settings.ts`. The content script imports `bestSpeechVoice` from voice.ts, which pulled Zod into every frame. Content script: 165,232 → 76,169 bytes (51.9 → 26.8 KB gzipped).
   - **No CDN in the bundle.** At build time, transformers.js's default CDN path for the WebAssembly is replaced with `/ort/`. A new guard (`scripts/check-no-cdn.mjs`, part of `pnpm check`) fails the build if any script names a code CDN. The unused `hd.prefetch` message is removed.
 
+## 2026-11-05 — CI speed
+
+### D52. CI: fast checks and two e2e shards in parallel; cached Playwright browser
+- **Spec**: Tech stack, testing; Distribution (CI artifact).
+- **Before**: one job, about 4.5 minutes on a good day: setup and install 15 s, checks and builds 30 s, browser install 18 s (6 minutes once, when apt was slow), unit and browser tests 20 s, e2e 3.5 minutes.
+- **Change**:
+  - The **check** job runs typecheck, lint, both builds, the manifest guard, the zip artifact, and the unit and browser tests.
+  - Two **e2e** jobs each build the test extension and run half of the suite (`--shard=N/2`), in parallel with the check job. A failing shard uploads its own `test-results-N`.
+  - The Playwright browser is cached per Playwright version (`.github/actions/playwright-browser`); on a cache hit only its system packages are installed. The pnpm store was already cached by `setup-node`.
+- **Test-level sharding**: `fullyParallel: true` with one worker, so tests still run one at a time in file order, locally and in CI. Each shard was run on its own locally: shard 1 had 17 tests in 83 s, shard 2 had 16 in 115 s, both green. So no test depends on one that runs before it in another shard.
+- **Review** (independent; nothing blocking):
+  - The cache key now covers both `@playwright/test` and `playwright` (Vitest), and a failed version lookup fails the step instead of writing an empty key.
+  - In CI, the e2e fixtures throw when there is no display, so a shard can never pass with every test skipped.
+  - `apt-get update` runs before the Xvfb install again.
+  - Moving the actions to their Node 24 majors is left for a separate change; it was already pending on main.
+- **Measured on GitHub** (first run, cold browser cache): 2 min 39 s, down from about 4.5 minutes. The check job took 1 min 20 s. Shard 1 took 2 min 30 s (tests 1 min 46 s) and shard 2 took 2 min 35 s (tests 2 min 1 s). The browser step took 20–25 s cold.
+
+## 2026-11-05 — Code health
+
+### D53. Records sent by extension pages have entry limits
+- **Spec**: Permissions, privacy and security ("validate everything"); deferred Low from the security audit (D48).
+- **Change**: Zod records have no size limit of their own, so `pack.import` choices are capped at 10,000 entries and `voice.settings.set` voices at 200. The side panel sends only the conflicts the user changed (a missing choice means keep), so even a re-import of more than 10,000 conflicting guides stays far below the cap. The voices map has one entry per language. Only extension pages can send these messages, so this is hygiene, not a fix for an exploitable bug.
+- **Version** 0.3.1.
+
 ### D90. A small design system: tokens, components, a screenshot harness
 *5 Nov 2026 · SPEC: Accessibility; UI sections (side panel, settings, overlay)*
 

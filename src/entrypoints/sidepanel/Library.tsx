@@ -45,6 +45,14 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
+/**
+ * Only the conflicts the user changed: a missing choice means "keep" (planImport), so the message
+ * stays small however many guides clash (D53).
+ */
+export function changedChoices(choices: Record<string, Choice>): Record<string, Choice> {
+  return Object.fromEntries(Object.entries(choices).filter(([, c]) => c !== 'keep'));
+}
+
 /** The sites one Allow click requests: every listed site the user left ticked. */
 export function originsToAllow(pendingOrigins: string[], untickedOrigins: Set<string>): string[] {
   return pendingOrigins.filter((o) => !untickedOrigins.has(o));
@@ -233,7 +241,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               data-testid="import-confirm"
               onClick={() =>
                 void attempt(async () => {
-                  const r = await send('pack.import', { text: imp.text, choices: imp.choices });
+                  const r = await send('pack.import', { text: imp.text, choices: changedChoices(imp.choices) });
                   importState.value = null;
                   message.value = `Imported ${r.imported} ${r.imported === 1 ? 'guide' : 'guides'}${r.skipped ? `, ${r.skipped} already up to date or kept` : ''}.`;
                   await load();
