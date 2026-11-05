@@ -99,6 +99,7 @@ jobs:
           retention-days: 14
       - run: pnpm test:unit
       - uses: ./.github/actions/playwright-browser
+        timeout-minutes: 6 # a stuck download fails here, not at the job's 15 minutes (D59)
       - name: Browser tests and robustness suite
         run: pnpm test:browser
 
@@ -122,8 +123,16 @@ jobs:
       - name: Test build
         run: pnpm build:test
       - uses: ./.github/actions/playwright-browser
+        timeout-minutes: 6 # a stuck download fails here, not at the job's 15 minutes (D59)
       - name: Install Xvfb and XTest (accepting the native permission dialog)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libxtst6
+        # Both are on the runner image; the mirror is only asked when one is missing (D59).
+        timeout-minutes: 4
+        run: |
+          if command -v xvfb-run >/dev/null && dpkg -s libxtst6 >/dev/null 2>&1; then
+            echo "xvfb and libxtst6 are installed."
+          else
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libxtst6
+          fi
       - name: End-to-end tests (headed under Xvfb), shard ${{ matrix.shard }} of 2
         run: xvfb-run -a pnpm exec playwright test --shard=${{ matrix.shard }}/2
       - if: failure()

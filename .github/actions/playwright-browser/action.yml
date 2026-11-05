@@ -20,6 +20,21 @@ runs:
     - if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: pnpm exec playwright install --with-deps chromium
+    # On a cache hit the browser is there; only its system libraries may be missing. The runner
+    # image already has them, and `install-deps` would also pull ~22 MB of optional fonts from the
+    # Ubuntu mirror, which twice took over 14 minutes and timed the job out (D59). So it runs only
+    # when a cached Chromium can't start (`--version` fails when a shared library is missing).
     - if: steps.cache.outputs.cache-hit == 'true'
       shell: bash
-      run: pnpm exec playwright install-deps chromium
+      run: |
+        bins=$(find ~/.cache/ms-playwright -type f \( -name chrome -o -name chrome-headless-shell -o -name headless_shell \) -perm -u+x)
+        test -n "$bins" || { echo "::error::No Chromium binary in the Playwright cache"; exit 1; }
+        ok=true
+        for b in $bins; do
+          if ! out=$(timeout 30 "$b" --version 2>&1); then ok=false; echo "$b can't start: $out"; fi
+        done
+        if $ok; then
+          echo "Chromium starts; skipping install-deps."
+        else
+          pnpm exec playwright install-deps chromium
+        fi
