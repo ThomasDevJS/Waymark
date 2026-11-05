@@ -50,6 +50,8 @@ function answer(type: string): unknown {
 
 async function setReduced(on: boolean): Promise<void> {
   await cdp().send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: on ? 'reduce' : 'no-preference' }] });
+  // The page hears the change (the media query's change event) at its next rendering step.
+  for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
 }
 
 beforeEach(async () => {
@@ -88,6 +90,21 @@ describe('tokens (D130)', () => {
     expect(css().getPropertyValue('--wm-move-md').trim()).toBe('0px');
     expect(css().getPropertyValue('--wm-press').trim()).toBe('1');
     expect(reducedMotion()).toBe(true);
+  });
+});
+
+describe('reducedMotion() (D133)', () => {
+  it('asks matchMedia once per window, not on every call (calls between DOM changes forced style and layout)', () => {
+    reducedMotion();
+    const real = window.matchMedia;
+    let calls = 0;
+    window.matchMedia = (q: string) => (calls++, real.call(window, q));
+    try {
+      for (let i = 0; i < 10; i++) reducedMotion();
+    } finally {
+      window.matchMedia = real;
+    }
+    expect(calls).toBe(0);
   });
 });
 

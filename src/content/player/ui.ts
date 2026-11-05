@@ -10,21 +10,45 @@ import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
 import { renderInline } from '../../core/text/markdown';
 import { composedParent } from '../../core/fingerprint/dom';
-import { claimOverlay, mountOverlayIn, overlayLayer, overlayRoot, releaseOverlay } from '../overlay/host';
+import { claimOverlay, eventPath, isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot, releaseOverlay } from '../overlay/host';
+import { DUR, EASE, reducedMotion } from '../../ui/motion';
+import { testMark } from '../test-hooks';
+
+/** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
+const motionCount = { glide: 0, ripple: 0 };
+function countMotion(kind: keyof typeof motionCount): void {
+  if (!__WAYMARK_TEST__) return;
+  motionCount[kind]++;
+  testMark('motion', `glide:${motionCount.glide},ripple:${motionCount.ripple}`);
+}
+
+/** The spotlight glides from the last step only if that step was on screen this recently (D133). */
+export const GLIDE_WINDOW_MS = 1500;
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 const CSS = `
 .spot { position: fixed; z-index: 0; border-radius: 8px; pointer-events: none; box-sizing: border-box;
   box-shadow: 0 0 0 9999px var(--wm-scrim); }
-.ring { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box;
+.ring { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box; transform-origin: 0 0;
   border: 2px solid var(--wm-ring); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 6px color-mix(in srgb, var(--wm-ring) 30%, transparent); }
-.tip { position: fixed; z-index: 2; top: 0; left: 0; width: max-content; max-width: min(360px, calc(100vw - 16px));
+.tip, .tip-out { position: fixed; z-index: 2; top: 0; left: 0; width: max-content; max-width: min(360px, calc(100vw - 16px));
   box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
   pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.45 var(--wm-font); text-align: left; }
 .tip-body { padding: 14px 16px 12px; max-height: var(--wm-tip-max, calc(100vh - 16px)); overflow: auto; overscroll-behavior: contain; border-radius: inherit; }
-.tip.centered { left: 50%; top: 24px; transform: translateX(-50%); }
-.tip.centered .tip-body { max-height: calc(100vh - 48px); }
+:is(.tip, .tip-out).centered { left: 50%; top: 24px; transform: translateX(-50%); }
+:is(.tip, .tip-out).centered .tip-body { max-height: calc(100vh - 48px); }
+/* The tooltip that just went: a copy fading up and away (D133). Inert, hidden from screen readers. */
+.tip-out { pointer-events: none; z-index: 1; }
+/* "Click registered": a ring that grows out of the target and fades (D133). */
+.ripple { position: fixed; z-index: 1; border-radius: 8px; pointer-events: none; box-sizing: border-box; border: 2px solid var(--wm-ring); opacity: 0; }
 .arrow[hidden] { display: none; }
-.tip *, .tip *::before, .tip *::after { box-sizing: border-box; }
+:is(.tip, .tip-out) *, :is(.tip, .tip-out) *::before, :is(.tip, .tip-out) *::after { box-sizing: border-box; }
 .arrow { position: absolute; width: 12px; height: 12px; background: var(--wm-surface); transform: rotate(45deg); pointer-events: none; }
 .arrow[data-side='top'] { border-left: 1px solid var(--wm-border); border-top: 1px solid var(--wm-border); }
 .arrow[data-side='bottom'] { border-right: 1px solid var(--wm-border); border-bottom: 1px solid var(--wm-border); }
@@ -33,7 +57,7 @@ const CSS = `
 .head { display: flex; align-items: center; gap: 8px; margin: -4px -8px 0 0; }
 .count { flex: 1; font-size: 12px; font-weight: 600; color: var(--wm-fg-muted); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .progress { height: 3px; border-radius: 999px; background: var(--wm-surface-2); margin: 6px 0 10px; overflow: hidden; }
-.progress > span { display: block; height: 100%; background: var(--wm-accent); border-radius: inherit; }
+.progress > span { display: block; height: 100%; background: var(--wm-accent); border-radius: inherit; transform-origin: left center; }
 .badge-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; margin: 2px 0 8px;
   background: var(--wm-accent-soft); color: var(--wm-accent-text); }
 .badge-icon svg { width: 20px; height: 20px; }
@@ -65,19 +89,37 @@ button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; 
 button svg { width: 16px; height: 16px; flex: none; }
 a { color: var(--wm-accent-text); }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Motion (D130, D133): transform and opacity only, all off under reduced motion (D93). */
 @media (prefers-reduced-motion: no-preference) {
-  .tip { animation: wm-tip-in 160ms var(--wm-ease); }
+  .tip { animation: wm-tip-in var(--wm-dur-base) var(--wm-ease-enter); }
   .tip.centered { animation-name: wm-card-in; }
+  .tip-out { animation: wm-tip-out var(--wm-dur-fast) var(--wm-ease-exit) forwards; }
   .ring { animation: wm-ring-in 220ms var(--wm-ease), wm-ring-pulse 1.6s ease-in-out 240ms 2; }
+  /* Gliding from the last step: it is already there, so no fade-in; the pulse waits for the glide. */
+  .ring.glide { animation: wm-ring-pulse 1.6s ease-in-out var(--wm-dur-slow) 2; }
   .spot { animation: wm-fade-in 200ms var(--wm-ease); }
+  .spot.still { animation: none; }
+  .ripple { animation: wm-ripple var(--wm-dur-slow) var(--wm-ease-exit); }
+  [data-card='done'] .badge-icon svg { animation: wm-pop var(--wm-dur-slow) var(--wm-ease-spring) backwards; }
+  [data-card='not-found'] .badge-icon { animation: wm-shake var(--wm-dur-slow) var(--wm-ease-standard); }
+  button { transition: background-color var(--wm-dur-fast) var(--wm-ease-standard), border-color var(--wm-dur-fast) var(--wm-ease-standard), transform var(--wm-dur-fast) var(--wm-ease-spring); }
+  button:active { transform: scale(var(--wm-press)); transition-duration: var(--wm-dur-press); }
+  button:focus-visible { animation: wm-focus-in var(--wm-dur-fast) var(--wm-ease-enter); }
 }
-@keyframes wm-tip-in { from { opacity: 0; translate: 0 4px; } }
+button:active { box-shadow: inset 0 1px 2px rgba(16, 24, 40, .18); }
+@keyframes wm-tip-in { from { opacity: 0; translate: 0 var(--wm-move-md); } }
+@keyframes wm-tip-out { to { opacity: 0; translate: 0 calc(-1 * var(--wm-move-md)); } }
 @keyframes wm-card-in { from { opacity: 0; translate: 0 -6px; } }
+@keyframes wm-ripple { from { opacity: .7; scale: 1; } to { opacity: 0; scale: 1.18; } }
+@keyframes wm-pop { from { opacity: 0; scale: .4; rotate: -20deg; } }
+@keyframes wm-shake { 25% { translate: -3px 0; } 50% { translate: 3px 0; } 75% { translate: -2px 0; } }
+@keyframes wm-focus-in { from { outline-offset: 5px; outline-color: transparent; } }
 @keyframes wm-fade-in { from { opacity: 0; } }
 @keyframes wm-ring-in { from { opacity: 0; } }
 @keyframes wm-ring-pulse { 50% { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .85), 0 0 0 10px color-mix(in srgb, var(--wm-ring) 18%, transparent); } }
 @media (forced-colors: active) {
-  .tip { border: 2px solid CanvasText; }
+  .tip, .tip-out { border: 2px solid CanvasText; }
+  .ripple { border-color: Highlight; }
   .ring { border-color: Highlight; }
   .spot { box-shadow: none; }
   button { border: 1px solid ButtonText; }
@@ -177,6 +219,21 @@ export class PlayerUI {
   /** A keyboard user pressed this tooltip button; it gets focus back when this step is redrawn. */
   private refocus: { action: string; stepToken: string | null } | null = null;
   private stopAuto: (() => void) | null = null;
+  /** Motion memory (D133): where the ring last was, and the progress bar's last value, per run. */
+  private lastHole: (Box & { run: string; token: string | null; at: number }) | null = null;
+  private lastProgress: { run: string; frac: number } | null = null;
+  private stopPress: (() => void) | null = null;
+  /** The learner closed the guide: the tooltip that goes now leaves with a rise (D133). */
+  private exiting = false;
+  private readonly exitGuide = () => {
+    this.exiting = true;
+    try {
+      this.h.exit();
+    } finally {
+      // The run may end later (a message round trip): the next clear() still counts as the exit.
+      setTimeout(() => (this.exiting = false), 1000);
+    }
+  };
 
   constructor(private readonly h: UiHandlers) {}
 
@@ -224,6 +281,7 @@ export class PlayerUI {
   /** Shows the tooltip for the current step, anchored to `target` with a spotlight, or centered when there is none. */
   showStep(view: RunView, target: Element | null, onLost?: () => void): void {
     this.clear();
+    this.dropLeaving();
     claimOverlay(this, () => this.clear());
     this.ensureStyle();
     // Inside an open modal dialog the tooltip must live in the dialog, or it would be inert.
@@ -275,12 +333,24 @@ export class PlayerUI {
 
     if (!target) {
       tip.classList.add('centered');
+      this.lastHole = null;
       return;
     }
     tip.append(arrowEl);
     this.spot = el('div', 'spot');
     this.ring = el('div', 'ring');
+    // Moving on from a step that was just on screen: the ring glides from there, and the dim
+    // stays (no fade-in flash). The hole itself is at the new target at once, so the target is
+    // never dimmed, and nothing waits for the glide (D133).
+    const run = `${view.guideId}|${view.runId}`;
+    const last = this.lastHole;
+    let glideFrom: Box | null = last && last.run === run && last.token !== view.stepToken && performance.now() - last.at < GLIDE_WINDOW_MS && !reducedMotion() ? last : null;
+    if (glideFrom) {
+      this.ring.classList.add('glide');
+      this.spot.classList.add('still');
+    }
     layer.append(this.spot, this.ring);
+    this.watchPress(target, step);
     const placement: Placement = step.placement && step.placement !== 'auto' ? step.placement : 'bottom';
     const update = () => {
       if (!target.isConnected) {
@@ -291,7 +361,12 @@ export class PlayerUI {
       const { hole } = spotlightPanels({ x: r.left, y: r.top, w: r.width, h: r.height }, window.innerWidth, window.innerHeight);
       const box = { left: `${hole.x}px`, top: `${hole.y}px`, width: `${hole.w}px`, height: `${hole.h}px` };
       if (this.spot) Object.assign(this.spot.style, box);
-      if (this.ring) Object.assign(this.ring.style, box);
+      if (this.ring) {
+        Object.assign(this.ring.style, box);
+        if (glideFrom) this.glide(this.ring, glideFrom, hole);
+        glideFrom = null; // only the first draw glides; later updates follow the target
+      }
+      this.lastHole = { ...hole, run, token: view.stepToken, at: performance.now() };
       void computePosition(target, tip, {
         strategy: 'fixed',
         placement,
@@ -321,6 +396,8 @@ export class PlayerUI {
   showCard(kind: Card, view: RunView): void {
     this.refocus = null; // a Repeat that ended on a card: nothing to give focus back to
     this.clear();
+    this.dropLeaving();
+    this.lastHole = null; // a card has no ring to glide from
     claimOverlay(this, () => this.clear());
     this.ensureStyle();
     mountOverlayIn(openModalDialog());
@@ -336,7 +413,7 @@ export class PlayerUI {
       icon.append(buildSvg(CircleCheck));
       title.textContent = 'Done!';
       note.textContent = `You finished “${view.guideTitle ?? 'this guide'}”.`;
-      buttons.append(el('span', 'spacer'), this.button('Close', 'close', this.h.exit, 'primary', undefined, true));
+      buttons.append(el('span', 'spacer'), this.button('Close', 'close', this.exitGuide, 'primary', undefined, true));
     } else if (kind === 'not-found') {
       icon.append(buildSvg(TriangleAlert));
       title.textContent = 'Waymark can’t find this step on the page.';
@@ -377,12 +454,80 @@ export class PlayerUI {
     releaseOverlay(this);
     this.stopAuto?.();
     this.stopAuto = null;
+    this.stopPress?.();
+    this.stopPress = null;
+    if (this.lastHole && this.ring) this.lastHole.at = performance.now(); // on screen until now
     this.spot?.remove();
     this.spot = null;
     this.ring?.remove();
     this.ring = null;
-    this.tip?.remove();
+    if (this.tip && this.exiting) this.leave(this.tip);
+    else this.tip?.remove();
+    this.exiting = false;
     this.tip = null;
+  }
+
+  /** A guide started again during an exit: the leaving copy goes now. */
+  private dropLeaving(): void {
+    for (const n of Array.from(overlayRoot().querySelectorAll('.tip-out'))) n.remove();
+  }
+
+  /** The ring slides and resizes from the last step's box to this one (transform only, D133). */
+  private glide(ring: HTMLElement, from: Box, to: Box): void {
+    if (typeof ring.animate !== 'function' || !to.w || !to.h) return;
+    const dx = from.x - to.x;
+    const dy = from.y - to.y;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(from.w - to.w) < 1 && Math.abs(from.h - to.h) < 1) return;
+    ring.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${from.w / to.w}, ${from.h / to.h})` }, { transform: 'none' }], { duration: DUR.slow, easing: EASE.standard });
+    countMotion('glide');
+  }
+
+  /**
+   * When the learner closes the guide, the tooltip fades up and away as an inert copy (D133).
+   * Only then: between steps the new tooltip replaces it at once, since a copy fading under it
+   * cost long tasks at 4× slower CPU and was barely visible. Nothing in the copy can be pressed,
+   * found by tests or read: no ids, actions, role or label.
+   */
+  private leave(tip: HTMLElement): void {
+    if (!tip.isConnected || reducedMotion() || typeof tip.getAnimations !== 'function') {
+      tip.remove();
+      return;
+    }
+    tip.classList.replace('tip', 'tip-out');
+    tip.inert = true;
+    tip.setAttribute('aria-hidden', 'true');
+    for (const a of ['role', 'aria-label', 'aria-describedby']) tip.removeAttribute(a);
+    for (const n of Array.from(tip.querySelectorAll('[id], [data-action], [data-testid]'))) {
+      n.removeAttribute('id');
+      n.removeAttribute('data-action');
+      n.removeAttribute('data-testid');
+    }
+    const done = () => tip.remove();
+    tip.addEventListener('animationend', done, { once: true });
+    setTimeout(done, DUR.fast + 80);
+  }
+
+  /**
+   * "Click registered" (D133): a press on the target of an action step draws a ring that grows
+   * out of the spotlight and fades. A passive listener on the target only, so the page sees the
+   * press exactly as before; presses that come from Waymark's own overlay are ignored.
+   */
+  private watchPress(target: Element, step: NonNullable<RunView['step']>): void {
+    if (step.advance !== 'action' || reducedMotion()) return;
+    const onDown = (e: Event) => {
+      if (isOverlayPath(eventPath(e)) || !this.ring) return;
+      const ripple = el('div', 'ripple');
+      ripple.setAttribute('aria-hidden', 'true');
+      for (const k of ['left', 'top', 'width', 'height'] as const) ripple.style[k] = this.ring.style[k];
+      overlayLayer().append(ripple);
+      countMotion('ripple');
+      // It outlives the step (the next one may be drawn at once); it removes itself.
+      const done = () => ripple.remove();
+      ripple.addEventListener('animationend', done, { once: true });
+      setTimeout(done, DUR.slow + 120);
+    };
+    target.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    this.stopPress = () => target.removeEventListener('pointerdown', onDown, { capture: true });
   }
 
   get drawn(): boolean {
@@ -403,7 +548,7 @@ export class PlayerUI {
     tip.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        this.h.exit();
+        this.exitGuide();
       }
     });
     const n = Math.min(view.stepIndex + 1, view.total);
@@ -413,7 +558,7 @@ export class PlayerUI {
     // the current state when pressed, so it works again before the step changes (D106).
     this.muted = view.muted;
     const mute = this.iconButton(view.muted ? VolumeX : Volume2, 'mute', 'Mute voice', () => this.h.mute(!this.muted));
-    const exit = this.iconButton(X, 'exit', 'Exit guide', this.h.exit);
+    const exit = this.iconButton(X, 'exit', 'Exit guide', this.exitGuide);
     const { replayVoice, repeat: repeatStep } = this.h;
     if (view.step && view.status === 'running' && replayVoice && repeatStep) {
       // Off while muted, but still focusable, so its label says why (aria-disabled, D94).
@@ -432,7 +577,15 @@ export class PlayerUI {
     const progress = el('div', 'progress');
     progress.setAttribute('aria-hidden', 'true');
     const bar = el('span');
-    bar.style.width = `${view.total ? (n / view.total) * 100 : 0}%`;
+    // The fill is a scaleX, eased from the last step's value in the same run (D133).
+    const frac = view.total ? n / view.total : 0;
+    bar.style.transform = `scaleX(${frac})`;
+    const run = `${view.guideId}|${view.runId}`;
+    const prev = this.lastProgress;
+    if (prev && prev.run === run && prev.frac !== frac && !reducedMotion() && typeof bar.animate === 'function') {
+      bar.animate([{ transform: `scaleX(${prev.frac})` }, { transform: `scaleX(${frac})` }], { duration: DUR.slow, easing: EASE.standard });
+    }
+    this.lastProgress = { run, frac };
     progress.append(bar);
     tip.append(head, progress);
     return tip;

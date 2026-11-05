@@ -18,6 +18,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - Keyboard shortcuts: Alt+R starts or stops recording in the current tab, Alt+W opens the side panel. Both can be changed at chrome://extensions/shortcuts (D105).
 - Replay voice and Repeat step buttons in the tooltip (D106).
 - Light motion and press feedback in the side panel, Settings and the Practice page: buttons squeeze when pressed, rows lift on hover, folds and toasts slide in, reordered steps glide, a check pops in after Saved and Copied, and the REC dot pulses softly. Everything is short (80–240 ms) and turns into plain fades when the system asks for reduced motion (D130, D131).
+- On the page, the spotlight ring glides from one step to the next (the dim no longer flashes between steps), the tooltip rises into place, its progress bar eases, a press on the highlighted element ripples, and the REC pill's dot pulses softly. None of it delays a step or covers the element; all of it is off with reduced motion (D133).
 
 ### Fixed
 - Move up / Move down in the editor no longer drop keyboard focus to the page (D131).
