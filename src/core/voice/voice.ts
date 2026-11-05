@@ -3,21 +3,9 @@
  * voices only by default: voices marked remote (such as Chrome's "Google …" voices) send the
  * text to a server, so they are used only when the user turns on Allow online voices.
  */
-import { z } from 'zod';
 import type { Step } from '../model/schema';
+import type { VoiceSettings } from './settings';
 import { toPlainText } from '../text/markdown';
-
-export const VoiceSettingsSchema = z.object({
-  autoPlay: z.boolean().default(true),
-  rate: z.number().min(0.5).max(2).default(1),
-  allowOnlineVoices: z.boolean().default(false),
-  muted: z.boolean().default(false),
-  /** Chosen voice per language (primary subtag, e.g. "en"). */
-  voices: z.record(z.string().max(35), z.string().max(200)).default({}),
-});
-export type VoiceSettings = z.infer<typeof VoiceSettingsSchema>;
-
-export const DEFAULT_VOICE_SETTINGS: VoiceSettings = VoiceSettingsSchema.parse({});
 
 /** What is read for a step: its stored voice text, or the title plus the note. */
 export function voiceTextFor(step: Step): string {

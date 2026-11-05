@@ -6,10 +6,10 @@ A guide to installing Waymark and trying everything once. It takes about 30 minu
 
 Get the build, either way:
 
-- **From chat:** the file `waymark-0.2.6-chrome.zip`.
-- **From GitHub:** open the repository, then **Actions**, then the latest green run on `waymark-v1`. Under **Artifacts**, download **waymark-extension**. That download is a zip that contains `waymark-0.2.6-chrome.zip`.
+- **From chat:** the file `waymark-0.3.3-chrome.zip`.
+- **From GitHub:** open the repository, then **Actions**, then the latest green run on `waymark-v1`. Under **Artifacts**, download **waymark-extension**. That download is a zip that contains `waymark-0.3.3-chrome.zip`.
 
-Unzip `waymark-0.2.6-chrome.zip` into a folder you will keep (for example `Documents/waymark`). The browser loads Waymark from that folder, so don't delete it.
+Unzip `waymark-0.3.3-chrome.zip` into a folder you will keep (for example `Documents/waymark`). The browser loads Waymark from that folder, so don't delete it.
 
 | Browser | Open this page |
 | --- | --- |
@@ -56,6 +56,9 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 ### D. Play the guide
 - [ ] First, open **Settings** in the panel. Under **Voice**, **In use** names the voice Waymark picked by itself (the best one on this device). Press **Test voice**. You should hear a sample sentence. If you hear nothing, there may be no voice installed for English; the guide still works, silently.
 - [ ] If the voice sounds robotic, open **Get better voices** and follow the steps for your system, then restart the browser. **In use** should now show the new voice; on macOS its name contains Premium or Enhanced. On Windows, the natural voices added for Narrator can't be used by browsers. In Edge, turning on **Allow online voices** switches to an “Online (Natural)” voice instead; that one sends the step text to Microsoft. Please tell us which voice **In use** shows on your machine.
+- [ ] **HD voice** (optional; downloads 170 MB). In **Settings**, press **Turn on HD voice**. The browser asks to access huggingface.co and raw.githubusercontent.com: allow it (Waymark gives this access back when the download ends). A bar shows the download, then "Checking how fast this device speaks…", then "On. English guides use the HD voice." Press **Test HD voice**: the sample should sound natural. If it says **too slow**, your computer can't generate speech fast enough; guides keep using the system voice. Please tell us which one you got.
+- [ ] With HD voice on, play an English guide. Each step should start speaking within a second or two (the first step can take a few seconds). If a step's HD audio isn't ready in 4 seconds, the system voice reads it instead.
+- [ ] Press **Remove HD voice** in Settings. It says "Off.", and guides use the system voice again.
 - [ ] Go back to the guide's first page and press **Start** in the panel. The page dims around the first element, with a tooltip reading "Step 1 of N". The step is read aloud.
 - [ ] Do each action. The guide moves on by itself. Note steps have a **Next** button.
 - [ ] Try **Back** in the tooltip, and the shortcuts `Alt+.` (next) and `Alt+,` (back).
@@ -99,7 +102,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - **A step that breaks:** on the "can't find this step" card, click **Report broken step**. Reports are listed in **Settings** under **Problems**; click **Copy** to get the text.
 - **Anything else:** note the following:
   - browser and version (from `chrome://version`);
-  - Waymark's version (on its card in the extensions page; this build is 0.2.6);
+  - Waymark's version (on its card in the extensions page; this build is 0.3.3);
   - the step from section 2 where it happened;
   - what you did, what you expected, and what happened instead;
   - a screenshot.

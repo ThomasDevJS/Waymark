@@ -3,6 +3,8 @@
  * no content_scripts and no host_permissions; the script is registered only for granted sites
  * and re-synced with chrome.permissions.getAll() on install, startup and permission changes.
  */
+import { HD_HOST_PATTERNS } from '../voice/hd';
+
 export const CONTENT_SCRIPT_ID = 'waymark-content';
 export const CONTENT_SCRIPT_FILE = 'waymark-content.js';
 
@@ -19,7 +21,9 @@ export interface RegistrationApi {
 
 /** Granted http(s) site patterns, sorted and de-duplicated. */
 export function grantedSitePatterns(origins: string[]): string[] {
-  return [...new Set(origins.filter((o) => /^(https?|\*):\/\//.test(o)))].sort();
+  // HD voice download hosts are held only while the model downloads; they are not guide sites (D51).
+  const reserved = new Set<string>(HD_HOST_PATTERNS);
+  return [...new Set(origins.filter((o) => /^(https?|\*):\/\//.test(o) && !reserved.has(o)))].sort();
 }
 
 export function desiredRegistration(matches: string[]): chrome.scripting.RegisteredContentScript {
