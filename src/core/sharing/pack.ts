@@ -46,6 +46,9 @@ export function makePack(guides: Guide[], now = new Date()): GuidePack {
 
 export type Choice = 'keep' | 'replace' | 'both';
 
+/** What the import rules need from a stored guide: an index entry is enough (D49). */
+export type GuideRef = Pick<Guide, 'id' | 'revisionId' | 'title' | 'source' | 'forkedFrom'>;
+
 export interface Conflict {
   id: string;
   title: string;
@@ -53,7 +56,7 @@ export interface Conflict {
 }
 
 /** Guides in a pack that clash with local guides: same id, different revisionId. */
-export function findConflicts(existing: Guide[], pack: GuidePack): Conflict[] {
+export function findConflicts(existing: GuideRef[], pack: GuidePack): Conflict[] {
   const byId = new Map(existing.map((g) => [g.id, g]));
   return pack.guides
     .filter((g) => {
@@ -77,7 +80,7 @@ export interface ImportPlan {
  *   with forkedFrom set);
  * - imported guides become local guides; library refreshes replace the library set.
  */
-export function planImport(existing: Guide[], pack: GuidePack, choices: Record<string, Choice>, as: 'local' | 'library' = 'local'): ImportPlan {
+export function planImport(existing: GuideRef[], pack: GuidePack, choices: Record<string, Choice>, as: 'local' | 'library' = 'local'): ImportPlan {
   const byId = new Map(existing.map((g) => [g.id, g]));
   const write: Guide[] = [];
   let skipped = 0;

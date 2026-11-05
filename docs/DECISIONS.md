@@ -356,6 +356,30 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - Entry caps on records that only extension pages can send.
 - Version 0.2.3.
 
+## 2026-11-04 — Performance and code health
+
+### D49. The side panel, badges and imports work from the guide index
+- **Spec**: Data model, "Storage" (one key per guide plus an index); Discovery (badge, side panel search); Sharing (import rules).
+- **Measured** with `pnpm bench` (new: `test/perf/`, 500 guides of 50 steps, about 22 MB of guides; in-memory storage that copies like `chrome.storage`; not part of `pnpm check`, because timings on shared runners are noisy):
+
+  | Path | Before | After |
+  | --- | --- | --- |
+  | Side panel load (`guide.all` → `guide.list`) | 535 ms and a 22 MB message | 3 ms, 1.3 MB |
+  | Badges for 30 tabs after a change | 96 ms | 22 ms |
+  | Pack check / import / library refresh vs. stored guides | read and validate all 22 MB | index only |
+  | "For this page", one badge, `guide.forPage` | 1 to 3 ms | 1 to 4 ms |
+
+- **Change**:
+  - Each index entry also keeps the revision id, `forkedFrom`, the start URL, and for search the description (first 1,000 characters), up to 20 tags, and the step titles as plain text (80 characters per step, 20,000 per guide, so a 200-step guide stays searchable to its last step). The side panel lists, searches and matches pages from the index. An editor save with 500 guides takes about 8 ms (index included).
+  - The panel fetches full guides only for export, with the new `guide.many` (ids → validated guides; up to 1,000). `guide.all` is removed.
+  - The import rules (`findConflicts`, `planImport`) take index entries.
+  - A badge pass reads the index once (not once per tab) and the recording state once, just before writing, so REC still wins. A failed pass never fails the write that triggered it.
+  - An index written by an older version (no `revisionId`) is rebuilt from the stored guides on its first read, so a missed install-time rebuild can't produce false import conflicts or duplicate forks.
+  - Export fetches the selected guides in library order. Copy link on a guide without a usable start URL says so instead of failing silently.
+- **Review** (independent, no High or Medium findings): the six Lows are fixed as above, each with a unit test (`index-reads.test.ts`: reads, rebuild, caps, badge counts and REC).
+- **Errors**: a request that fails schema validation now answers with one sentence ("Waymark could not use this data (steps.3.title is not valid)."), not Zod's JSON issue list. When the service worker gives no reply, the panel says "Waymark did not answer". Dead code removed: `saveGuide`.
+- **Bundle** (production build, minified; gzip in brackets): content script 165 KB (52 KB), service worker 141 KB (41 KB), shared panel chunk 118 KB (36 KB), side panel 45 KB (14 KB). Zod reaches the content script only through `core/voice/voice.ts` (`VoiceSettingsSchema` is defined at the top level next to `bestSpeechVoice`). That file belongs to the voice work, so moving the schema is left to it.
+
 ### D50. Flake hunt: one e2e race under CPU load
 - **Spec**: Tech stack, testing.
 - **Method**: on main at 0.2.3 (local), 5 full e2e runs, 3 unit and 3 browser runs on an idle machine. Then the full e2e suite with all but one core busy, to imitate a slow CI runner (the races in D45 and M4 only showed on CI).

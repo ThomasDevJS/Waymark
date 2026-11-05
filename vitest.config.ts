@@ -18,6 +18,15 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          // Performance harness: `pnpm bench` only (timings on shared runners are noisy).
+          name: 'perf',
+          environment: 'node',
+          include: ['test/perf/**/*.perf.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: 'browser',
           include: ['test/browser/**/*.test.ts'],
           testTimeout: 30_000,
