@@ -9,6 +9,7 @@ import type { Step } from '../core/model/schema';
 import {
   addOrigin,
   applyOp,
+  eventTime,
   isRecordingTab,
   navigationStep,
   noteStep,
@@ -32,12 +33,15 @@ async function setRecording(state: RecordingState | null): Promise<void> {
   else await chrome.storage.session.remove(KEY);
 }
 
-/** Read-modify-write of the recording, serialized through the write queue. */
-function mutate<T>(fn: (state: RecordingState | null) => Promise<T> | T): Promise<T> {
+/**
+ * Read-modify-write of the recording, serialized through the write queue. With `writeIf`, the
+ * state is written back only when the result says something changed (refused steps cost no write).
+ */
+function mutate<T>(fn: (state: RecordingState | null) => Promise<T> | T, writeIf?: (out: T) => boolean): Promise<T> {
   return enqueue(async () => {
     const state = await getRecording();
     const out = await fn(state);
-    await setRecording(state);
+    if (!writeIf || writeIf(out)) await setRecording(state);
     return out;
   });
 }
@@ -176,19 +180,23 @@ export const recordingHandlers: Handlers = {
   'rec.step': async (op, ctx: HandlerContext) => {
     const tabId = ctx.tabId;
     const top = ctx.sender.tab?.url;
-    // A script left in a page whose site access was revoked must not keep recording.
-    if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return { ok: false };
     const clean = recorderStep(op.step);
     if (!clean) return { ok: false };
-    const result = await mutate((st) => {
+    // Queued at once, in arrival order, so a step is never overtaken by the route report it
+    // caused or by a Stop sent after it; the site check runs inside the queue (D67).
+    const result = await mutate(async (st) => {
+      // A script left in a page whose site access was revoked must not keep recording.
+      if (!ctx.sender.origin || !(await siteGranted(ctx.sender.origin))) return false;
       // Content scripts may send rec.step only while their tab is recording (SPEC: Security).
       if (!st || !isRecordingTab(st, tabId) || st.status !== 'recording') return false;
       const step = clean;
       // Steps belong to the page: a step recorded in a frame gets the top page's URL rule.
       if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top);
       if (top) addOrigin(st, new URL(top).origin);
-      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step });
-    });
+      // The action's own time, not when this message got here: a route report it caused may
+      // have been handled first (D67).
+      return applyOp(st, op.op === 'add' ? { op: 'add', step } : { op: 'replace', stepId: op.stepId, step }, eventTime(op.at), tabId);
+    }, (ok) => ok);
     if (result) {
       const st = await getRecording();
       await broadcast(st, st?.tabIds ?? []);
@@ -199,7 +207,7 @@ export const recordingHandlers: Handlers = {
 
 /** Route reports from a recording tab's top frame can become navigate steps. */
 export async function onRouteReport(
-  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined; timeOrigin?: number | undefined },
+  payload: { url: string; via: string; navigationType?: string | undefined; title?: string | undefined; timeOrigin?: number | undefined; at?: number | undefined },
   ctx: HandlerContext,
 ): Promise<ReturnType<typeof viewOf>> {
   const tabId = ctx.tabId;
@@ -208,7 +216,7 @@ export async function onRouteReport(
     if (!st || !isRecordingTab(st, tabId) || ctx.frameId !== 0) return st;
     const key = String(tabId);
     if (payload.via === 'leaving') {
-      st.leavingAt = { ...(st.leavingAt ?? {}), [key]: Date.now() };
+      st.leavingAt = { ...(st.leavingAt ?? {}), [key]: eventTime(payload.at) };
       return st;
     }
     const prevUrl = st.lastUrl[key];
@@ -216,17 +224,21 @@ export async function onRouteReport(
     // (which survives even when the "leaving" report was lost).
     const marks = [st.leavingAt?.[key], payload.timeOrigin].filter((x): x is number => typeof x === 'number');
     const leavingAt = payload.via === 'load' && marks.length ? Math.min(...marks) : undefined;
+    const at = eventTime(payload.at);
     const step = navigationStep(st, {
       url: payload.url,
       prevUrl,
       navigationType: payload.navigationType,
       title: payload.title,
+      now: at,
       ...(leavingAt !== undefined ? { leavingAt } : {}),
     });
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
     st.lastUrl[key] = urlKey(payload.url);
     if (step) {
       st.steps.push(step);
+      // A click reported after this, but done just before the navigation, takes it back (D67).
+      st.pendingNav = [...(st.pendingNav ?? []), { stepId: step.id, at: leavingAt ?? at, tabId }].slice(-5);
       changed = true;
     }
     return st;
