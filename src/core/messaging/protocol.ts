@@ -9,7 +9,8 @@ import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
-import type { VoiceSettings } from '../voice/voice';
+import type { VoiceSettings } from '../voice/settings';
+import { HD_HOST_PATTERNS, HdStatusSchema, type HdStatus } from '../voice/hd';
 import type { TestResult } from '../../background/editor';
 import type { StartResult } from '../../background/runs';
 import type { LibraryState } from '../../background/discovery';
@@ -66,6 +67,13 @@ export const RequestSchemas = {
       })
       .partial(),
   }),
+  // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
+  'hd.status': z.object({}),
+  'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
+  'hd.remove': z.object({}),
+  'hd.test': z.object({}),
+  // From the offscreen document only (checked by URL in the handler).
+  'hd.report': z.object({ status: HdStatusSchema.optional(), played: z.string().max(5000).optional() }),
   // ---- content scripts ----
   'route.report': z.object({
     url,
@@ -136,6 +144,11 @@ export interface ResponseMap {
   'voice.test': { ok: boolean };
   'voice.settings.get': VoiceSettings;
   'voice.settings.set': VoiceSettings;
+  'hd.status': HdStatus;
+  'hd.enable': HdStatus;
+  'hd.remove': HdStatus;
+  'hd.test': { ok: boolean };
+  'hd.report': { ok: true };
   'run.mute': { ok: boolean };
   'guide.get': Guide;
   'guide.save': Guide;
@@ -236,6 +249,11 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'voice.test',
   'voice.settings.get',
   'voice.settings.set',
+  'hd.status',
+  'hd.enable',
+  'hd.remove',
+  'hd.test',
+  'hd.report',
 ]);
 
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */

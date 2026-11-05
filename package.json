@@ -2,7 +2,7 @@
   "name": "waymark",
   "description": "Record click-by-click walkthroughs of web apps and replay them on the live page.",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.3.0",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "scripts": {
@@ -18,7 +18,7 @@
     "test:browser": "vitest run --project browser",
     "bench": "vitest run --project perf",
     "test:e2e": "pnpm build:test && playwright test",
-    "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json",
+    "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json && node scripts/check-no-cdn.mjs .output/chrome-mv3 && node scripts/check-no-cdn.mjs .output-test/chrome-mv3-test",
     "fixture": "node test/fixtures/server.mjs",
     "test:e2e:xvfb": "pnpm build:test && xvfb-run -a playwright test",
     "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm build:test && pnpm check:manifest && pnpm test",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",
+    "@huggingface/transformers": "3.8.1",
     "@preact/signals": "^2.11.4",
     "minisearch": "7.2.0",
     "preact": "^10.29.8",
