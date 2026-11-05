@@ -9,7 +9,7 @@ import type { Server } from 'node:http';
 import { startFixtureServer } from '../fixtures/server.mjs';
 
 export const EXT_PATH = join(process.cwd(), '.output-test', 'chrome-mv3-test');
-const KEYS_SCRIPT = join(process.cwd(), 'test', 'e2e', 'helpers', 'x11-keys.py');
+export const KEYS_SCRIPT = join(process.cwd(), 'test', 'e2e', 'helpers', 'x11-keys.py');
 
 /** Chrome's permission prompt is a native dialog; it can only be accepted in a headed browser under X. */
 export const canGrant = process.platform === 'linux' && !!process.env.DISPLAY;

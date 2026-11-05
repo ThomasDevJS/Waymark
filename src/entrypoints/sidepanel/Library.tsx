@@ -7,13 +7,15 @@ import { signal } from '@preact/signals';
 import { useEffect, useMemo } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { Guide } from '../../core/model/schema';
+import type { GuideIndexEntry } from '../../core/storage/guides';
 import { guideMatchesUrl } from '../../core/discovery/match';
 import { buildSearch, searchGuides } from '../../core/discovery/search';
 import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 
-const all = signal<Guide[]>([]);
+/** The guide index (D49): the list, search and "For this page" never need full guides. */
+const all = signal<GuideIndexEntry[]>([]);
 const query = signal('');
 const selected = signal<Set<string>>(new Set());
 const exporting = signal<Guide[] | null>(null);
@@ -26,7 +28,7 @@ const error = signal<string | null>(null);
 
 async function load() {
   try {
-    all.value = (await send('guide.all', {})).guides;
+    all.value = (await send('guide.list', {})).guides;
     pending.value = (await send('allow.pending', {})).origins;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -76,8 +78,13 @@ async function readFile(file: File) {
 }
 
 /** A link to the guide's start page that offers the guide (SPEC: Discovery, "Deep link"). */
-export function deepLinkFor(g: Guide): string {
-  const u = new URL(g.startUrl);
+export function deepLinkFor(g: Pick<Guide, 'id' | 'startUrl'>): string | null {
+  let u: URL;
+  try {
+    u = new URL(g.startUrl);
+  } catch {
+    return null;
+  }
   u.searchParams.set('waymark', g.id);
   return u.href;
 }
@@ -95,7 +102,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   const index = useMemo(() => buildSearch(all.value), [all.value]);
   const ids = searchGuides(index, all.value, query.value);
   const byId = new Map(all.value.map((g) => [g.id, g]));
-  const results = ids.map((id) => byId.get(id)).filter((g): g is Guide => !!g);
+  const results = ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g);
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
 
@@ -103,7 +110,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     return <ExportReview guides={exporting.value} onDone={() => (exporting.value = null)} />;
   }
 
-  const item = (g: Guide) => (
+  const item = (g: GuideIndexEntry) => (
     <li key={g.id} class="row" data-testid={`guide-${g.id}`}>
       <input
         type="checkbox"
@@ -119,7 +126,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
       <span class="grow">
         {g.title}{' '}
         <span class="muted">
-          · {g.steps.length} steps{g.source === 'library' ? ' · team library' : ''}
+          · {g.steps} steps{g.source === 'library' ? ' · team library' : ''}
         </span>
       </span>
       {g.source === 'library' ? (
@@ -137,6 +144,10 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
         title="Copy a link that offers this guide when opened"
         onClick={() => {
           const link = deepLinkFor(g);
+          if (!link) {
+            error.value = 'This guide has no start page to link to.';
+            return;
+          }
           void navigator.clipboard.writeText(link).then(
             () => (message.value = 'Link copied. Opening it offers to start the guide.'),
             () => (message.value = link),
@@ -262,7 +273,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           type="button"
           data-testid="export"
           disabled={selected.value.size === 0}
-          onClick={() => (exporting.value = all.value.filter((g) => selected.value.has(g.id)))}
+          onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
         >
           Export {selected.value.size ? `${selected.value.size} selected` : 'selected'}…
         </button>

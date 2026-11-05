@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { GuideSchema } from '../../src/core/model/schema';
+import { createRouter } from '../../src/core/messaging/router';
 import { classifySender, CONTENT_ALLOWED, parseMessage } from '../../src/core/messaging/protocol';
 
 const ID = 'abcdefghijklmnopabcdefghijklmnop';
@@ -35,5 +37,19 @@ describe('allowlists', () => {
     expect(parseMessage({ type: 'route.report', payload: { url: 'x'.repeat(5000), via: 'load' } }, content, ID)).toMatchObject({ ok: false });
     expect(parseMessage({ type: 'toString', payload: {} }, content, ID)).toEqual({ ok: false, error: 'unknown type' });
     expect(parseMessage(null, content, ID)).toEqual({ ok: false, error: 'bad message' });
+  });
+});
+
+describe('router errors (D49)', () => {
+  it('turns a schema failure into one sentence, never a Zod issue dump', async () => {
+    const route = createRouter({ 'guide.list': () => { GuideSchema.parse({ id: 'x' }); return { guides: [] }; } }, 'ext');
+    const reply = await new Promise<{ ok: boolean; error?: string }>((resolve) => route({ type: 'guide.list', payload: {} }, { id: 'ext', url: 'chrome-extension://ext/sidepanel.html' } as never, resolve));
+    expect(reply.ok).toBe(false);
+    expect(reply.error).toMatch(/^Waymark could not use this data \(\w+ is not valid\)\.$/);
+  });
+  it('keeps handler sentences as they are', async () => {
+    const route = createRouter({ 'guide.list': () => { throw new Error('Guide not found.'); } }, 'ext');
+    const reply = await new Promise<{ ok: boolean; error?: string }>((resolve) => route({ type: 'guide.list', payload: {} }, { id: 'ext', url: 'chrome-extension://ext/sidepanel.html' } as never, resolve));
+    expect(reply.error).toBe('Guide not found.');
   });
 });

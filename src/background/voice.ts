@@ -6,7 +6,11 @@
 import type { ContentPush } from '../core/messaging/protocol';
 import { currentStep, type Run } from '../core/player/run';
 import { enqueue } from '../core/storage/queue';
-import { DEFAULT_VOICE_SETTINGS, pickVoice, usableVoices, VoiceSettingsSchema, voiceTextFor, type VoiceSettings } from '../core/voice/voice';
+import { getHdStatus, hdSpeak, hdStop } from './hd';
+import { clock } from '../offscreen/protocol';
+import { hdSpeed, useHd } from '../core/voice/hd';
+import { pickVoice, usableVoices, voiceTextFor } from '../core/voice/voice';
+import { DEFAULT_VOICE_SETTINGS, VoiceSettingsSchema, type VoiceSettings } from '../core/voice/settings';
 
 const SETTINGS_KEY = 'voiceSettings';
 
@@ -48,8 +52,17 @@ export async function listVoices(): Promise<{ voices: { voiceName: string; lang:
 /** The tab speaking through the speechSynthesis fallback (in session storage: no memory state). */
 const FALLBACK_TAB_KEY = 'ttsFallbackTab';
 
+/**
+ * When the newest speech started or was stopped (session storage). A step whose HD audio
+ * failed falls back to the system voice only while it is still the newest: never after a
+ * newer step, Mute or Exit (D51).
+ */
+const SPEECH_AT_KEY = 'speechAt';
+
 export function stopSpeech(): void {
   if (ttsAvailable()) chrome.tts.stop();
+  hdStop();
+  void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock() });
   void chrome.storage.session.get(FALLBACK_TAB_KEY).then((r) => {
     const tabId = r[FALLBACK_TAB_KEY] as number | undefined;
     if (tabId === undefined) return;
@@ -106,7 +119,32 @@ export async function speakCurrentStep(tabId: number, run: Run | null): Promise<
   // step is never read out (or sent to the speechSynthesis fallback) on another site (D48).
   const tab = await focusedTab(tabId);
   if (!tab || !onGuideSite(tab.url, run.guideSnapshot.appOrigins)) return;
-  await speak(tabId, voiceTextFor(step), run.guideSnapshot.lang, settings);
+  const text = voiceTextFor(step);
+  const lang = run.guideSnapshot.lang;
+  if (text && useHd(await getHdStatus(), lang)) {
+    // The next step's text is generated while this one plays, so it starts at once.
+    const nextStep = run.guideSnapshot.steps[run.stepIndex + 1];
+    const next = nextStep ? voiceTextFor(nextStep) || null : null;
+    const at = clock();
+    await chrome.storage.session.set({ [SPEECH_AT_KEY]: at });
+    const outcome = await hdSpeak(run.stepToken, text, hdSpeed(settings.rate), next, at);
+    if (outcome !== 'failed') return;
+    // Fall back only if nothing newer happened meanwhile and the learner didn't mute.
+    const latest = (await chrome.storage.session.get(SPEECH_AT_KEY))[SPEECH_AT_KEY];
+    const now = await getVoiceSettings();
+    if (latest !== at || now.muted || !now.autoPlay) return;
+  }
+  await speak(tabId, text, lang, settings);
+}
+
+const SAMPLE = 'This is how Waymark will read your guides.';
+
+/** "Test HD voice" in the options page. */
+export async function speakHdSample(): Promise<boolean> {
+  const settings = await getVoiceSettings();
+  if (!useHd(await getHdStatus(), 'en')) return false;
+  stopSpeech();
+  return (await hdSpeak(`sample-${Date.now()}`, SAMPLE, hdSpeed(settings.rate), null)) === 'played';
 }
 
 /** "Test voice" in the options page: a fixed sample, never user-supplied text. */
@@ -116,6 +154,6 @@ export async function speakSample(lang = 'en'): Promise<boolean> {
   const voice = pickVoice(await getVoices(), lang, settings, uiLang());
   if (!voice) return false;
   chrome.tts.stop();
-  chrome.tts.speak('This is how Waymark will read your guides.', { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
+  chrome.tts.speak(SAMPLE, { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
   return true;
 }

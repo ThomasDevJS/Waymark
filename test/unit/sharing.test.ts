@@ -6,6 +6,7 @@ import { buildSearch, searchGuides } from '../../src/core/discovery/search';
 import { setupPanelFallback } from '../../src/background/panel-fallback';
 import { takeDeepLink } from '../../src/content/launcher';
 import type { Guide } from '../../src/core/model/schema';
+import { indexEntry } from '../../src/core/storage/guides';
 
 const target = { instance: 'unique' as const, matchCount: 1, tag: 'button', text: 'Pay Ada Lovelace', accessibleName: 'Pay', cssPath: 'button', xpath: '/html[1]/body[1]/button[1]', ancestors: [{ tag: 'form', role: 'form', label: 'Billing' }], shadowPath: [], framePath: [], rect: { x: 0, y: 0, w: 1, h: 1, vw: 1, vh: 1 } };
 const guide = (id: string, extra: Partial<Guide> = {}): Guide => ({
@@ -103,7 +104,7 @@ describe('discovery', () => {
 
   it('searches titles, tags and step titles', () => {
     const gs = [guide('a', { title: 'Create an invoice', tags: ['finance'] }), guide('b', { title: 'Invite a teammate', steps: [{ ...guide('x').steps[0]!, title: 'Click **Send invite**' }] })];
-    const ms = buildSearch(gs);
+    const ms = buildSearch(gs.map(indexEntry));
     expect(searchGuides(ms, gs, 'invoice')).toEqual(['a']);
     expect(searchGuides(ms, gs, 'finance')).toEqual(['a']);
     expect(searchGuides(ms, gs, 'send')).toEqual(['b']);

@@ -356,6 +356,30 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - Entry caps on records that only extension pages can send.
 - Version 0.2.3.
 
+## 2026-11-04 — Performance and code health
+
+### D49. The side panel, badges and imports work from the guide index
+- **Spec**: Data model, "Storage" (one key per guide plus an index); Discovery (badge, side panel search); Sharing (import rules).
+- **Measured** with `pnpm bench` (new: `test/perf/`, 500 guides of 50 steps, about 22 MB of guides; in-memory storage that copies like `chrome.storage`; not part of `pnpm check`, because timings on shared runners are noisy):
+
+  | Path | Before | After |
+  | --- | --- | --- |
+  | Side panel load (`guide.all` → `guide.list`) | 535 ms and a 22 MB message | 3 ms, 1.3 MB |
+  | Badges for 30 tabs after a change | 96 ms | 22 ms |
+  | Pack check / import / library refresh vs. stored guides | read and validate all 22 MB | index only |
+  | "For this page", one badge, `guide.forPage` | 1 to 3 ms | 1 to 4 ms |
+
+- **Change**:
+  - Each index entry also keeps the revision id, `forkedFrom`, the start URL, and for search the description (first 1,000 characters), up to 20 tags, and the step titles as plain text (80 characters per step, 20,000 per guide, so a 200-step guide stays searchable to its last step). The side panel lists, searches and matches pages from the index. An editor save with 500 guides takes about 8 ms (index included).
+  - The panel fetches full guides only for export, with the new `guide.many` (ids → validated guides; up to 1,000). `guide.all` is removed.
+  - The import rules (`findConflicts`, `planImport`) take index entries.
+  - A badge pass reads the index once (not once per tab) and the recording state once, just before writing, so REC still wins. A failed pass never fails the write that triggered it.
+  - An index written by an older version (no `revisionId`) is rebuilt from the stored guides on its first read, so a missed install-time rebuild can't produce false import conflicts or duplicate forks.
+  - Export fetches the selected guides in library order. Copy link on a guide without a usable start URL says so instead of failing silently.
+- **Review** (independent, no High or Medium findings): the six Lows are fixed as above, each with a unit test (`index-reads.test.ts`: reads, rebuild, caps, badge counts and REC).
+- **Errors**: a request that fails schema validation now answers with one sentence ("Waymark could not use this data (steps.3.title is not valid)."), not Zod's JSON issue list. When the service worker gives no reply, the panel says "Waymark did not answer". Dead code removed: `saveGuide`.
+- **Bundle** (production build, minified; gzip in brackets): content script 165 KB (52 KB), service worker 141 KB (41 KB), shared panel chunk 118 KB (36 KB), side panel 45 KB (14 KB). Zod reaches the content script only through `core/voice/voice.ts` (`VoiceSettingsSchema` is defined at the top level next to `bestSpeechVoice`). That file belongs to the voice work, so moving the schema is left to it.
+
 ### D50. Flake hunt: one e2e race under CPU load
 - **Spec**: Tech stack, testing.
 - **Method**: on main at 0.2.3 (local), 5 full e2e runs, 3 unit and 3 browser runs on an idle machine. Then the full e2e suite with all but one core busy, to imitate a slow CI runner (the races in D45 and M4 only showed on CI).
@@ -365,6 +389,56 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Cause**: the `msg()` helper in the m4 and m5 specs opens an extension page in a popup window from the service worker and waited for its `load` state. Playwright can attach to such a window after its `load` event, and then the wait never returns (the trace showed `networkidle` but no `load`). The test only fails when the attach is slow, so 12 isolated repeats under load did not reproduce it.
 - **Fix**: one shared `ExtensionHelper.message()` in `test/e2e/fixtures.ts` polls the page until it is the extension page and `document.readyState` is `complete`. No retries, skips or longer timeouts.
 - **After**: under load 99/99 (3 runs). CI keeps `retries: 1`. Its logs show no test marked flaky in the runs checked.
+
+## 2026-11-05 — HD voice (issue #4, part 2)
+
+### D51. Optional on-device HD voice: Kokoro-82M, without GPL code
+- **Spec**: Voiceover and AI text; Permissions, privacy and security; Distribution and cost.
+- **Change**: a new opt-in **HD voice** in Settings. It is the Kokoro-82M neural voice (Apache-2.0), run by transformers.js and onnxruntime-web (WebAssembly) in an offscreen document. Before, voices came only from the browser.
+- **Why Kokoro**: a spike in Chromium compared Kokoro and Piper ([results on #4](https://github.com/ThomasDevJS/Waymark/issues/4#issuecomment-6645098454)).
+  - Kokoro sounds far more natural. Its weights and voices are Apache-2.0.
+  - Piper is about 7× faster, but its good English voices are often non-commercial.
+- **License decision (provisional; Thomas may reverse it)**: both engines phonemize with eSpeak NG, which is GPL-3.0. That includes the npm `phonemizer` package that kokoro-js uses. To ship no GPL code, Waymark has its own English G2P (`src/core/voice/g2p/`). It reads words from the misaki lexicon (Apache-2.0; the dictionaries Kokoro was trained with), downloaded as data with the model. For unknown words it tries, in order:
+  1. word forms (-s, -es, -ed, -ing);
+  2. CamelCase and two-word compounds ("dropdown", "Gmail", "QuickBooks");
+  3. spelled acronyms ("CSV", "PDFs");
+  4. numbers, money, times, emails and web addresses as words;
+  5. rough letter-to-sound rules ("Jira", "Okta").
+
+  The phonemizer sits behind one function type (`Phonemizer` in `src/offscreen/kokoro.ts`), so a GPL engine could be swapped in if Thomas accepts GPL-3. Consequence: the HD voice is English only. Other languages keep the system voice.
+- **Model size**: fp16 (163 MB), not q8 (92 MB). On the spike machine (4 vCPU, no GPU), q8 ran at about 1.9× real time with 4 threads, over the 1.5× limit. fp16 ran at about 0.8–0.95×. Listening samples of both are in the PR.
+- **Download**:
+  - The opt-in click requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*`. Both serve CORS, but the permission makes the consent explicit and keeps the download working if that changes.
+  - The offscreen document fetches seven files at pinned revisions: Kokoro `1939ad2a…`, misaki `fba12365…`. It checks each file's size and SHA-256 and stores them in Cache Storage (`waymark-hd-v1`).
+  - When the download ends (ready, too slow or failed), the service worker removes the host permissions it added. A host the user had already granted is left alone.
+  - `grantedSitePatterns` never treats these two hosts as guide sites, so the content script is not registered there, even during the download. The cost: guides can't run on huggingface.co or raw.githubusercontent.com.
+- **Loading**: transformers.js reads only Cache Storage. Remote models are off, and its local path doesn't exist, so a missing file fails instead of fetching. ORT's `.wasm` ships in the extension (`/ort/`) and `wasmPaths` points there. The `onnxruntime-web` import is aliased to its WebAssembly-only bundle (no WebGPU), which adds about 11 MB unpacked (about 3 MB zipped).
+- **Manifest**:
+  - `extension_pages` CSP is `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`; without it, compiling the WebAssembly fails. The manifest guard now requires exactly this CSP.
+  - COEP `require-corp` and COOP `same-origin` make extension pages cross-origin isolated, so ORT can use up to 4 threads; one thread was about 3× slower than real time. The full e2e suite (side panel, options, library subscribe and refresh) passes with them.
+  - New permission `offscreen`, which shows no install warning. Still no `host_permissions` and no `content_scripts`.
+- **Offscreen document**: reasons `AUDIO_PLAYBACK` and `WORKERS`. It closes 3 minutes after the last HD speech or the speed check (see the review fixes below). With `AUDIO_PLAYBACK` alone, Chrome closes the document 30 s after audio stops, which killed long generations in the spike. The service worker creates it on demand and closes it after 3 idle minutes (`hd-idle` alarm), because the model takes about 800 MB. The document acts only on messages from the service worker, by sender URL, with a Zod schema. Content scripts can send runtime messages that extension pages receive, so this check matters.
+- **Playback**:
+  - Each step sends its text plus the next step's text, which is generated while the current one plays. The player keeps 4 clips and runs one inference at a time.
+  - A step waits at most `HD_WAIT_MS` (4 s) for HD audio. After that, or on any engine error, it sends a cancel and the system voice reads the step.
+  - Speak and stop carry a timestamp, so a stop sent before a speak but delivered after it cannot cancel the new step.
+  - After the download, one sample sentence measures speed. If it takes more than 1.5× real time, the status is "too slow" and the system voice is used.
+  - fp16 inference can output NaN samples, which play as silence.
+- **Remove HD voice** deletes the cache, closes the document and releases any hosts still held. **Cancel** during a download does the same. A download whose document disappeared (browser closed) shows as failed, with **Try again**.
+- **Tests**:
+  - unit: the G2P, numbers and letter rules; the player (cache, prefetch, one inference at a time, cancellation, stale stops, speed check); the service worker (HD vs system voice, timeout and failure fallback, host release, remove); the offscreen sender check.
+  - e2e: a stub engine, only in test builds, so CI never downloads the model.
+- **Licenses**: `THIRD_PARTY_NOTICES.md` (also shipped in the extension) covers everything bundled or downloaded. Version 0.3.0.
+- **Fixes from the independent review** (each with a regression test that fails on the first version):
+  - **Fallback races.** A replaced HD speak (`cancelled`) now says nothing. A failed one falls back to the system voice only while it is still the newest speech (`speechAt` in session storage) and the learner hasn't muted. Before, a slow step 1 could be read aloud after the learner moved to step 2, or after Mute or Exit. The cancel a failed speak sends carries that speak's own time, so it can't cut off a newer step.
+  - **Memory.** When the speed check ends, a "ready" result arms the 3-minute idle close. "Too slow" or a failure closes the document at once. Before, the ~800 MB model stayed loaded.
+  - **Host release.** The hosts to release live in `storage.local`, so a browser restart in the middle of a download no longer leaves them granted. The document is created before the status says "downloading", so Settings can't mistake a starting download for a lost one. Only one download runs at a time.
+  - **Speed check.** One untimed warm-up inference runs first. "Too slow" offers **Check again**, which reuses the cached files.
+  - **G2P.** Numbers it can't parse ("10:30:45", "1.2.3") are read digit by digit instead of dropped. Accented letters are read as their base letters. Huge ordinals no longer throw. Text with no readable words gives "no audio", so the system voice reads it instead of silence.
+  - **Content script size.** `VoiceSettingsSchema` moved from `core/voice/voice.ts` to `core/voice/settings.ts`. The content script imports `bestSpeechVoice` from voice.ts, which pulled Zod into every frame. Content script: 165,232 → 76,169 bytes (51.9 → 26.8 KB gzipped).
+  - **No CDN in the bundle.** At build time, transformers.js's default CDN path for the WebAssembly is replaced with `/ort/`. A new guard (`scripts/check-no-cdn.mjs`, part of `pnpm check`) fails the build if any script names a code CDN. The unused `hd.prefetch` message is removed.
+
+## 2026-11-05 — CI speed
 
 ### D52. CI: fast checks and two e2e shards in parallel; cached Playwright browser
 - **Spec**: Tech stack, testing; Distribution (CI artifact).
