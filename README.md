@@ -7,11 +7,11 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 - **Share:** export a pack file, copy a link that starts a guide, or subscribe to a team library URL.
 - **Private:** Waymark works only on sites you allow, one at a time. Guides stay in your browser, and there is no telemetry ([privacy policy](docs/PRIVACY.md)).
 
-**Status:** v0.3.2. Milestones M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing). From M6 it has the popup fallback and an optional on-device HD voice. The store listing is drafted in [docs/STORE.md](docs/STORE.md). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.3.2. Milestones M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing). From M6 it has the popup fallback and an optional on-device HD voice. It is for internal use and installed from a release; a store listing draft is kept in [docs/STORE.md](docs/STORE.md) for later (D58). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
-Waymark isn't in a store yet, so install it in developer mode. It works in Chrome and Edge (version 120 or later); other Chromium browsers are still being checked.
+Waymark is for internal use and isn't in a store, so install it in developer mode (D58). It works in Chrome and Edge (version 120 or later); other Chromium browsers are still being checked.
 
 1. **Download the zip:**
    - **A release (recommended).** Open the repository's **Releases** page and download `waymark-X.Y.Z-chrome.zip` from the latest release. Each release has a `.sha256` file to check the download. While the repository is private, only people with access to it can see Releases and Actions.

@@ -13,7 +13,7 @@ As of 5 Nov 2026 the version is 0.3.2, on branch `waymark-v1`. This file is for 
 | Discovery and sharing (M5) | Badge count; "For this page" and MiniSearch; the `?` launcher; deep links and Copy link; export review; pack import with the spec's rules; library URL on `chrome.alarms`; first-run Allow; Problems list. | `src/background/discovery.ts`, `src/core/sharing/*`, `src/core/discovery/*`, `src/content/launcher.ts`, `src/entrypoints/sidepanel/{Library,ExportReview}.tsx`, `src/entrypoints/options/Options.tsx` |
 | M6 (partial) | Popup fallback without `chrome.sidePanel` (D43); version 0.2.0 (now 0.3.2: D46–D48, D51, D53, D60–D63); CI uploads the production zip as the `waymark-extension` artifact. | `src/background/panel-fallback.ts`, `.github/workflows/ci.yml` |
 
-Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BROWSERS.md` and pilot guides. Phase 2 has not been started.
+Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The privacy policy is `docs/PRIVACY.md`. There is no store listing: Waymark is for internal use and installed from GitHub Releases (D58). Phase 2 has not been started.
 
 ## Interface (D90–D94)
 - Design tokens (colour, spacing, radius, type, elevation, motion; light and dark) are in `src/ui/tokens.css`; components are in `src/ui/components.css`. The overlay uses the same tokens, scoped to its layer in the closed shadow root (`src/content/overlay/theme.ts`).
@@ -105,7 +105,5 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - **Coordination:** a parent session opens and merges pull requests. Work on `waymark-v1`, never open pull requests, and record every spec deviation in DECISIONS.md with a D-number.
 - **Next work (M6):**
   - browser matrix and `docs/BROWSERS.md`;
-  - one-page privacy policy (GitHub Pages);
-  - a private Chrome Web Store listing;
   - pilot guides on 1–2 real apps;
   - a UI for site profiles, which would also fix D41's open note.

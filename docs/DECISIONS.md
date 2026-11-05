@@ -532,6 +532,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - the store summary comes from the manifest `description`; to use the drafted one, change it in `wxt.config.ts` and `package.json`.
 - **Review** (independent, against the code): the first draft missed Hugging Face's CDN as a third download host, the permission asked for a team library's site, the library's refresh at browser start and on **Refresh now**, the multi-site **Allow** for packs, and several stored fields; it also called completions "shown to you" (nothing reads them yet). All corrected. Noted for the code lanes: a granted library origin also gets the content script, since only the HD hosts are excluded (`src/core/permissions/registration.ts`), and the library is fetched twice at browser start.
 
+### D58. Internal use for now: install from GitHub Releases, no store listing
+*5 Nov 2026 · SPEC: Distribution and cost; D57*
+
+- **Decision** (Thomas): Waymark is for internal use for now. The team installs the zip from the repository's Releases page in developer mode (README, "Install"). There is no Chrome Web Store listing, private or public, and the repository stays private.
+- **What this changes**: the spec's plan of a private store listing first is on hold. `docs/STORE.md` stays as a draft for later, and D57's open items (a contact address and a host for the privacy policy) are not needed until then. `docs/PRIVACY.md` still describes what the code does and stays current.
+- **Cost of the choice**: no automatic updates. Each person replaces the unzipped folder with a newer release and reloads the extension. Developer mode shows Chrome's "developer mode extensions" notice at browser start.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
