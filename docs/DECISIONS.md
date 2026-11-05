@@ -489,6 +489,17 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Limits**: GitHub's `paths` filter looks at the first 300 files of a push only, so a huge docs-first push to `main` could skip CI; pull requests always go through the `changes` job. The `changes` job runs the PR's own copy of `scripts/ci-changes.mjs`, so a PR could declare itself docs-only, but a PR can already edit the workflow, and the token is read-only.
 - **Review** (independent): the gate failed open when the script crashed (no `pipefail` in the default shell) and `CI result` could miss a timed-out job; both fixed as above. The test now also checks that the `paths` list in ci.yml matches the script.
 
+### D55. GitHub Actions on their current Node 24 majors
+- **Spec**: Tech stack, testing (CI). Left open in D52's review.
+- **Change**: `actions/checkout` v4 → **v7**, `actions/setup-node` v4 → **v7**, `actions/cache` v4 → **v6** (in `.github/actions/playwright-browser`), `actions/upload-artifact` v4 → **v7**, `pnpm/action-setup` v4 → **v6**. Node 20 actions are deprecated on GitHub's runners; every one of these runs on `node24`.
+- **Verified** on 5 Nov 2026 in each action's own repository: the major tag exists (latest releases checkout v7.0.1, setup-node v7.1.0, cache v6.1.0, upload-artifact v7.0.2, action-setup v6.1.1), and its `action.yml` at that tag says `using: node24`.
+- **Breaking changes checked against this workflow**, none of which apply:
+  - checkout v6 keeps credentials in a separate file under `$RUNNER_TEMP`; v7 refuses fork code under `pull_request_target`/`workflow_run`, which we don't use.
+  - setup-node v6 caches pnpm only when asked (we set `cache: pnpm`); v7 drops the dummy `NODE_AUTH_TOKEN` (we set no `registry-url`).
+  - cache v5/v6 and upload-artifact v5–v7: Node 24 and ESM only; the inputs we use are unchanged.
+  - action-setup v5/v6 bootstraps pnpm with npm and then switches to the version pinned in `packageManager` (pnpm 10.28.0 here).
+- The project's own Node stays 22 (`node-version: 22`).
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
