@@ -29,4 +29,12 @@ export default tseslint.config(
       'no-new-func': 'error',
     },
   },
+  {
+    // Content code reads event paths through eventPath() (src/content/overlay/host.ts), which shows
+    // test builds what the store build's closed overlay root shows (D86, #46).
+    files: ['src/content/**/*.ts', 'src/content/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', { selector: "CallExpression[callee.property.name='composedPath']", message: 'Use eventPath(e) from src/content/overlay/host.ts (D86).' }],
+    },
+  },
 );
