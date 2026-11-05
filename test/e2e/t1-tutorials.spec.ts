@@ -3,7 +3,8 @@
  * practice page, which plays them with the real player, matcher and advance rules; voice reads
  * only the bundled text; tutorials never become guides unless copied; the section can be hidden.
  */
-import { canGrant, expect, marker, test } from './fixtures';
+import { execFileSync } from 'node:child_process';
+import { canGrant, expect, KEYS_SCRIPT, marker, test } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const overlay = (p: Page, action: string) => p.locator(`waymark-overlay [data-action="${action}"]`);
@@ -128,9 +129,11 @@ test.describe('copy to my guides', () => {
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${appTab}`);
     await panel.getByTestId('tutorial-more-record').click();
     await panel.getByTestId('tutorial-copy-record').click();
-    await expect(panel.getByTestId('tutorials-message')).toContainText('Copied “Record your first guide (copy)”');
+    await expect(panel.getByTestId('tutorials-message')).toContainText('Copied “Draft: Record your first guide”');
+    await panel.getByTestId('tutorial-more-record').click();
+    await expect(panel.getByTestId('tutorial-copy-record')).toBeDisabled(); // one copy, not one per press
     const guides = (await ext.message<{ guides: { id: string; title: string; appOrigins: string[] }[] }>('guide.list', {})).guides;
-    expect(guides.map((g) => g.title)).toEqual(['Record your first guide (copy)']);
+    expect(guides.map((g) => g.title)).toEqual(['Draft: Record your first guide']);
     expect(guides[0]!.appOrigins).toEqual([site.main]);
     const g = await ext.message<{ steps: { kind: string; target?: unknown }[]; source: string }>('guide.get', { id: guides[0]!.id });
     expect(g.source).toBe('local');
@@ -151,4 +154,30 @@ test('leaving the step’s view shows the off-track card; Go back returns to it'
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:2');
   await practice.getByRole('main').getByRole('button', { name: 'New invoice' }).click();
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:3');
+});
+
+test('keyboard: Enter in a field never submits the practice form; focus follows the guide; Alt+. moves on', async ({ context, extensionId }) => {
+  const practice = await context.newPage();
+  await practice.goto(`chrome-extension://${extensionId}/practice.html`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('ready');
+  // Start from the list with the keyboard: the first step's Next gets focus (the list is gone).
+  await practice.getByTestId('practice-start-tour').focus();
+  await practice.keyboard.press('Enter');
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
+  await expect.poll(() => practice.evaluate(() => document.activeElement?.localName)).toBe('waymark-overlay');
+  await practice.keyboard.press('Enter'); // Next, from the keyboard
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
+  // An action step: focus goes to the element to act on, so Enter does it.
+  await expect.poll(() => practice.evaluate(() => document.activeElement?.getAttribute('data-guide-id'))).toBe('practice-new-invoice');
+  await practice.keyboard.press('Enter');
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:2');
+  await practice.getByLabel('Customer name').fill('Ada');
+  await practice.getByLabel('Customer name').press('Enter'); // finishes the field, never sends the form
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:3');
+  await expect(practice.getByRole('heading', { name: 'New invoice' })).toBeVisible();
+  // The browser shortcut Alt+. works on this page too (real keys, as in q2).
+  if (!canGrant) return; // real keys need X (xvfb-run)
+  await practice.bringToFront();
+  execFileSync('python3', [KEYS_SCRIPT, 'Alt_L+period']);
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:4');
 });

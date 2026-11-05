@@ -192,3 +192,17 @@ table.invoices td {
   color: var(--wm-rec);
   font-weight: 600;
 }
+h1.app-name {
+  margin: 0;
+  font-size: var(--wm-text-md);
+}
+.practice-note {
+  margin: 0;
+  padding: 0;
+}
+@media (forced-colors: active) {
+  button.nav-link.on {
+    text-decoration: underline;
+    border: 2px solid ButtonText;
+  }
+}

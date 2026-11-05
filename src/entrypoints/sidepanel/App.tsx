@@ -5,7 +5,7 @@ import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { siteLabel } from '../../core/text/names';
 import { Recorder, recorderBusy, showStopped } from './Recorder';
-import { openPractice, setTutorialsHidden, Tutorials, tutorialsHidden } from './Tutorials';
+import { loadTutorialsHidden, openPractice, setTutorialsHidden, Tutorials, tutorialsHidden } from './Tutorials';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
@@ -96,7 +96,7 @@ function SiteCard({ t }: { t: TabInfo | null }) {
           <Icon name="globe" />
           <strong>Open the web app you want to guide</strong>
           <span class="small">In this tab, open the web app you want to record or play guides on. The panel follows the tab you are on.</span>
-          <button type="button" class="sm" data-testid="try-practice" onClick={() => openPractice('tour')}>
+          <button type="button" class="sm" data-testid="try-practice" onClick={() => void openPractice('tour')}>
             <Icon name="tutorial" />
             Or try a tutorial
           </button>
@@ -176,6 +176,7 @@ export function App() {
     if (o.kind === 'stopped') showStopped(o, tab.value?.tabId ?? null);
   });
   useEffect(() => {
+    loadTutorialsHidden(); // Help's "Show the tutorials again" needs it even while Tutorials isn't shown
     void refresh();
     const onChange = () => void refresh();
     chrome.tabs.onActivated.addListener(onChange);
@@ -237,7 +238,7 @@ export function App() {
                 class="ghost help-link"
                 data-testid="help-tutorials"
                 onClick={() => {
-                    openPractice('tour');
+                    void openPractice('tour');
                 }}
               >
                 <Icon name="tutorial" />
@@ -250,7 +251,7 @@ export function App() {
         />
         <Welcome
           extra={
-            <button type="button" class="ghost" data-testid="welcome-try" onClick={() => openPractice('tour')}>
+            <button type="button" class="ghost" data-testid="welcome-try" onClick={() => void openPractice('tour')}>
               <Icon name="tutorial" />
               Try a tutorial
             </button>

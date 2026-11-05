@@ -59,13 +59,16 @@ const FALLBACK_TAB_KEY = 'ttsFallbackTab';
  * newer step, Mute or Exit (D51).
  */
 const SPEECH_AT_KEY = 'speechAt';
+/** Set while a tutorial step is being read; `tutorial.stop` stops speech only then (D129). */
+export const TUTORIAL_SPEECH_KEY = 'speech:tutorial';
 
 /** Stops all speech. `why` goes to the debug log (D110); internal restarts pass none. */
 export function stopSpeech(why?: string): void {
   if (why) dlog('voice', 'voice.stop', {}, { why });
   if (ttsAvailable()) chrome.tts.stop();
   hdStop();
-  void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock() });
+  // Whatever speaks next is not a tutorial's, unless the tutorial handler marks it again (D129).
+  void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock(), [TUTORIAL_SPEECH_KEY]: false });
   void chrome.storage.session.get(FALLBACK_TAB_KEY).then((r) => {
     const tabId = r[FALLBACK_TAB_KEY] as number | undefined;
     if (tabId === undefined) return;

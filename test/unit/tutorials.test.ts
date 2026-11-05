@@ -56,9 +56,11 @@ describe('copy to my guides', () => {
     const t = tutorialById('record')!;
     const g = tutorialAsGuide(t, 'https://app.example.com/invoices/42?x=1#y');
     expect(GuideSchema.safeParse(g).success).toBe(true);
-    expect(g).toMatchObject({ appOrigins: ['https://app.example.com'], startUrl: 'https://app.example.com/invoices/42', source: 'local', title: 'Record your first guide (copy)' });
+    expect(g).toMatchObject({ appOrigins: ['https://app.example.com'], startUrl: 'https://app.example.com/invoices/42', source: 'local', title: 'Draft: Record your first guide' });
     expect(g.steps.every((s) => s.kind === 'note' && !s.target && s.advance === 'next')).toBe(true);
-    expect(g.steps.map((s) => s.title)).toEqual(t.steps.map((s) => s.title));
+    // A first note says what the draft is, so practice-page text never reads as instructions for the real app.
+    expect(g.steps[0]!.title).toBe('About this draft');
+    expect(g.steps.slice(1).map((s) => s.title)).toEqual(t.steps.map((s) => s.title));
     expect(g.steps.some((s) => t.steps.some((x) => x.id === s.id))).toBe(false);
   });
   it('refuses a page that is not a web page', () => {

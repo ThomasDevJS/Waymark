@@ -58,6 +58,17 @@ const player = new PracticePlayer({
   onView: (run, phase) => mark(`${phase}:${run.stepIndex}`),
 });
 
+/** Stop the tutorial in the list: the same ending as Exit in the tooltip. */
+function stopPlaying() {
+  const t = playing.value;
+  player.stop();
+  playing.value = null;
+  ended.value = t ? `You left “${t.title}”.` : null;
+  mark('exited');
+  history.replaceState(null, '', location.pathname);
+  requestAnimationFrame(() => document.getElementById('tutorials-title')?.focus());
+}
+
 export async function startTutorial(t: Tutorial): Promise<void> {
   // Every tutorial starts on the dashboard with an empty form.
   view.value = 'dashboard';
@@ -70,7 +81,11 @@ export async function startTutorial(t: Tutorial): Promise<void> {
     (s) => s.muted,
     () => false,
   );
-  requestAnimationFrame(() => player.start(t, muted));
+  // Stopped, or another tutorial started, while the setting was read: don't start this one.
+  if (playing.value !== t) return;
+  requestAnimationFrame(() => {
+    if (playing.value === t) player.start(t, muted);
+  });
 }
 
 function Chart() {
@@ -79,12 +94,19 @@ function Chart() {
     const c = ref.current;
     const ctx = c?.getContext('2d');
     if (!c || !ctx) return;
-    const bars = [5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 8, 10];
-    const accent = getComputedStyle(c).color || '#2f5bd3';
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.fillStyle = accent;
-    const w = c.width / bars.length;
-    bars.forEach((b, i) => ctx.fillRect(i * w + 4, c.height - b * 10, w - 8, b * 10));
+    const draw = () => {
+      const bars = [5, 3, 6, 4, 7, 5, 8, 6, 9, 7, 8, 10];
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = getComputedStyle(c).color || '#2f5bd3';
+      const w = c.width / bars.length;
+      bars.forEach((b, i) => ctx.fillRect(i * w + 4, c.height - b * 10, w - 8, b * 10));
+    };
+    draw();
+    // Redrawn when the theme changes while the page is open.
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => requestAnimationFrame(draw);
+    mq.addEventListener('change', onScheme);
+    return () => mq.removeEventListener('change', onScheme);
   }, []);
   return <canvas ref={ref} class="chart" width={360} height={110} data-guide-id="practice-chart" role="img" aria-label="Revenue chart for this year (practice data)" />;
 }
@@ -157,6 +179,12 @@ function NewInvoice() {
       <form
         class="stack"
         data-guide-id="practice-form"
+        // Enter in a text field would send the form (implicit submission, which even names the Send
+        // button as its submitter). A learner finishing a field with Enter stays on the form; the
+        // player still sees the key, so a typing step moves on (D60).
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.target as Element).localName === 'input' && (e.target as HTMLInputElement).type !== 'checkbox') e.preventDefault();
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           sent.value = 'Invoice sent (practice only: nothing was sent).';
@@ -282,28 +310,18 @@ function TutorialList() {
         </h2>
         <span class="badge accent">Built-in</span>
       </div>
+      <p class="small" role="status" data-testid="practice-status">
+        {t ? `Playing “${t.title}”. Follow the box on the page.` : (ended.value ?? '')}
+      </p>
       {t ? (
-        <div class="stack-sm" role="status">
-          <p class="small">Playing “{t.title}”. Follow the box on the page.</p>
-          <div>
-          <button type="button" class="sm" data-testid="practice-stop" onClick={() => {
-              player.stop();
-              playing.value = null;
-              mark('exited');
-              history.replaceState(null, '', location.pathname);
-            }}>
+        <div>
+          <button type="button" class="sm" data-testid="practice-stop" onClick={stopPlaying}>
             <Icon name="stop" />
             Stop the tutorial
           </button>
-          </div>
         </div>
       ) : (
         <>
-          {ended.value && (
-            <p class="small muted" role="status">
-              {ended.value}
-            </p>
-          )}
           <ol class="tutorial-list">
             {TUTORIALS.map((x) => (
               <li key={x.id}>
@@ -331,7 +349,19 @@ export function Practice() {
     const t = tutorialById(new URLSearchParams(location.search).get('tutorial'));
     if (t) void startTutorial(t);
     else mark('ready');
-    return () => player.stop();
+    // The browser's guide shortcuts (Alt+. / Alt+,) also reach extension pages; only the focused one acts.
+    const onCommand = (name: string) => {
+      if (document.hasFocus()) player.command(name);
+    };
+    chrome.commands?.onCommand.addListener(onCommand);
+    // Closing the tab mid-step stops the tutorial's voice.
+    const onHide = () => player.stop();
+    addEventListener('pagehide', onHide);
+    return () => {
+      chrome.commands?.onCommand.removeListener(onCommand);
+      removeEventListener('pagehide', onHide);
+      player.stop();
+    };
   }, []);
   const v = view.value;
   useEffect(() => player.appChanged(), [v]);
@@ -343,25 +373,25 @@ export function Practice() {
   return (
     <>
       <header class="practice-header">
-        <div class="app-name">
+        <h1 class="app-name">
           <span class="logo" aria-hidden="true">
             N
           </span>
           Northwind Invoices
           <span class="badge warn">Practice</span>
-        </div>
+        </h1>
         <nav aria-label="Practice app">
           {nav('dashboard', 'Dashboard')}
           {nav('invoices', 'Invoices')}
           {nav('new', 'New invoice')}
         </nav>
       </header>
-      <p class="practice-note small">
-        <Icon name="info" />
-        <span>This is a practice page inside Waymark. Nothing here is real, nothing you type is kept, and it never goes online.</span>
-      </p>
       <div class="practice-layout">
         <main class="stack">
+          <p class="practice-note small">
+            <Icon name="info" />
+            <span>This is a practice page inside Waymark. Nothing here is real, nothing you type is kept, and it never goes online.</span>
+          </p>
           {v === 'dashboard' && <Dashboard />}
           {v === 'invoices' && <Invoices />}
           {/* The form stays in the page (hidden), so a tutorial's reset finds it. */}

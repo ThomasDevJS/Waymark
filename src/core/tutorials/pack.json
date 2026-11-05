@@ -37,7 +37,6 @@
           "kind": "note",
           "title": "The controls at the top of this box",
           "note": "**Back** returns to the last step. The speaker mutes the voice, and **×** ends the guide. The keys Alt+. and Alt+, also go forward and back.",
-          "target": "practice-send",
           "advance": "next"
         },
         {
