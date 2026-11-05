@@ -100,6 +100,8 @@ export interface RunView {
   status: 'running' | 'paused' | 'finished' | 'none';
   guideId: string | null;
   guideTitle: string | null;
+  /** The guide's language: the panel offers the HD voice only for English guides (D140). */
+  lang?: string;
   appOrigins: string[];
   stepIndex: number;
   total: number;
@@ -147,6 +149,7 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
     status: run.status,
     guideId: run.guideSnapshot.id,
     guideTitle: run.guideSnapshot.title,
+    lang: run.guideSnapshot.lang,
     appOrigins: run.guideSnapshot.appOrigins,
     stepIndex: run.stepIndex,
     total: run.guideSnapshot.steps.length,

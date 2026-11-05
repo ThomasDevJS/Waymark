@@ -86,6 +86,8 @@ export const RequestSchemas = {
   'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
   'hd.remove': z.object({}),
   'hd.test': z.object({}),
+  // The HD voice offer's "Listen to a sample" (D141): stops what is being read, so the sample isn't talked over.
+  'voice.stop': z.object({}),
   // From the offscreen document only (checked by URL in the handler).
   'hd.report': z.object({ status: HdStatusSchema.optional(), played: z.string().max(5000).optional() }),
   // Debug log (D110): the Settings switch, Copy debug log and Clear.
@@ -182,6 +184,7 @@ export interface ResponseMap {
   'hd.enable': HdStatus;
   'hd.remove': HdStatus;
   'hd.test': { ok: boolean };
+  'voice.stop': { ok: true };
   'hd.report': { ok: true };
   'run.mute': { ok: boolean };
   'run.replay': { ok: boolean };
@@ -317,6 +320,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'hd.enable',
   'hd.remove',
   'hd.test',
+  'voice.stop',
   'hd.report',
   'debug.get',
   'debug.set',

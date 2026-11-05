@@ -3,7 +3,8 @@ import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import { Icon } from '../../ui/Icon';
-import { HD_HOST_PATTERNS, HD_OFF, HD_TOTAL_BYTES, mb, type HdStatus } from '../../core/voice/hd';
+import { startHdDownload } from '../../ui/hdDownload';
+import { HD_OFF, HD_TOTAL_BYTES, mb, type HdStatus } from '../../core/voice/hd';
 
 export const hdStatus = signal<HdStatus>(HD_OFF);
 const hdMessage = signal<string | null>(null);
@@ -22,14 +23,12 @@ async function refresh() {
 async function enable() {
   hdMessage.value = null;
   // Ask for the download hosts only now, from this click; they are released when the download ends.
-  const before = await Promise.all(HD_HOST_PATTERNS.map((p) => chrome.permissions.contains({ origins: [p] })));
-  const ok = await chrome.permissions.request({ origins: [...HD_HOST_PATTERNS] }).catch(() => false);
-  if (!ok) {
-    hdMessage.value = 'HD voice needs to reach Hugging Face and GitHub once, to download the voice.';
+  const r = await startHdDownload();
+  if (!r.ok) {
+    hdMessage.value = r.message;
     return;
   }
-  const added = HD_HOST_PATTERNS.filter((_, i) => !before[i]);
-  hdStatus.value = await send('hd.enable', { added });
+  hdStatus.value = r.status;
   await refresh();
 }
 

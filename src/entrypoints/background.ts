@@ -17,7 +17,7 @@ import { isSiteOrigin } from '../core/model/schema';
 import { rebuildIndex } from '../core/storage/guides';
 import { setupPanelFallback } from '../background/panel-fallback';
 import { onShortcut } from '../background/shortcuts';
-import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample } from '../background/voice';
+import { getVoiceSettings, listVoices, setVoiceSettings, speakHdSample, speakSample, stopSpeech } from '../background/voice';
 import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdReport } from '../background/hd';
 import { carryRunToNewTab, dropRun, getRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 import { tutorialHandlers } from '../background/tutorials';
@@ -69,6 +69,10 @@ const handlers: Handlers = {
   'hd.enable': ({ added }) => hdEnable(added),
   'hd.remove': () => hdRemove(),
   'hd.test': async () => ({ ok: await speakHdSample() }),
+  'voice.stop': () => {
+    stopSpeech('the HD voice sample');
+    return { ok: true as const };
+  },
   'hd.report': async (payload, ctx) => {
     // Only the offscreen document reports; other extension pages may not.
     if (ctx.sender.url !== chrome.runtime.getURL('/offscreen.html')) throw new Error('hd.report is for the offscreen document');

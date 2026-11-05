@@ -44,6 +44,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - On the page (D133): the ring's glide, the tooltip's exit copy, the progress ease and the click ripple are in `src/content/player/ui.ts` (`glide`, `leave`, `watchPress`); the REC halo is in `src/content/overlay/pill.ts`. Test builds count glides and ripples in `data-waymark-test-motion`.
 - Tests: `test/unit/motion.test.ts`, `test/browser/motion.test.ts`, `test/browser/player-motion.test.ts`, e2e `test/e2e/p1-player-motion.spec.ts` (closed root, motion on). Frame times: `pnpm motion:bench` (4× slower CPU, results in `artifacts/motion/`). Frame sequences: `pnpm screens` (`test/screens/motion.spec.ts`) and `scripts/frames.py`.
 
+## HD voice offer (D140–D143, issue #44)
+- Card: `src/ui/HdOffer.tsx` (Practice page beside the tutorial list, side panel under the playing card). Gate: `src/core/voice/offer.ts` (`shouldOfferHd`), answer in `ui:hdOffer`. Download: `src/ui/hdDownload.ts`, shared with Settings. Tutorials on HD: `speakHdFirst` in `src/background/voice.ts`. Sample: `public/hd-sample.ogg`, made by `scripts/hd-sample.mjs`.
+- Tests: `test/unit/hd-offer.test.ts`, `test/browser/hd-offer.test.ts`, the D142 block in `test/unit/hd-sw.test.ts`, e2e `test/e2e/h1-hd-offer.spec.ts` (test hook `test:hdOfferEnv` stands in for the navigator's language, cores and memory).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.
