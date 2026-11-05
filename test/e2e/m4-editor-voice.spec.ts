@@ -8,21 +8,9 @@ import { canGrant, expect, KEYS_SCRIPT, marker, test, type ExtensionHelper } fro
 
 test.skip(!canGrant, 'needs a headed browser under X (xvfb-run) to accept the permission dialog');
 
-/**
- * Sends a message from an extension page in a separate popup window, so the app tab stays the
- * active tab of the last-focused normal window (as with the side panel).
- */
-async function msg<T>(ext: ExtensionHelper, type: string, payload: object): Promise<T> {
-  const sw = await ext.sw();
-  const [page] = await Promise.all([
-    ext.context.waitForEvent('page'),
-    sw.evaluate((url) => chrome.windows.create({ url, type: 'popup', focused: false }), `chrome-extension://${ext.extensionId}/sidepanel.html`),
-  ]);
-  await page.waitForLoadState();
-  const r = await page.evaluate(([t, p]) => chrome.runtime.sendMessage({ type: t, payload: p }), [type, payload] as const);
-  await page.close();
-  if (!r.ok) throw new Error(r.error);
-  return r.data as T;
+/** Messages from an extension page in a popup window (see ExtensionHelper.message). */
+function msg<T>(ext: ExtensionHelper, type: string, payload: object): Promise<T> {
+  return ext.message<T>(type, payload);
 }
 
 async function setup(context: import('@playwright/test').BrowserContext, ext: ExtensionHelper, site: { main: string }) {

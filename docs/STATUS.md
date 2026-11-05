@@ -1,6 +1,6 @@
 # Waymark status and handoff
 
-As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D48 and D51 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D51: HD voice), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
+As of 5 Nov 2026 the version is 0.3.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D49 and D51 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D49: guide index for the panel and badges, `pnpm bench`; D51: HD voice), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
 
 ## What works today
 | Area | State | Main code |
@@ -49,6 +49,7 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 
 ## Running and debugging tests
 - `pnpm check`: typecheck, lint, both builds, manifest guard, unit (happy-dom) and browser-mode Vitest. Run it before every push (see CLAUDE.md).
+- `pnpm bench`: the performance harness (`test/perf/`, 500 guides of 50 steps through the service worker paths). Not part of `pnpm check`; run it when touching storage, the index, badges or search (D49).
 - **Demo app for manual testing:** `pnpm demo` serves `demo/` at http://localhost:8080 (see `demo/README.md`).
 - `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (31 tests, about 3 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).
   - One file: `xvfb-run -a npx playwright test m3`. One test: `-g "name"`.

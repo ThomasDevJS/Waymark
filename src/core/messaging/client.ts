@@ -5,7 +5,7 @@ export class MessageError extends Error {}
 
 export async function send<T extends MessageType>(type: T, payload: RequestOf<T>): Promise<ResponseOf<T>> {
   const reply = (await chrome.runtime.sendMessage({ type, payload })) as Reply<ResponseOf<T>> | undefined;
-  if (!reply) throw new MessageError(`no reply to ${type}`);
+  if (!reply) throw new MessageError(`Waymark did not answer (${type}). Try again.`);
   if (!reply.ok) throw new MessageError(reply.error);
   return reply.data;
 }

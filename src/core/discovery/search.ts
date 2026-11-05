@@ -1,7 +1,9 @@
 /** Client-side guide search (SPEC: Discovery: title, description, tags and step titles; MiniSearch). */
 import MiniSearch from 'minisearch';
-import type { Guide } from '../model/schema';
-import { toPlainText } from '../text/markdown';
+import type { GuideIndexEntry } from '../storage/guides';
+
+/** What search reads: an index entry (D49), never the full guide. */
+export type Searchable = Pick<GuideIndexEntry, 'id' | 'title' | 'description' | 'tags' | 'stepTitles'>;
 
 interface Doc {
   id: string;
@@ -11,7 +13,7 @@ interface Doc {
   steps: string;
 }
 
-export function buildSearch(guides: Guide[]): MiniSearch<Doc> {
+export function buildSearch(guides: Searchable[]): MiniSearch<Doc> {
   const ms = new MiniSearch<Doc>({
     fields: ['title', 'description', 'tags', 'steps'],
     storeFields: ['id'],
@@ -23,14 +25,14 @@ export function buildSearch(guides: Guide[]): MiniSearch<Doc> {
       title: g.title,
       description: g.description ?? '',
       tags: g.tags.join(' '),
-      steps: g.steps.map((s) => toPlainText(s.title)).join(' \n '),
+      steps: g.stepTitles,
     })),
   );
   return ms;
 }
 
 /** Guide ids matching a query, best first; every id for an empty query. */
-export function searchGuides(ms: MiniSearch<Doc>, guides: Guide[], query: string): string[] {
+export function searchGuides(ms: MiniSearch<Doc>, guides: { id: string }[], query: string): string[] {
   const q = query.trim();
   if (!q) return guides.map((g) => g.id);
   return ms.search(q).map((r) => String(r.id));
