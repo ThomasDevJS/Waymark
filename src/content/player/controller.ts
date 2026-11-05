@@ -109,7 +109,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     report: () => {
       if (!view?.step) return;
       send('run.problem', { stepId: view.step.id })
-        .then(() => ui.flash('Thanks. The broken step was saved to the Problems list.'))
+        .then(() => ui.flash('Thanks. The broken step was saved to the Problems list in Waymark’s Settings.'))
         .catch(() => undefined);
     },
     goBack: () => history.back(),

@@ -208,6 +208,7 @@ describe('recording shortcut and the editor (D105 review)', () => {
     const { Recorder, showStopped } = await import('../../src/entrypoints/sidepanel/Recorder');
     render(h(Recorder, { tabId: 1, tabUrl: null, initialEdit: 'G1' }), root);
     await tick();
+    await userEvent.click(byTest('step-0-toggle')!); // steps start folded (D125)
     await userEvent.fill(byTest('step-0-title') as HTMLInputElement, 'Edited, not saved');
     showStopped({ kind: 'stopped', guideId: 'NEW', title: 'Untitled guide', count: 2, at: Date.now() }, 1);
     await tick();
@@ -252,6 +253,8 @@ describe('editor (D100, D102)', () => {
   it('duplicates a step and edits tags', async () => {
     mount();
     await tick();
+    await userEvent.click(byTest('step-0-toggle')!);
+    await userEvent.click(byTest('step-0-more')!);
     await userEvent.click(byTest('step-0-duplicate')!);
     expect(stepTitles()).toEqual(['One', 'One', 'Two', 'Three']);
     const tags = byTest('guide-tags') as HTMLInputElement;

@@ -7,9 +7,9 @@ type Flag = NonNullable<Step['flags']>[number];
 
 /** What each recorder warning means and what to do, in one line (docs/TESTING.md section 3). */
 export const FLAG_HELP: Record<Flag, { label: string; help: string }> = {
-  'low-confidence': { label: 'Hard to find', help: 'Not a button, link or field, so it may not be found again. Re-pick the real control, or delete the step.' },
-  canvas: { label: 'Drawing area', help: 'A chart or map has nothing inside to point at. Use a note step instead.' },
-  'closed-shadow': { label: 'Closed component', help: 'Waymark can’t see inside this component and used its outer box. Test the step.' },
+  'low-confidence': { label: 'Hard to find', help: 'This isn’t a button, link or field, so the guide may not find it next time. Use Re-pick element to choose the real button, or delete the step.' },
+  canvas: { label: 'Drawing area', help: 'Charts and maps have nothing inside them to point at. Delete this step, or add a note that explains it.' },
+  'closed-shadow': { label: 'Closed component', help: 'Waymark can’t see inside this part of the page, so it points at the whole box. Press Test step to check it.' },
 };
 
 export const KIND: Record<Step['kind'], { label: string; icon: IconName }> = {
@@ -23,10 +23,11 @@ export const KIND: Record<Step['kind'], { label: string; icon: IconName }> = {
 };
 
 /** Warning badges with their explanation inline, so authors don't need to hover. */
-export function FlagNotes({ flags, testid }: { flags: Step['flags']; testid?: string }) {
+export function FlagNotes({ flags, testid, later }: { flags: Step['flags']; testid?: string; later?: boolean }) {
   if (!flags?.length) return null;
   return (
     <div class="flag-notes" data-testid={testid}>
+      {later && <p class="small muted">You can fix this in the editor after you press Stop.</p>}
       {flags.map((f) => (
         <p key={f}>
           <span class="badge warn">

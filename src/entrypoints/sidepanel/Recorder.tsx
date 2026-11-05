@@ -171,6 +171,11 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
                   {rv.status === 'finished' ? 'Finished' : rv.status === 'paused' ? 'Paused · continued in another tab' : `Playing · step ${rv.stepIndex + 1} of ${rv.total}`}
                 </span>
                 <strong class="truncate">{rv.guideTitle}</strong>
+                {rv.status === 'running' && rv.step && (
+                  <span class="small muted" data-testid="run-step">
+                    Now: {rv.step.title.replace(/\*\*?/g, '')}
+                  </span>
+                )}
               </div>
               <div class="row nowrap">
                 {rv.guideId && rv.status !== 'paused' && (
@@ -210,7 +215,12 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             )}
           </div>
         )}
-        <section class="card" aria-label="Recorder">
+        {/* While a guide plays, recording is one step away: the playing card is the focus (D120). */}
+        {rv?.active && rv.status === 'running' ? null : (
+        <section class="card record-card" aria-labelledby="record-title">
+          <h2 id="record-title" class="card-title">
+            Record a guide
+          </h2>
           <form
             class="record-form"
             onSubmit={(e) => {
@@ -224,7 +234,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             }}
           >
             <label class="field grow">
-              <span class="label">New guide</span>
+              <span class="label">Guide name</span>
               <input data-testid="guide-title" value={title.value} placeholder="e.g. Create an invoice" onInput={(e) => (title.value = (e.target as HTMLInputElement).value)} />
             </label>
             <button type="submit" class="primary record" data-testid="record" disabled={tabId === null}>
@@ -232,8 +242,11 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
               Record
             </button>
           </form>
+          <p class="hint">Then do the task on the page. Each click becomes a step. What you type is never saved.</p>
           {errorBox}
         </section>
+        )}
+        {rv?.active && rv.status === 'running' && errorBox}
         <section class="card" aria-label="Guides">
           <Library tabId={tabId} tabUrl={tabUrl} onEdit={(id) => openEditor(id, tabId)} onStart={(id, stepIndex) => tabId !== null && void startGuide(tabId, id, false, stepIndex)} />
         </section>
@@ -272,6 +285,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           Stop
         </button>
       </div>
+      <p class="hint">{recordingNow ? 'Do the task on the page. Press Stop when you’re done: the guide is saved and opens for editing.' : 'Paused: clicks on the page aren’t recorded. Press Resume to go on, or Stop to save the guide.'}</p>
       <div class="toolbar" role="toolbar" aria-label="Recording">
         {recordingNow ? (
           <button type="button" data-testid="pause" onClick={() => void attempt(() => send('rec.pause', {}))}>
@@ -305,7 +319,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             });
           }}
         >
-          <input class="grow" aria-label="Note" placeholder="A tip or instruction for the learner" value={noteTitle.value} onInput={(e) => (noteTitle.value = (e.target as HTMLInputElement).value)} />
+          <input class="grow" aria-label="Note" placeholder="A tip for the learner, shown as its own step" value={noteTitle.value} onInput={(e) => (noteTitle.value = (e.target as HTMLInputElement).value)} />
           <button type="submit">Add</button>
         </form>
       )}
@@ -321,7 +335,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
                 <div class="step-title">
                   <Markdown text={s.title} />
                 </div>
-                <FlagNotes flags={s.flags} />
+                <FlagNotes flags={s.flags} later />
               </div>
             </li>
           ))}
@@ -335,8 +349,8 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
       {!r.steps.length && (
         <div class="empty">
           <Icon name="crosshair" />
-          <strong>{recordingNow ? 'Do the task on the page' : 'Recording is paused'}</strong>
-          <span class="small">{recordingNow ? 'Each click and field you use appears here as a step. Typed values are never saved.' : 'Resume to record more steps.'}</span>
+          <strong>{recordingNow ? 'Waiting for your first click' : 'Recording is paused'}</strong>
+          <span class="small">{recordingNow ? 'Each click and field you use on the page appears here as a step.' : 'Clicks on the page are not recorded now. Press Resume to record more steps.'}</span>
         </div>
       )}
     </section>

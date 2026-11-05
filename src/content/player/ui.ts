@@ -42,6 +42,8 @@ const CSS = `
 .title { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
 .title strong { font-weight: 700; }
 .note { margin: 6px 0 0; color: var(--wm-fg-muted); font-size: 13.5px; overflow-wrap: anywhere; }
+.hint { margin: 8px 0 0; display: flex; gap: 6px; align-items: center; color: var(--wm-accent-text); font-size: 12.5px; font-weight: 500; }
+.hint::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--wm-accent); }
 .flash { margin: 10px 0 0; padding: 6px 10px; border-radius: var(--wm-radius-sm); background: var(--wm-success-soft); color: var(--wm-success); font-size: 13px; }
 .flash.warn { background: var(--wm-warn-soft); color: var(--wm-warn); }
 .buttons { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
@@ -136,6 +138,30 @@ export function modalDialogOf(target: Element): Element | null {
   return null;
 }
 
+/**
+ * What the learner does on the page to move on, for steps without a Next button (D127). First-time
+ * learners waited for a Next button that action steps don't have.
+ */
+export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'advance'>): string | null {
+  if (step.advance !== 'action') return null;
+  switch (step.kind) {
+    case 'click':
+      return 'Click the highlighted element to continue.';
+    case 'input':
+      return 'Fill in the highlighted field to continue.';
+    case 'select':
+      return 'Choose an option to continue.';
+    case 'check':
+      return 'Tick or untick it to continue.';
+    case 'submit':
+      return 'Send the form to continue.';
+    case 'navigate':
+      return 'Go to that page to continue.';
+    default:
+      return null;
+  }
+}
+
 /** A step title as plain text (markdown rendered, then read back), for the screen reader announcement. */
 function plain(text: string): string {
   const span = document.createElement('span');
@@ -218,6 +244,16 @@ export class PlayerUI {
       note.append(...renderInline(step.note));
       tip.append(note);
       tip.setAttribute('aria-describedby', note.id);
+    }
+    // Only in a real run (Test step's highlight in the editor has no voice handlers and no run).
+    const hint = target && this.h.replayVoice ? actionHint(step) : null;
+    if (hint) {
+      const line = el('p', 'hint', hint);
+      line.id = 'waymark-step-hint';
+      line.dataset.testid = 'action-hint';
+      tip.append(line);
+      // Screen readers hear it with the tooltip, after the note.
+      tip.setAttribute('aria-describedby', [tip.getAttribute('aria-describedby'), line.id].filter(Boolean).join(' '));
     }
     const buttons = el('div', 'buttons');
     if (view.stepIndex > 0) buttons.append(this.button('Back', 'back', this.h.back, 'ghost', ChevronLeft));

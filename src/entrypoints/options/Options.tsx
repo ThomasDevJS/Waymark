@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact';
 import { grantedSitePatterns } from '../../core/permissions/registration';
 import { fetchOnlyPatterns } from '../../background/site-access';
 import { Icon } from '../../ui/Icon';
+import { languageName } from '../../core/text/names';
 import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
 import type { DebugStatus } from '../../core/messaging/protocol';
@@ -23,6 +24,25 @@ const copied = signal(false);
 /** Debug log (D110): the switch, how many entries it holds, and the Copy button's state. */
 const debug = signal<DebugStatus | null>(null);
 const debugCopied = signal<'copied' | 'failed' | null>(null);
+
+
+/** Settings opened from the panel's Help at a section (options.html#about): scroll to it once it's drawn. */
+function useHashSection() {
+  useEffect(() => {
+    const id = location.hash.slice(1);
+    if (!/^[a-z-]{1,40}$/.test(id)) return;
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(`${id}-title`);
+      if (el || ++tries > 20) clearInterval(t);
+      if (el) {
+        el.scrollIntoView({ block: 'start' });
+        el.focus({ preventScroll: true });
+      }
+    }, 50);
+    return () => clearInterval(t);
+  }, []);
+}
 
 async function loadDebug() {
   debug.value = await send('debug.get', {}).catch(() => debug.value);
@@ -58,7 +78,7 @@ function DebugLog() {
         <span>
           Keep a debug log
           <span class="hint block">
-            While this is on, Waymark notes what it decides as you record and play: which element a click picked and why, match scores, why a step did or didn’t move on. Turn it on, do what went wrong, then copy the log into the chat. It holds step titles, element types and scores, and page addresses without anything after <span class="mono">?</span> or <span class="mono">#</span>. Never what you type. It is cleared when the browser closes.
+            While this is on, Waymark notes what it decides as you record and play: which element a click picked and why, match scores, why a step did or didn’t move on. Turn it on, do what went wrong, then copy the log and paste it into your bug report. It holds step titles, element types and scores, and page addresses without anything after <span class="mono">?</span> or <span class="mono">#</span>. Never what you type. It is cleared when the browser closes.
           </span>
         </span>
       </label>
@@ -101,7 +121,7 @@ async function subscribe() {
   try {
     url = new URL(libraryUrl.value.trim());
   } catch {
-    libraryError.value = 'Enter the full address of the pack file, starting with https://';
+    libraryError.value = 'Enter the full address of the guide file, starting with https://';
     return;
   }
   if (!libraryUrlAllowed(url.href)) {
@@ -238,6 +258,7 @@ function Section({ id, title, icon, children, badge }: { id: string; title: stri
 }
 
 export function Options() {
+  useHashSection();
   useEffect(() => {
     void load();
     void loadSites();
@@ -298,7 +319,7 @@ export function Options() {
                 <select value={lang.value} onChange={(e) => (lang.value = (e.target as HTMLSelectElement).value)}>
                   {langs.map((l) => (
                     <option key={l} value={l}>
-                      {l}
+                      {languageName(l)}
                     </option>
                   ))}
                 </select>
@@ -396,16 +417,16 @@ export function Options() {
                       {isLibrarySite(p, lib?.url) && <span class="hint block">Used to read the team library. Removing it stops library refreshes.</span>}
                     </span>
                     {confirming.value === p ? (
-                      <span class="row nowrap" role="group" aria-label={`Remove access to ${sitePatternLabel(p)}?`}>
+                      <span class="row nowrap" role="group" aria-label={`Turn off Waymark on ${sitePatternLabel(p)}?`}>
                         <button type="button" class="sm danger" ref={(b) => b?.focus()} onClick={() => void removeSite(p)}>
-                          Remove access
+                          Turn off
                         </button>
                         <button type="button" class="ghost sm" onClick={() => (confirming.value = null)}>
                           Cancel
                         </button>
                       </span>
                     ) : (
-                      <button type="button" class="ghost sm danger" aria-label={`Remove access to ${sitePatternLabel(p)}`} onClick={() => (confirming.value = p)}>
+                      <button type="button" class="ghost sm danger" aria-label={`Turn off Waymark on ${sitePatternLabel(p)}`} onClick={() => (confirming.value = p)}>
                         Remove
                       </button>
                     )}
@@ -434,10 +455,10 @@ export function Options() {
             badge={lib?.url ? <span class={`badge ${lib.lastError ? 'danger' : 'success'}`}>{lib.lastError ? 'Refresh failed' : 'Subscribed'}</span> : undefined}
           >
             <p class="small muted">
-              Subscribe to a pack file your team publishes at a fixed HTTPS address. Waymark reads it now and every 6 hours and shows its guides as read-only team guides. Anyone with the address can read the pack.
+              For teams: one person exports a Waymark guide file and puts it at a web address (for example a file in a shared repository). Everyone else pastes that address here. Their side panel then shows the team’s guides, read-only, and checks for updates every 6 hours. Anyone with the address can read the file.
             </p>
             <label class="field">
-              <span class="label">Pack address</span>
+              <span class="label">Address of the team’s guide file</span>
               <input data-testid="library-url" type="url" placeholder="https://example.com/guides.waymark.json" value={libraryUrl.value} onInput={(e) => (libraryUrl.value = (e.target as HTMLInputElement).value)} />
             </label>
             <div class="row">
@@ -552,11 +573,11 @@ export function Options() {
                     ] as const
                   ).map(([name, label]) => (
                     <li key={name}>
-                      {shortcuts.value[name] ? <kbd>{shortcuts.value[name]}</kbd> : <span class="muted">not set</span>} {label}
+                      {label}: {shortcuts.value[name] ? <kbd>{shortcuts.value[name]}</kbd> : <span class="muted">no key set</span>}
                     </li>
                   ))}
                   <li>
-                    <kbd>Esc</kbd> in the tooltip exits the guide
+                    Exit the guide from the tooltip: <kbd>Esc</kbd>
                   </li>
                 </ul>
               </dd>

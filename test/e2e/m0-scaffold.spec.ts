@@ -11,11 +11,11 @@ test('the build loads in Chromium: service worker runs, manifest has no content_
   expect(await ext.registeredMatches()).toEqual([]);
   const panel = await ext.extensionPage();
   await expect(panel.getByRole('heading', { name: 'Waymark', exact: true })).toBeVisible();
-  // First run: the welcome (D92) explains Allow, Record and Play once.
+  // First run: the welcome (D92, D121) explains Allow, Record and Play once, on one card.
   await expect(panel.getByTestId('welcome')).toContainText('Allow');
-  await panel.getByTestId('welcome-next').click();
-  await panel.getByTestId('welcome-next').click();
-  await panel.getByTestId('welcome-next').click(); // Get started
+  await expect(panel.getByTestId('welcome')).toContainText('Record');
+  await expect(panel.getByTestId('welcome')).toContainText('Play');
+  await panel.getByTestId('welcome-done').click(); // Get started
   await expect(panel.getByTestId('welcome')).toHaveCount(0);
   await panel.reload();
   await expect(panel.getByRole('heading', { name: 'Waymark', exact: true })).toBeVisible();

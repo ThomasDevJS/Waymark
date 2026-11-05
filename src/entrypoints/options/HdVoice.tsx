@@ -72,9 +72,13 @@ export function HdVoice() {
         </span>
       </div>
       <p class="small muted">
-        A natural-sounding English voice that runs on this device. It downloads {size} once (the Kokoro voice model from Hugging Face and its English word list from GitHub) and keeps it in the
-        browser. After that, nothing leaves your device. It needs a fairly fast computer; if yours is too slow, Waymark keeps the system voice.
+        Optional. A more natural English voice that runs on this computer. It is a one-time {size} download; after that, nothing leaves your device. If your computer is too slow for it, Waymark keeps using the
+        normal voice.
       </p>
+      <details class="small muted">
+        <summary>Where the download comes from</summary>
+        The Kokoro voice model from Hugging Face and its English word list from GitHub. The browser asks for access to those two sites during the download only.
+      </details>
       <p data-testid="hd-state" role="status" class={`status-text${st.state === 'ready' ? ' ok' : st.state === 'slow' || st.state === 'error' ? ' warn' : ''}`}>
         {st.state === 'off' && 'Off.'}
         {st.state === 'downloading' && `Downloading… ${mb(st.loaded)} of ${mb(st.total)}`}

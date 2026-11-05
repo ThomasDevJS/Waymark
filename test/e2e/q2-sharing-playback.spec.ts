@@ -56,8 +56,9 @@ test('exports a guide as a Markdown and a printable HTML how-to after the review
 
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId('export').click(); // checkboxes appear only while choosing (D124)
   await panel.getByLabel('Select Export orders for export').check();
-  await panel.getByTestId('export').click();
+  await panel.getByTestId('export-selected').click();
   await panel.getByTestId('format-markdown').check();
   await expect(panel.getByTestId('data-like-warning')).toContainText('1 item looks like data');
   await panel.getByTestId(`remove-${guideId}|${g.steps[0]!.id}|note`).click();
@@ -67,8 +68,9 @@ test('exports a guide as a Markdown and a printable HTML how-to after the review
   const text = readFileSync((await md.path())!, 'utf8');
   expect(text).toBe(['# Export orders', '', `Start at ${site.main}`, '', '1. Click **Import**', '', '2. Click **Export**', '', '   Pick **CSV**.', ''].join('\n'));
 
-  // HTML: the same review; nothing but the origin as an address.
-  await panel.getByTestId('export').click();
+  // HTML: the same review, this time from the guide's Share… (D124); nothing but the origin as an address.
+  await panel.getByTestId(`more-${guideId}`).click();
+  await panel.getByTestId(`share-${guideId}`).click();
   await panel.getByTestId('format-html').check();
   const [html] = await Promise.all([panel.waitForEvent('download'), panel.getByTestId('download-howto').click()]);
   expect(html.suggestedFilename()).toBe('guides.html');

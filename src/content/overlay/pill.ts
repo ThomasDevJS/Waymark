@@ -16,7 +16,8 @@ const CSS = `
 .paused .label { color: var(--wm-fg-muted); }
 .sep { width: 1px; align-self: stretch; background: var(--wm-border); flex: none; }
 .last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.pill.notice .last { color: var(--wm-warn); font-weight: 500; }
+.pill.notice { border-radius: 14px; }
+.pill.notice .last { color: var(--wm-warn); font-weight: 500; white-space: normal; text-overflow: clip; }
 @media (prefers-reduced-motion: no-preference) {
   .pill { animation: wm-pill-in 180ms var(--wm-ease); }
   .dot { animation: wm-blink 1.5s ease-in-out infinite; }

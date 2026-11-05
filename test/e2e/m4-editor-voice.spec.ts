@@ -42,6 +42,7 @@ test('an author fixes a wrong match by re-picking, and the fixed guide plays on 
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-toggle').click(); // steps start folded (D125)
   await expect(panel.getByTestId('step-0-title')).toHaveValue('Click **Export**');
 
   // Test step highlights the (wrong) element on the page.
@@ -155,14 +156,17 @@ test('editing: titles, notes, voice text, reorder, delete, a new note step and o
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-title').fill('Import the **orders** file');
   await panel.getByTestId('step-0-note').fill('Use the *latest* export.');
   await panel.getByTestId('step-2-delete').click(); // drop CSV
-  await panel.getByTestId('step-0-add-note').click(); // note after step 1
+  await panel.getByTestId('step-0-more').click();
+  await panel.getByTestId('step-0-add-note').click(); // note after step 1 (opens unfolded)
   await panel.getByTestId('step-1-title').fill('Check the file name');
   // reorder: move Export up above the note, then back down (exercises both buttons)
   await panel.getByTestId('step-2-up').click();
   await panel.getByTestId('step-1-down').click();
+  await panel.getByTestId('step-1-more').click();
   await panel.getByTestId('step-1-optional').check();
   await panel.getByTestId('save-guide').click();
   await expect(panel.getByTestId('editor-status')).toHaveText('Saved (version 2).');
@@ -225,6 +229,7 @@ test('review fixes: Esc ends a pick everywhere; Test step refuses another site; 
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-repick').click();
   await expect.poll(() => marker(app, 'picking')).toBe('on');
   await app.bringToFront();
@@ -258,6 +263,7 @@ test('review fixes: a Test step during a live run hands the overlay back to the 
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId(`edit-${guideId}`).click();
+  await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-test').click();
   await expect.poll(() => marker(app, 'tested')).toBe('found');
   const tip = app.locator('waymark-overlay .tip');
