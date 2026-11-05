@@ -553,7 +553,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             <div class="empty">
               <Icon name="book" />
               <strong>No guides yet</strong>
-              <span class="small">{tabId === null ? 'A guide walks someone through a task, one highlighted step at a time. Allow Waymark on a site to record one, or import a guide file someone sent you.' : 'A guide walks someone through a task, one highlighted step at a time. Record one above, or import a guide file someone sent you.'}</span>
+              <span class="small">{tabId === null ? 'A guide walks someone through a task, one highlighted step at a time. Allow Waymark on a site to record one, or import a guide file someone sent you.' : 'A guide walks someone through a task, one highlighted step at a time. Record one above, import a guide file someone sent you, or try a tutorial to see one play.'}</span>
             </div>
           ) : null}
         </section>

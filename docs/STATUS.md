@@ -33,6 +33,11 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Panel: one primary action per state, Site options folded (`App.tsx`), Help card and inline `?` (`sidepanel/Help.tsx`), one-card welcome, library rows with Edit / More / Start and export selection mode (`Library.tsx`), folded editor steps (`Editor.tsx`), Technical details in the export review. On the page: the tooltip's action hint (`actionHint`, `content/player/ui.ts`).
 - Tests: `test/browser/panel-clarity.test.ts`, `test/unit/names.test.ts`. E2E opens a step (`step-N-toggle`, `step-N-more`) and Site options before using what's inside.
 
+## Built-in tutorials (D128, D129)
+- Pack: `src/core/tutorials/pack.json` (schema and helpers in `tutorials.ts`, run loop in `runner.ts`). Practice page: `src/entrypoints/practice/` (`Practice.tsx` app and panel picture, `player.ts` drives `PlayerUI` + `waitForMatch` + `watchAdvance`). Panel section: `sidepanel/Tutorials.tsx`. Voice: `src/background/tutorials.ts` (`tutorial.speak`, `tutorial.stop`).
+- Adding a tutorial: add it to the pack; any new target needs a `data-guide-id` on the practice page (and an entry in `VIEW_OF` if it lives in a view). `test/browser/practice.test.ts` fails if a target is missing or not found uniquely.
+- Tests: `test/unit/tutorials.test.ts`, `test/browser/practice.test.ts`, e2e `test/e2e/t1-tutorials.spec.ts` (test hook: `data-waymark-test-practice` = `drawn:N`, `not-found:N`, `off-track:N`, `done:N`, `finished`, `exited`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

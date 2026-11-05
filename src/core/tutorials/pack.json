@@ -1,0 +1,272 @@
+{
+  "format": "waymark-tutorials",
+  "version": 1,
+  "tutorials": [
+    {
+      "id": "tour",
+      "title": "How Waymark works",
+      "summary": "A one-minute tour: a guide plays on the page and moves on when you act.",
+      "minutes": 1,
+      "steps": [
+        {
+          "id": "tour-1",
+          "kind": "note",
+          "title": "Welcome to the practice page",
+          "note": "This is a pretend invoicing app, made for practice. Waymark guides you through it one step at a time. Press **Next**.",
+          "voiceText": "Welcome to the practice page. This is a pretend invoicing app. Waymark guides you through it one step at a time. Press Next.",
+          "advance": "next"
+        },
+        {
+          "id": "tour-2",
+          "kind": "click",
+          "title": "Click **New invoice**",
+          "note": "The bright frame shows where to act. Click it yourself: the guide moves on when you do.",
+          "target": "practice-new-invoice",
+          "advance": "action"
+        },
+        {
+          "id": "tour-3",
+          "kind": "input",
+          "title": "Type a customer name",
+          "note": "Anything works. Waymark never saves what you type. Press **Next** when you’re done.",
+          "target": "practice-customer",
+          "advance": "action"
+        },
+        {
+          "id": "tour-4",
+          "kind": "note",
+          "title": "The controls at the top of this box",
+          "note": "**Back** returns to the last step. The speaker mutes the voice, and **×** ends the guide. The keys Alt+. and Alt+, also go forward and back.",
+          "advance": "next"
+        },
+        {
+          "id": "tour-5",
+          "kind": "submit",
+          "title": "Click **Send invoice**",
+          "target": "practice-send",
+          "advance": "action"
+        },
+        {
+          "id": "tour-6",
+          "kind": "note",
+          "title": "That’s a guide",
+          "note": "Guides you record play just like this, on your own web app. Next, try **Record your first guide**.",
+          "advance": "next"
+        }
+      ]
+    },
+    {
+      "id": "record",
+      "title": "Record your first guide",
+      "summary": "Name it, press Record, do the task once, press Stop.",
+      "minutes": 2,
+      "steps": [
+        {
+          "id": "record-1",
+          "kind": "note",
+          "title": "Start in the Waymark side panel",
+          "note": "On your web app, click the Waymark icon in the toolbar (in Chrome it may be under the puzzle piece). On a site Waymark hasn’t seen, press **Allow on this site** first. (This is a picture: you do it in the real panel.)",
+          "target": "pic-panel",
+          "advance": "next"
+        },
+        {
+          "id": "record-2",
+          "kind": "note",
+          "title": "Name it, then press **Record**",
+          "note": "Use the name a learner would look for, like “Create an invoice”. (This is a picture: you do it in the real panel.)",
+          "target": "pic-record",
+          "advance": "next"
+        },
+        {
+          "id": "record-3",
+          "kind": "click",
+          "title": "Now do the task once: click **New invoice**",
+          "note": "While recording, each click becomes a step. A red **REC** bar on the page shows the newest one.",
+          "target": "practice-new-invoice",
+          "advance": "action"
+        },
+        {
+          "id": "record-4",
+          "kind": "select",
+          "title": "Choose the **payment terms**",
+          "note": "Lists and menus are recorded as “Choose” steps.",
+          "target": "practice-terms",
+          "advance": "action"
+        },
+        {
+          "id": "record-5",
+          "kind": "check",
+          "title": "Tick **Send me a copy**",
+          "target": "practice-copy",
+          "advance": "action"
+        },
+        {
+          "id": "record-6",
+          "kind": "note",
+          "title": "What you type is never saved",
+          "note": "A step says “Enter Email”, never the email itself. Passwords and values stay on your device and out of the guide.",
+          "target": "practice-customer",
+          "advance": "next"
+        },
+        {
+          "id": "record-7",
+          "kind": "note",
+          "title": "Press **Stop** when you’re done",
+          "note": "The guide is saved and opens in the editor. This practice page can’t be recorded, so try it on your own app next. (This is a picture: you do it in the real panel.)",
+          "target": "pic-stop",
+          "advance": "next"
+        }
+      ]
+    },
+    {
+      "id": "edit",
+      "title": "Edit a guide",
+      "summary": "Titles, notes, spoken text, Test step and Re-pick.",
+      "minutes": 2,
+      "steps": [
+        {
+          "id": "edit-1",
+          "kind": "note",
+          "title": "Each step is one line",
+          "note": "In the editor, click a step to open it. Use the arrows to reorder and the bin to delete; **Undo** brings a step back. (This is a picture: you do it in the real panel.)",
+          "target": "pic-step",
+          "advance": "next"
+        },
+        {
+          "id": "edit-2",
+          "kind": "note",
+          "title": "Title and note",
+          "note": "The title says what to do; the note says why or how. Learners read both in this box. Put two stars around words to make them **bold**. (This is a picture: you do it in the real panel.)",
+          "target": "pic-step-title",
+          "advance": "next"
+        },
+        {
+          "id": "edit-3",
+          "kind": "note",
+          "title": "Spoken text",
+          "note": "Under **More options**, write what the voice should say. Leave it empty, and Waymark reads the title and note. (This is a picture: you do it in the real panel.)",
+          "voiceText": "Under More options, write what the voice should say. If you leave it empty, Waymark reads the title and the note.",
+          "target": "pic-more",
+          "advance": "next"
+        },
+        {
+          "id": "edit-4",
+          "kind": "note",
+          "title": "**Test step** and **Re-pick element**",
+          "note": "Test step looks for the element on the page right now. Re-pick lets you click the right element instead; that click doesn’t reach the app. (This is a picture: you do it in the real panel.)",
+          "target": "pic-test",
+          "advance": "next"
+        },
+        {
+          "id": "edit-5",
+          "kind": "click",
+          "title": "Try it: this step points at **Invoices**",
+          "note": "Imagine you recorded the wrong button. After a re-pick, the guide points here instead. Click **Invoices** to go on.",
+          "target": "practice-nav-invoices",
+          "advance": "action"
+        },
+        {
+          "id": "edit-6",
+          "kind": "note",
+          "title": "Press **Save**",
+          "note": "Each save makes a new version. **Discard and close** throws away changes you haven’t saved. (This is a picture: you do it in the real panel.)",
+          "target": "pic-save",
+          "advance": "next"
+        }
+      ]
+    },
+    {
+      "id": "share",
+      "title": "Share a guide",
+      "summary": "Export a file, copy a link, import, and team libraries.",
+      "minutes": 2,
+      "steps": [
+        {
+          "id": "share-1",
+          "kind": "note",
+          "title": "Open a guide’s **⋯** menu",
+          "note": "Every guide in the list has Edit, ⋯ and Start. (This is a picture: you do it in the real panel.)",
+          "target": "pic-guide-more",
+          "advance": "next"
+        },
+        {
+          "id": "share-2",
+          "kind": "note",
+          "title": "**Share…** saves a guide file",
+          "note": "First you see every word the file will hold: remove anything private, like customer names. Choose a printable how-to for people who don’t use Waymark. (This is a picture: you do it in the real panel.)",
+          "target": "pic-guide-more",
+          "advance": "next"
+        },
+        {
+          "id": "share-3",
+          "kind": "note",
+          "title": "**Copy link** for one guide",
+          "note": "Send it in a chat. Someone with Waymark who opens it on the app is offered the guide. (This is a picture: you do it in the real panel.)",
+          "target": "pic-guide-more",
+          "advance": "next"
+        },
+        {
+          "id": "share-4",
+          "kind": "note",
+          "title": "**Import…** a file someone sent you",
+          "note": "Waymark shows what’s in it first, and asks to be allowed on the guide’s site if needed. (This is a picture: you do it in the real panel.)",
+          "target": "pic-import",
+          "advance": "next"
+        },
+        {
+          "id": "share-5",
+          "kind": "note",
+          "title": "For a whole team: a team library",
+          "note": "Put an exported guide file at a web address. Everyone pastes that address in **Settings → Team library** and sees the same guides, kept up to date.",
+          "advance": "next"
+        }
+      ]
+    },
+    {
+      "id": "warnings",
+      "title": "What the warnings mean",
+      "summary": "Hard to find, Drawing area, and what happens when a step can’t be found.",
+      "minutes": 2,
+      "steps": [
+        {
+          "id": "warnings-1",
+          "kind": "note",
+          "title": "**Drawing area**",
+          "note": "Charts and maps have nothing inside them to point at. A click recorded here gets this warning. Add a note step that explains the chart instead.",
+          "target": "practice-chart",
+          "advance": "next"
+        },
+        {
+          "id": "warnings-2",
+          "kind": "note",
+          "title": "**Hard to find**",
+          "note": "This is plain text, not a button. A click on it may not be found next time. Re-pick the real button, or delete the step.",
+          "target": "practice-overdue",
+          "advance": "next"
+        },
+        {
+          "id": "warnings-3",
+          "kind": "note",
+          "title": "**Not recorded**",
+          "note": "Some clicks have nothing Waymark could ever find again, like a long sentence. Then no step is added, and the REC bar says so.",
+          "advance": "next"
+        },
+        {
+          "id": "warnings-4",
+          "kind": "click",
+          "title": "Click **Archive all**",
+          "note": "This button isn’t on the page, so you’ll see what Waymark does when it can’t find a step.",
+          "target": "practice-missing",
+          "advance": "action"
+        },
+        {
+          "id": "warnings-5",
+          "kind": "note",
+          "title": "Waymark never guesses",
+          "note": "When a step can’t be found, the learner can **Retry**, **Skip**, or **Report** it. Reports go to **Settings → Problems**, so you can fix the step with Re-pick.",
+          "advance": "next"
+        }
+      ]
+    }
+  ]
+}

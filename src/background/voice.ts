@@ -59,13 +59,16 @@ const FALLBACK_TAB_KEY = 'ttsFallbackTab';
  * newer step, Mute or Exit (D51).
  */
 const SPEECH_AT_KEY = 'speechAt';
+/** Set while a tutorial step is being read; `tutorial.stop` stops speech only then (D129). */
+export const TUTORIAL_SPEECH_KEY = 'speech:tutorial';
 
 /** Stops all speech. `why` goes to the debug log (D110); internal restarts pass none. */
 export function stopSpeech(why?: string): void {
   if (why) dlog('voice', 'voice.stop', {}, { why });
   if (ttsAvailable()) chrome.tts.stop();
   hdStop();
-  void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock() });
+  // Whatever speaks next is not a tutorial's, unless the tutorial handler marks it again (D129).
+  void chrome.storage.session.set({ [SPEECH_AT_KEY]: clock(), [TUTORIAL_SPEECH_KEY]: false });
   void chrome.storage.session.get(FALLBACK_TAB_KEY).then((r) => {
     const tabId = r[FALLBACK_TAB_KEY] as number | undefined;
     if (tabId === undefined) return;
@@ -163,6 +166,20 @@ export async function speakHdSample(): Promise<boolean> {
   if (!useHd(await getHdStatus(), 'en')) return false;
   stopSpeech();
   return (await hdSpeak(`sample-${Date.now()}`, SAMPLE, hdSpeed(settings.rate), null)) === 'played';
+}
+
+/**
+ * Reads bundled text (a built-in tutorial step, D129) with the voice guides use. Never page or
+ * user text: callers look the text up in the bundled pack. System voice only (no HD, no fallback
+ * to a page's speechSynthesis: the Practice page is an extension page).
+ */
+export async function speakBundledText(text: string, lang: string, settings: VoiceSettings): Promise<boolean> {
+  if (!ttsAvailable() || !text) return false;
+  const voice = pickVoice(await getVoices(), lang, settings, uiLang());
+  if (!voice) return false;
+  stopSpeech();
+  chrome.tts.speak(text.slice(0, 5000), { voiceName: voice.voiceName, lang: voice.lang, rate: settings.rate, enqueue: false });
+  return true;
 }
 
 /** "Test voice" in the options page: a fixed sample, never user-supplied text. */

@@ -342,5 +342,32 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await opts.locator('#problems').scrollIntoViewIfNeeded();
   await panelShot(opts, 'settings-03-debug-log', false);
 
+  // 10. Built-in tutorials on the Practice page (D128).
+  const practice = await context.newPage();
+  await practice.setViewportSize({ width: 1280, height: 900 });
+  await practice.goto(`${base}/practice.html`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('ready');
+  await panelShot(practice, 'practice-01-home', false);
+  await practice.goto(`${base}/practice.html?tutorial=tour`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
+  await practice.locator('waymark-overlay [data-action="next"]').click();
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
+  await panelShot(practice, 'practice-02-tour-click', false);
+  await practice.goto(`${base}/practice.html?tutorial=record`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
+  await practice.locator('waymark-overlay [data-action="next"]').click();
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
+  await panelShot(practice, 'practice-03-record-picture', false);
+  await practice.setViewportSize({ width: 375, height: 667 });
+  await practice.goto(`${base}/practice.html?tutorial=record`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
+  await practice.locator('waymark-overlay [data-action="next"]').click();
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
+  await panelShot(practice, 'practice-04-phone', false);
+  await panel.goto(`${base}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId('tutorial-more-record').click();
+  await panel.getByTestId('tutorials').scrollIntoViewIfNeeded();
+  await panelShot(panel, 'panel-16-tutorials', false);
+
   writeFileSync(join(OUT, 'index.txt'), done.join('\n') + '\n');
 });

@@ -54,7 +54,7 @@ The side panel is one scrolling column; it stays one column. What changes is wha
 Header:  [Waymark mark] Waymark                      [? Help] [⚙ Settings]
 
 State A: no web page in the tab
-  Card: "Open a web app to get started" + [Try a practice guide]   ← new
+  Card: "Open the web app you want to guide" + [Or try a tutorial]   ← new
   Guides (yours, if any)
   Tutorials                                                        ← PR 2
 
@@ -120,12 +120,13 @@ Panel coach marks (D) are not built in PR 2. PR 1's inline "?" help plus collaps
 
 - `src/entrypoints/practice/` is an unlisted extension page. It renders the practice app and, given `?tutorial=<id>`, plays that tutorial on itself. Without an id it shows the app with a list of tutorials.
 - **Local run loop** (`src/core/tutorials/runner.ts`, pure, unit-tested): holds `stepIndex`, builds a `RunView` for `PlayerUI`, and handles next, back, skip, exit, retry and done. The page shell finds the target with `waitForMatch`, draws with `PlayerUI.showStep`, and watches with `watchAdvance`. It doesn't use the service worker's run state, `runs.ts`, the frame board or the registry, so the D84 frame work is untouched.
-- **Voice**: a new extension-page message `tutorial.speak { tutorialId, stepId }`. The service worker looks the text up in the *bundled* pack (it never speaks text sent by a page), honours mute and "Read each step aloud", and uses the same voice choice as guides (`pickVoice`). `tutorial.stop` stops speech. Mute in the tooltip uses the existing `voice.settings.set`.
+- **Voice**: a new extension-page message `tutorial.speak { tutorialId, stepId }`. The service worker looks the text up in the *bundled* pack (it never speaks text sent by a page), honours mute and "Read each step aloud", and uses the same voice choice as guides (`pickVoice`; system voice only, no HD). `tutorial.stop` stops speech. Mute in the tooltip uses the existing `voice.settings.set`.
+- **Off track and not found**: leaving the step's view of the practice app shows the real off-track card (Go back returns); the warnings tutorial points at a missing element to show the real not-found card.
 - **Never touches real sites**: the page only runs its own document; tutorials have no `appOrigins` and can't be started with `run.start` (the pack isn't in guide storage).
 
 ### 5.3 The pack
 
-`src/core/tutorials/pack.json`, bundled at build time, validated by a Zod `TutorialPackSchema` in a unit test and at load. Steps reuse `StepSchema` fields (kind, title, note, voiceText, advance). A target is written as a short `{ guideId, tag, role?, name? }` that the loader expands to a full `ElementFingerprint`, so the pack stays readable and the real matcher finds the practice page's `data-guide-id` elements. Five guides, 5–8 steps each:
+`src/core/tutorials/pack.json`, bundled at build time, validated by a Zod `TutorialPackSchema` in a unit test and at load. Steps reuse `StepSchema` fields (kind, title, note, voiceText, advance). A target is written as the practice element's `data-guide-id`; at play time the page builds the element's fingerprint and the real matcher finds it (a browser test checks every target is found uniquely). Five guides, 5–8 steps each:
 
 | Tutorial | What the learner does on the Practice page |
 |---|---|
@@ -138,7 +139,7 @@ Panel coach marks (D) are not built in PR 2. PR 1's inline "?" help plus collaps
 ### 5.4 In the panel
 
 - A **Tutorials** section (with a "Built-in" badge) lists the five with their length. **Start** opens the Practice page in a new tab (`chrome.tabs.create`; no permission). It's shown in every state, including on a tab with no site. It can be **hidden** (`ui:tutorialsHidden` in `storage.local`), and Help brings it back.
-- The welcome gets **Try it on a practice page** next to Get started.
+- The welcome gets **Try a tutorial** next to Get started.
 - Built-in guides are **read-only**. They aren't in the guide index, so they don't count against the library, never appear in exports, in "For this page", in badges or in search results, and never ask for site access.
 - **Duplicate** ("Copy to my guides") copies a tutorial into the user's library *on the current allowed site*, as a starting template: the titles, notes and voice texts stay, and steps that point at practice elements become note steps, so the copy never plays wrongly. It's only offered on an allowed site, so it never asks for access by itself.
 
