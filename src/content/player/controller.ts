@@ -167,8 +167,16 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     }
   }
 
+  // The board our last report went into, and whether a report is on its way (#36): render() resends
+  // only when the view shows a board that is not the one holding our report (D45: it was replaced).
+  let reportedTo: string | null = null;
+  let reportInFlight = false;
+  let resends = 0;
+  let reportSeq = 0;
   const report = (v: RunView, r: MatchResult) => {
     const fp = v.step?.target;
+    const seq = ++reportSeq;
+    reportInFlight = true;
     send('run.match', {
       stepToken: v.stepToken ?? '',
       frameToken: deps.frameToken,
@@ -177,7 +185,16 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       margin: r.status === 'found' ? r.margin : 0,
       instance: fp?.instance ?? 'unique',
       pathMatches: !!fp && JSON.stringify(deps.framePath()) === JSON.stringify(fp.framePath),
-    }).catch(() => undefined);
+    })
+      .then((res) => {
+        if (seq !== reportSeq) return; // a newer report (or search) took over
+        reportInFlight = false;
+        reportedTo = res?.boardId ?? null;
+        render(); // a view may have come while the report was on its way
+      })
+      .catch(() => {
+        if (seq === reportSeq) reportInFlight = false;
+      });
   };
 
   function startSearch(v: RunView) {
@@ -191,6 +208,11 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     drawnFor = null;
     searchDone = false;
     result = null;
+    // A new search: no report of it yet (#36). The board's own reports stay; this one replaces ours.
+    reportSeq++;
+    reportInFlight = false;
+    reportedTo = null;
+    resends = 0;
     if (!step.target) {
       // note and navigate steps have no element; the top frame shows a centered tooltip
       if (isTop) {
@@ -234,23 +256,20 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       result = r;
       searchDone = true;
       report(v, r);
-      render(true);
+      render();
     });
   }
 
-  /**
-   * Draws or hides this frame's part of the current step, given the latest view. `afterSearch`:
-   * called right after this frame's own report (only for the debug log, which then does not call
-   * the usual second report a re-send).
-   */
-  function render(afterSearch = false) {
+  /** Draws or hides this frame's part of the current step, given the latest view. */
+  function render() {
     const v = view;
     if (!v?.step || !v.stepToken) return;
     // The service worker has no winner but this frame finished its search: its report may have
     // been dropped (the board is cleared when a new page loads, possibly after the report
     // arrived). Send it again; the board only broadcasts on a change, so this cannot loop (D45).
-    if (!v.winner && searchDone && result && v.step.target) {
-      if (!afterSearch) dlog('frame', 'report.again', { step: v.stepIndex + 1, why: 'a view without a winner after this frame searched: its report may have been dropped (D45)' });
+    if (!v.winner && searchDone && result && v.step.target && !reportInFlight && v.boardId !== reportedTo && resends < 3) {
+      resends++;
+      dlog('frame', 'report.again', { step: v.stepIndex + 1, why: 'the board holding this frame’s report was replaced (D45)' });
       report(v, result);
     }
     const mine = v.winner === deps.frameToken && result?.status === 'found';

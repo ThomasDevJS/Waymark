@@ -115,6 +115,8 @@ export interface RunView {
   winner: string | null;
   /** 'not-found' once the top frame gave up and no frame found the target. */
   phase: 'searching' | 'found' | 'not-found';
+  /** The board for this step, or null before any report (#36). */
+  boardId: string | null;
 }
 
 export const NO_RUN: RunView = {
@@ -133,6 +135,7 @@ export const NO_RUN: RunView = {
   muted: false,
   winner: null,
   phase: 'searching',
+  boardId: null,
 };
 
 export function runView(run: Run | null | undefined, match?: MatchBoard): RunView {
@@ -155,6 +158,7 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
     muted: false,
     winner: board?.winner ?? null,
     phase: board?.winner ? 'found' : board?.topGaveUp ? 'not-found' : 'searching',
+    boardId: board?.id ?? null,
   };
 }
 
@@ -165,6 +169,8 @@ export interface MatchBoard {
   reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean; /** The reporting document (sender.documentId), to tell a frame that is gone (D84). */ doc?: string }>;
   winner: string | null;
   topGaveUp: boolean;
+  /** New for every board: a frame resends its report only when the board holding it was replaced (#36). */
+  id?: string;
   /** When each reporting document was last asked whether it still exists (D84). */
   checked?: Record<string, number>;
 }

@@ -379,7 +379,7 @@ export const runHandlers: Handlers = {
         frames: Object.keys(board.reports).length,
         topGaveUp: board.topGaveUp,
       }));
-      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner, check };
+      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner, check, boardId: board.id };
     });
     if (!changed) return { ok: true };
     // Two or more frames found it: drop the reports of frames that no longer exist (D84).
@@ -391,7 +391,7 @@ export const runHandlers: Handlers = {
     // Found: read the step now (D83). Idempotent (spokenToken), so a report after a service worker
     // restart that interrupted the first read still gets it read.
     if (changed.found) await voiceSync(tabId);
-    return { ok: true };
+    return { ok: true, ...(changed.boardId ? { boardId: changed.boardId } : {}) };
   },
   // A frame's document is going away (pagehide): its reports go, so it never blocks the frame that
   // replaces it (D84). Accepted whatever the document's lifecycle; it can only remove its own entries.

@@ -727,6 +727,18 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
   - Code holds its own reference to the root and never reads `host.shadowRoot`, which is null when closed.
   - Recorder and advance (`src/core`) call `composedPath()` themselves. They first return for any path through the host (`isOwnEvent`/`isOverlayPath`), so the overlay's insides never reach their logic.
 
+### D87. A frame reports its search once; it re-sends only when the board holding its report was replaced
+*5 Nov 2026 · SPEC: Element targeting, playback step 8; issue #36 (found with the debug log, D110)*
+
+- **Finding**: after each search a frame reported its result, then immediately called `render()`. Its report was still on the way, so the view had no winner yet, and D45's re-send fired. Every frame sent two `run.match` per step. Worse, every later view without a winner (for example when the top frame gave up after 8 s) made **all** finished frames re-send again. Thomas's log shows waves of `report.again` from about 25 frames.
+- **Change**:
+  - Each board gets an `id` (a new one whenever the board is created anew, for example after the page-load clear of D45). The view carries `boardId`, and the `run.match` reply carries the board the report went into.
+  - A frame re-sends only when no report of its own is on the way and the view shows a different board from the one holding its report. That is exactly D45's case, where the board was replaced after the report arrived. It re-sends at most 3 times per search.
+  - A new search resets this state; stale replies are ignored by sequence number.
+- **Tests**:
+  - e2e: each frame sends exactly one report per step, across an 8 s run where every frame finishes. It failed before (2 for some frames).
+  - The D45 e2e (Open start page) still passes.
+
 ## 2026-11-05 — Design
 
 ### D90. A small design system: tokens, components, a screenshot harness

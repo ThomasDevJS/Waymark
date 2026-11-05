@@ -110,3 +110,46 @@ test(`a screen reopened in new frames (${name}): the old frame never blocks the 
   await activity(app)!.locator('#unsafe_driving-basic-cat-info-toggle .count').click();
   await expect.poll(() => marker(app, 'player')).toBe('done');
 });
+
+test('each frame reports its search once per step (#36)', async ({ context, ext, site }) => {
+  test.setTimeout(120_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/nested/index.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await ext.message('rec.start', { tabId, title: 'Once' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await app.bringToFront();
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null), { timeout: 10_000 }).toBe('ready');
+  await expect.poll(async () => marker(activity(app)!, 'recording')).toBe('on');
+  await activity(app)!.locator('.cards .title', { hasText: 'Unsafe Driving' }).click();
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string }>('rec.stop', {});
+
+  await app.goto(`${site.main}/nested/index.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const sw = await ext.sw();
+  await sw.evaluate(() => chrome.storage.local.set({ debugSetting: { on: true, since: new Date().toISOString() } }));
+  await ext.message('run.start', { tabId, guideId: rec.guideId });
+  await app.bringToFront();
+  await expect.poll(() => marker(app, 'player')).toBe('drawn:0');
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'player') : null), { timeout: 15_000 }).toBe('drawn:1');
+  // Let every frame's 8 s search end (the top frame gives up, which used to make all frames re-send).
+  await app.waitForTimeout(9_000);
+  type Entry = { ev: string; frame: number | null; d: [string, unknown][] };
+  const log = (await sw.evaluate(async () => (await chrome.storage.session.get('debugLog')).debugLog)) as { entries?: Entry[] } | Entry[];
+  const entries = (Array.isArray(log) ? log : (log.entries ?? [])) as Entry[];
+  const perFrame = new Map<string, number>();
+  for (const e of entries) {
+    if (e.ev !== 'frame.report') continue;
+    const step = e.d.find(([k]) => k === 'step')?.[1];
+    const key = `${String(step)}:${String(e.frame)}`;
+    perFrame.set(key, (perFrame.get(key) ?? 0) + 1);
+  }
+  expect(perFrame.size).toBeGreaterThan(2);
+  expect([...perFrame.entries()].filter(([, n]) => n !== 1)).toEqual([]);
+});
+

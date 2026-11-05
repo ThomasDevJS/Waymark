@@ -169,7 +169,7 @@ export interface ResponseMap {
   'run.start': StartResult;
   'run.stop': { ok: boolean };
   'run.state': RunView;
-  'run.match': { ok: boolean };
+  'run.match': { ok: boolean; boardId?: string };
   'run.leave': { ok: boolean };
   'run.problem': { ok: boolean };
   'problems.list': { problems: Problem[] };
