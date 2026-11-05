@@ -4,7 +4,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 
 The spec, which is the source of truth, is [`docs/SPEC.md`](docs/SPEC.md). Deviations and findings are in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
-**Status:** v0.2.5. M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing), plus the popup fallback from M6. **To test it, follow [docs/TESTING.md](docs/TESTING.md).** The latest build is the `waymark-extension` artifact of each CI run.
+**Status:** v0.2.6. M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing), plus the popup fallback from M6. **To test it, follow [docs/TESTING.md](docs/TESTING.md).** The latest build is the `waymark-extension` artifact of each CI run.
 
 ## Build
 

@@ -27,7 +27,7 @@ export interface MatchOptions {
   base?: string;
 }
 
-export type NotFoundReason = 'no-candidates' | 'no-strong-signal' | 'below-threshold' | 'ambiguous';
+export type NotFoundReason = 'no-candidates' | 'no-strong-signal' | 'below-threshold' | 'ambiguous' | 'lookalike';
 
 export type MatchResult =
   | {
@@ -161,6 +161,10 @@ export function matchOnce(doc: Document, fp: ElementFingerprint, opts: MatchOpti
     // position (XPath, nearby spot) is not enough to pick one of two otherwise identical elements.
     if (coreCovers(runnerUp, best)) return notFound('ambiguous');
   }
+  // The best candidate matched nothing that a look-alike seen at record time lacked: it may be
+  // that look-alike while the real target is missing or not rendered yet (D55).
+  const core = best.matched.filter((k) => !POSITIONAL.has(k));
+  if (fp.lookalikes?.some((set) => core.every((k) => set.includes(k)))) return notFound('lookalike');
   return {
     status: 'found',
     element: best.element,
@@ -181,4 +185,26 @@ export function countIndistinguishable(doc: Document, fp: ElementFingerprint, op
   const present = presentSignals(fp).filter((k) => !POSITIONAL.has(k));
   const scored = scoreAll(doc, fp, opts);
   return scored.filter((s) => present.every((k) => s.matched.includes(k))).length;
+}
+
+/** At most this many look-alike profiles are stored per fingerprint. */
+export const MAX_LOOKALIKES = 5;
+
+/**
+ * Record time (D55): for each other element that would be accepted on its own if the target
+ * were missing (a strong signal and a score of 60 or more), the non-positional signals it
+ * matched. Playback refuses a unique match that matched no more than one of these.
+ */
+export function recordLookalikes(doc: Document, fp: ElementFingerprint, target: Element, opts: MatchOptions = {}): string[][] {
+  const seen = new Set<string>();
+  for (const s of scoreAll(doc, fp, opts)) {
+    if (s.element === target || !s.strongMatched || s.score < ACCEPT_SCORE) continue;
+    seen.add(
+      s.matched
+        .filter((k) => !POSITIONAL.has(k))
+        .sort()
+        .join(','),
+    );
+  }
+  return [...seen].slice(0, MAX_LOOKALIKES).map((k) => k.split(',').filter(Boolean));
 }

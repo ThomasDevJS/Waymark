@@ -14,7 +14,7 @@ import {
 } from './selectors';
 import { isSamePageHref, linkPath } from '../url/url';
 import { docRect, IDENTIFYING, presentSignals } from '../matcher/signals';
-import { countIndistinguishable } from '../matcher/match';
+import { countIndistinguishable, recordLookalikes } from '../matcher/match';
 
 export interface BuildOptions {
   profile?: ProfileOptions;
@@ -77,5 +77,10 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   // Repeated only when the group shares what identifies an element (text, role + name, test id,
   // id), not just a group-level signal such as a shared `name` or link path (docs/DECISIONS.md R5).
   fp.instance = count > 1 && presentSignals(fp).some((k) => IDENTIFYING.has(k)) ? 'any' : 'unique';
+  // What the page's look-alikes match, so playback never takes one for the target (D55).
+  if (fp.instance === 'unique') {
+    const lookalikes = recordLookalikes(doc, fp, el, { profile, isVisible: isVis });
+    if (lookalikes.length) fp.lookalikes = lookalikes;
+  }
   return fp;
 }
