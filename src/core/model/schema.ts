@@ -81,6 +81,8 @@ export const ElementFingerprintSchema = z.object({
   inputType: shortStr(64).optional(),
   placeholder: shortStr(200).optional(),
   text: shortStr(200).optional(),
+  /** Text of the list item or row around a control with no name or text of its own (D65). */
+  itemLabel: shortStr(200).optional(),
   hrefPath: shortStr(2000).optional(),
   cssPath: shortStr(2000),
   xpath: shortStr(2000),

@@ -60,7 +60,7 @@ describe('link paths of same-page links', () => {
 });
 
 describe('identifying signals', () => {
-  it('are test id, id, role + name and text; name and link path are group-level', () => {
+  it('are test id, id, role + name and text; name, link path and item label are not (D65)', () => {
     expect([...IDENTIFYING].sort()).toEqual(['id', 'roleName', 'testId', 'text']);
   });
 });

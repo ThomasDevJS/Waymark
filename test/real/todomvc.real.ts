@@ -1,7 +1,7 @@
 /** TodoMVC in React, Vue and Angular: an input step, a list item toggle, hash-routed filters. */
 import type { Page } from '@playwright/test';
 import { canGrant } from '../e2e/fixtures';
-import { clickSpotOr, runTask, type Task, test } from './harness';
+import { runTask, type Task, test } from './harness';
 
 test.skip(!canGrant, 'needs a headed browser under X (xvfb-run) to accept the permission dialog');
 
@@ -19,7 +19,6 @@ async function addTodos(p: Page, items: string[]) {
 }
 
 const item = (p: Page, text: string) => p.locator('.todo-list li').filter({ hasText: text });
-const anyToggle = (p: Page) => p.locator('.todo-list li').locator('input.toggle, label');
 
 function todoTask(framework: string, url: string): Task {
   return {
@@ -38,10 +37,10 @@ function todoTask(framework: string, url: string): Task {
         target: (p) => p.locator('input.new-todo'),
       },
       {
-        // The toggles have no name and share their attributes, so the recorder marks the step
-        // instance 'any' (SPEC: playback step 5): any todo's toggle is a right answer.
-        act: (p) => clickSpotOr(p, anyToggle(p), item(p, 'Walk the dog').locator('input.toggle')),
-        target: anyToggle,
+        // The toggle has no name of its own: it is named by its todo's text (D65).
+        act: (p) => item(p, 'Walk the dog').locator('input.toggle').click(),
+        target: (p) => item(p, 'Walk the dog').locator('input.toggle, label'),
+        title: 'Check **Walk the dog**',
       },
       { act: (p) => p.getByRole('link', { name: 'Active' }).click(), target: (p) => p.getByRole('link', { name: 'Active' }) },
       { act: (p) => p.getByRole('link', { name: 'All' }).click(), target: (p) => p.getByRole('link', { name: 'All' }) },
@@ -57,11 +56,10 @@ function todoTask(framework: string, url: string): Task {
         },
         steps: [
           {},
-          {
-            act: (p) => clickSpotOr(p, anyToggle(p), item(p, 'Water plants').locator('input.toggle')),
-            target: anyToggle,
-          },
+          { act: (p) => item(p, 'Water plants').locator('input.toggle').click() },
         ],
+        // "Walk the dog" is not in this list: not-found is the right answer, never another todo.
+        expectNotFound: [1],
       },
     ],
   };

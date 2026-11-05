@@ -250,6 +250,17 @@ export function createApp(options = {}, doc = document) {
       h('h3', { text: title }),
       h('button', { type: 'button', cls: 'choosebtn btn', 'data-fx': key, text: T('Choose') }),
     ]);
+  // ---------- todo list: nameless toggles named only by their item's text (TodoMVC Vue/Angular) ----------
+  const todo = (/** @type {string} */ text, /** @type {string} */ key) =>
+    h('li', { cls: 'todo' }, [
+      h('div', { cls: 'view' }, [
+        h('input', { type: 'checkbox', cls: 'toggle', 'data-fx': key }),
+        h('label', { text }),
+        h('button', { type: 'button', cls: 'destroy' }),
+      ]),
+    ]);
+  const todos = h('ul', { cls: 'todo-list' }, order([todo('Buy milk', 'todo-milk'), todo('Walk the dog', 'todo-dog'), todo('Pay rent', 'todo-rent')]));
+
   const cards = h('div', { cls: 'cards' }, order([card('starter', 'Starter', 'card-starter-choose'), card('team', 'Team', 'card-team-choose')]));
 
   // ---------- drafts: look-alikes told apart only by title, image alt, input value ----------
@@ -339,7 +350,7 @@ export function createApp(options = {}, doc = document) {
     h('div', { id, cls: 'picker' }, [h('input', { type: 'text', cls: 'dateinput', placeholder: 'Select date', 'data-fx': key })]);
   const dates = h('div', { cls: 'dates' }, [datePicker('picker-basic', 'date-basic'), datePicker('picker-range', 'date-other')]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), dates, table, cards, drafts].map(maybeWrap));
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), dates, todos, table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 
