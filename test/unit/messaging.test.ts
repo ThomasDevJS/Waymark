@@ -53,3 +53,14 @@ describe('router errors (D49)', () => {
     expect(reply.error).toBe('Guide not found.');
   });
 });
+
+describe('record sizes (D53)', () => {
+  const ext = { id: 'ext', url: 'chrome-extension://ext/sidepanel.html' };
+  it('caps the entries of records extension pages send', () => {
+    const many = (n: number, v: string) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, v]));
+    expect(parseMessage({ type: 'pack.import', payload: { text: '{}', choices: many(10_000, 'keep') } }, ext, 'ext').ok).toBe(true);
+    expect(parseMessage({ type: 'pack.import', payload: { text: '{}', choices: many(10_001, 'keep') } }, ext, 'ext').ok).toBe(false);
+    expect(parseMessage({ type: 'voice.settings.set', payload: { patch: { voices: many(200, 'v') } } }, ext, 'ext').ok).toBe(true);
+    expect(parseMessage({ type: 'voice.settings.set', payload: { patch: { voices: many(201, 'v') } } }, ext, 'ext').ok).toBe(false);
+  });
+});
