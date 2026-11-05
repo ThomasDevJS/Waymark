@@ -128,3 +128,18 @@ describe('only compositor-friendly properties animate (D130)', () => {
     });
   }
 });
+
+describe('overlay keyframes (D134)', () => {
+  it('no @keyframes name is defined twice in the overlay: its stylesheets share one shadow root, so the last one would win for both', () => {
+    // Every content-script file whose CSS goes into the overlay's shadow root.
+    const files = stylesheets('src/content');
+    expect(files).toEqual(expect.arrayContaining(['src/content/launcher.ts', 'src/content/player/ui.ts', 'src/content/overlay/pill.ts']));
+    const seen = new Map<string, string>();
+    for (const f of files) {
+      for (const k of keyframes(read(f))) {
+        expect(seen.get(k.name), `@keyframes ${k.name} in ${f} is also in ${seen.get(k.name)}`).toBeUndefined();
+        seen.set(k.name, f);
+      }
+    }
+  });
+});

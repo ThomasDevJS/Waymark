@@ -14,6 +14,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 - The Waymark mark and extension icons (D94, #28).
 - Light motion and press feedback in the side panel, Settings and the Practice page: buttons squeeze when pressed, rows lift on hover, folds and toasts slide in, reordered steps glide, a check pops in after Saved and Copied, and the REC dot pulses softly. Everything is short (80–240 ms) and turns into plain fades when the system asks for reduced motion (D130, D131).
 - On the page, the spotlight ring glides from one step to the next (the dim no longer flashes between steps), the tooltip rises into place, its progress bar eases, a press on the highlighted element ripples, and the REC pill's dot pulses softly. None of it delays a step or covers the element; all of it is off with reduced motion (D133).
+- The on-page `?` launcher pops in, presses and opens its menu with the same light motion (D134).
 - Undo for deleting a guide or a step: a message with Undo shows for 8 seconds. A deleted guide can still be restored from a side panel opened again in that time (D100).
 - A **Completed** badge on guides you have finished, **Restart** (in the list and while a guide plays), and **Start from step N** in a guide's More menu (D101).
 - Tag chips under the search box filter the library; the editor has a Tags field (D102).
