@@ -20,7 +20,6 @@ export const clock = (): number => performance.timeOrigin + performance.now();
 export const OffscreenRequestSchema = z.discriminatedUnion('type', [
   z.object({ target: z.literal(OFFSCREEN_TARGET), type: z.literal('hd.download'), engine }),
   z.object({ target: z.literal(OFFSCREEN_TARGET), type: z.literal('hd.speak'), engine, token: z.string().max(64), text, speed, next: text.nullable(), at: z.number() }),
-  z.object({ target: z.literal(OFFSCREEN_TARGET), type: z.literal('hd.prefetch'), engine, text, speed }),
   z.object({ target: z.literal(OFFSCREEN_TARGET), type: z.literal('hd.stop'), at: z.number() }),
   z.object({ target: z.literal(OFFSCREEN_TARGET), type: z.literal('hd.remove'), engine }),
 ]);

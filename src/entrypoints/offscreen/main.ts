@@ -84,10 +84,6 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
       return false;
     case 'hd.speak':
       return reply(player(m.engine).then((p) => p.speak(m.token, m.text, m.speed, m.next, m.at)));
-    case 'hd.prefetch':
-      void player(m.engine).then((p) => p.prefetch(m.text, m.speed));
-      sendResponse({ ok: true });
-      return false;
     case 'hd.stop':
       for (const p of players.values()) void p.then((pl) => pl.stop(m.at));
       sendResponse({ ok: true });

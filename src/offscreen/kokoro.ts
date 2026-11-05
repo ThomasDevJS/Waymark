@@ -12,6 +12,10 @@ import { splitSentences } from './text';
 /** Text (one sentence or a few) to phonemes in the form Kokoro was trained on. */
 export type Phonemizer = (text: string) => Promise<string>;
 
+// Set at once on import: ONNX Runtime must never fall back to its default CDN location for the
+// WebAssembly. load() sets the real extension path before any session exists (D47).
+env.backends.onnx.wasm!.wasmPaths = '/ort/';
+
 const SAMPLE_RATE = 24000;
 const STYLE_DIM = 256;
 
@@ -58,6 +62,7 @@ export class KokoroEngine implements HdEngine {
         onProgress(done + got, HD_TOTAL_BYTES);
       }
       const blob = new Blob(parts as BlobPart[]);
+      parts.length = 0; // the Blob holds the bytes now; free the chunks before hashing
       const buf = await blob.arrayBuffer();
       if ((await sha256(buf)) !== f.sha256) throw new Error(`${fileName(url)} failed its integrity check`);
       await cache.put(url, new Response(blob, { headers: { 'content-type': 'application/octet-stream', 'content-length': String(f.size) } }));

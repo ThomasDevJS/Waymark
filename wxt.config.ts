@@ -25,7 +25,19 @@ export default defineConfig({
     },
   },
   vite: () => ({
-    plugins: [preact()],
+    plugins: [
+      preact(),
+      {
+        // transformers.js defaults ONNX Runtime's WebAssembly location to a CDN. Waymark always
+        // sets its own path, but the bundle must not carry a remote code URL at all (D47).
+        name: 'waymark-no-cdn',
+        transform(code: string, id: string) {
+          if (!id.includes('@huggingface/transformers')) return null;
+          const out = code.replace(/`https:\/\/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers@\$\{[^}]+\}\/dist\/`/g, "'/ort/'");
+          return out === code ? null : { code: out, map: null };
+        },
+      },
+    ],
     resolve: { alias: { 'onnxruntime-web': join(ortDist, 'ort.wasm.bundle.min.mjs') } },
     define: {
       __WAYMARK_TEST__: JSON.stringify(isTestBuild),

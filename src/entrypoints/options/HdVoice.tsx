@@ -65,9 +65,9 @@ export function HdVoice() {
       </p>
       {st.state === 'downloading' && <progress data-testid="hd-progress" max={st.total} value={st.loaded} />}
       <div class="row">
-        {(st.state === 'off' || st.state === 'error') && (
+        {(st.state === 'off' || st.state === 'error' || st.state === 'slow') && (
           <button type="button" class="primary" data-testid="hd-enable" onClick={() => void enable()}>
-            {st.state === 'error' ? 'Try again' : `Turn on HD voice (${size} download)`}
+            {st.state === 'error' ? 'Try again' : st.state === 'slow' ? 'Check again' : `Turn on HD voice (${size} download)`}
           </button>
         )}
         {st.state === 'ready' && (

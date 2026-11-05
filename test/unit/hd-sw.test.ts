@@ -124,7 +124,50 @@ describe('speaking a step', () => {
     expect(ttsSpeak).toHaveBeenCalledWith('First step.', expect.anything());
     const stop = sent.at(-1)!;
     expect(stop.type).toBe('hd.stop');
-    expect(stop.at as number).toBeGreaterThan(speaks()[0]!.at as number); // newer than the speak, so it cancels it
+    // The stop carries the speak's own time: it cancels that speak, never a newer step's.
+    expect(stop.at).toBe(speaks()[0]!.at);
+  });
+
+  it('a cancelled HD speak (a newer step or a stop replaced it) says nothing: no system voice', async () => {
+    local.hdStatus = ready;
+    offscreenReply = async (m) => (m.type === 'hd.speak' ? { ok: false, error: 'cancelled' } : { ok: true });
+    const { speakCurrentStep } = await import('../../src/background/voice');
+    await speakCurrentStep(7, startRun(guide('en')));
+    expect(ttsSpeak).not.toHaveBeenCalled();
+    expect(sent.filter((m) => m.type === 'hd.stop')).toEqual([]);
+  });
+
+  it('a failed HD speak does not fall back once a newer step started: its stale text is never read', async () => {
+    local.hdStatus = ready;
+    let failFirst!: (r: unknown) => void;
+    offscreenReply = (m) =>
+      m.type !== 'hd.speak' ? Promise.resolve({ ok: true }) : (m as unknown as { text: string }).text === 'First step.' ? new Promise((r) => (failFirst = r)) : Promise.resolve({ ok: true });
+    const { speakCurrentStep } = await import('../../src/background/voice');
+    const run = startRun(guide('en'));
+    const first = speakCurrentStep(7, run);
+    await vi.waitFor(() => expect(speaks().length).toBe(1));
+    // The learner moves on: step 2 speaks in HD.
+    await speakCurrentStep(7, { ...run, stepIndex: 1, stepToken: 'next' });
+    failFirst({ ok: false, error: 'wasm failed' });
+    await first;
+    expect(ttsSpeak).not.toHaveBeenCalled();
+    // The stop for step 1 is older than step 2's speak, so the offscreen player ignores it.
+    const stop = sent.filter((m) => m.type === 'hd.stop').at(-1)!;
+    expect(stop.at as number).toBeLessThan(speaks()[1]!.at as number);
+  });
+
+  it('a failed HD speak does not fall back after Mute or Exit', async () => {
+    local.hdStatus = ready;
+    let fail!: (r: unknown) => void;
+    offscreenReply = (m) => (m.type === 'hd.speak' ? new Promise((r) => (fail = r)) : Promise.resolve({ ok: true }));
+    const { speakCurrentStep, stopSpeech } = await import('../../src/background/voice');
+    const speaking = speakCurrentStep(7, startRun(guide('en')));
+    await vi.waitFor(() => expect(speaks().length).toBe(1));
+    stopSpeech(); // Exit (Mute also calls it)
+    await new Promise((r) => setTimeout(r, 5));
+    fail({ ok: false, error: 'wasm failed' });
+    await speaking;
+    expect(ttsSpeak).not.toHaveBeenCalled();
   });
 
   it('falls back when the offscreen document cannot be created', async () => {
@@ -149,7 +192,7 @@ describe('opt-in and remove', () => {
     const { hdEnable } = await import('../../src/background/hd');
     const status = await hdEnable([HD_HOST_PATTERNS[0], 'https://evil.test/*']);
     expect(status.state).toBe('downloading');
-    expect(session.hdReleaseHosts).toEqual([HD_HOST_PATTERNS[0]]);
+    expect(local.hdReleaseHosts).toEqual([HD_HOST_PATTERNS[0]]);
     expect(sent).toMatchObject([{ type: 'hd.download', engine: 'kokoro' }]);
   });
 
@@ -161,7 +204,50 @@ describe('opt-in and remove', () => {
     await onHdReport({ status: { ...ready, rtf: 0.8 } as never });
     expect(local.hdStatus).toMatchObject({ state: 'ready', rtf: 0.8 });
     expect(chrome.permissions.remove).toHaveBeenCalledWith({ origins: [...HD_HOST_PATTERNS] });
-    expect(session.hdReleaseHosts).toBeUndefined();
+    expect(local.hdReleaseHosts).toBeUndefined();
+  });
+
+  it('after the speed check the model is not left in memory: ready arms the idle close, slow and error close now', async () => {
+    const { hdEnable, onHdReport } = await import('../../src/background/hd');
+    await hdEnable([]);
+    await onHdReport({ status: { ...ready } as never });
+    expect(chrome.alarms.create).toHaveBeenCalledWith('hd-idle', expect.anything());
+    expect(chrome.offscreen.closeDocument).not.toHaveBeenCalled();
+    for (const state of ['slow', 'error'] as const) {
+      local.hdStatus = { state: 'checking', loaded: 0, total: HD_TOTAL_BYTES };
+      hasDoc = true;
+      await onHdReport({ status: { ...ready, state } as never });
+      expect(hasDoc).toBe(false);
+    }
+  });
+
+  it('one download at a time: a second enable while downloading starts nothing', async () => {
+    const { hdEnable } = await import('../../src/background/hd');
+    await hdEnable([]);
+    await hdEnable([]);
+    expect(sent.filter((m) => m.type === 'hd.download').length).toBe(1);
+  });
+
+  it('the document exists before the status says downloading, so Settings never calls a starting download failed', async () => {
+    let created!: () => void;
+    chrome.offscreen.createDocument = vi.fn(() => new Promise<void>((r) => (created = () => ((hasDoc = true), r()))));
+    const { hdEnable, hdStatusForSettings } = await import('../../src/background/hd');
+    const enabling = hdEnable([HD_HOST_PATTERNS[0]]);
+    await vi.waitFor(() => expect(created).toBeTypeOf('function'));
+    expect((await hdStatusForSettings()).state).toBe('off');
+    expect(chrome.permissions.remove).not.toHaveBeenCalled();
+    created();
+    await enabling;
+    expect(local.hdStatus).toMatchObject({ state: 'downloading' });
+  });
+
+  it('the hosts to release survive a browser restart (session storage cleared): a lost download still releases them', async () => {
+    const { hdEnable, hdStatusForSettings } = await import('../../src/background/hd');
+    await hdEnable([...HD_HOST_PATTERNS]);
+    session = {}; // browser restart
+    hasDoc = false;
+    expect((await hdStatusForSettings()).state).toBe('error');
+    expect(chrome.permissions.remove).toHaveBeenCalledWith({ origins: [...HD_HOST_PATTERNS] });
   });
 
   it('a late progress report does not undo Remove', async () => {

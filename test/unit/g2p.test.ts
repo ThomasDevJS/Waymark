@@ -118,6 +118,18 @@ describe('G2P', () => {
     const r = say('Click <b>Save</b> & {press} [OK] ~ ^ | 100%!');
     expect(r.phonemes).not.toMatch(/[<>{}[\]~^|&]/);
   });
+  it('reads numbers it cannot parse digit by digit instead of dropping them', () => {
+    expect(say('Click 10:30:45').phonemes).toBe(say('Click one zero three zero four five').phonemes);
+    expect(say('1.2.3').phonemes).not.toBe('');
+  });
+  it('reads accented letters as their base letters', () => {
+    expect(say('Click café').phonemes).toBe(`klˈɪk ${say('cafe').phonemes}`);
+    expect(say('Ünïcödé').phonemes).toBe(say('Unicode').phonemes);
+  });
+  it('never throws on huge numbers', () => {
+    expect(() => say('9'.repeat(400) + 'th')).not.toThrow();
+    expect(say('9'.repeat(30) + 'th').phonemes).not.toBe('');
+  });
   it('lexicon lookups ignore prototype keys', () => {
     expect(() => say('constructor toString __proto__')).not.toThrow();
   });

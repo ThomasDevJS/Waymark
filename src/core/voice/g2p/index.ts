@@ -5,7 +5,7 @@
  * -ing), CamelCase and compound splits, spelling out acronyms, and last rough letter rules.
  * The output follows misaki's format: words joined by spaces, punctuation kept.
  */
-import { numberToWords } from './numbers';
+import { digits, numberToWords } from './numbers';
 import { letterToSound } from './rules';
 
 export type LexEntry = string | { [tag: string]: string | null };
@@ -33,6 +33,9 @@ const LETTER = /^[A-Za-z]$/;
 /** Expands what a lexicon can't read: emails, web addresses and common symbols. */
 export function normalize(text: string): string {
   return text
+    // Accented letters read as their base letters ("café" → "cafe").
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[‘’]/g, "'")
     .replace(/[“”«»]/g, '"')
     .replace(/[–]/g, '—')
@@ -66,7 +69,8 @@ export class G2P {
       }
       if (/^[$€£]?\d/.test(t)) {
         const spoken = numberToWords(t.replace(/[.,:]+$/, ''));
-        const said = spoken ?? t.replace(/\D/g, ' ');
+        // A number it can't read as one (a version, an IP address, 10:30:45) is read digit by digit.
+        const said = spoken ?? digits(t);
         for (const w of said.match(/[A-Za-z']+/g) ?? []) words.push(this.word(w, guessed));
         if (/[.,:]$/.test(t) && PUNCT_ATTACH.has(t.at(-1)!)) words.push(t.at(-1)!);
         continue;

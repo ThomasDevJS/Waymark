@@ -16,6 +16,7 @@ export interface AudioSink {
 
 /** A fixed sentence, about as long as a step, for the speed check after the download. */
 export const CHECK_SENTENCE = 'Click Save to store the invoice, then open the Orders page.';
+const WARM_UP = 'Hello.';
 const KEEP_CLIPS = 4;
 
 export class HdPlayer {
@@ -33,8 +34,16 @@ export class HdPlayer {
     private readonly now: () => number = () => performance.now(),
   ) {}
 
+  private downloading: Promise<HdStatus> | null = null;
+
   /** Opt-in: download and verify the model, load it, then measure this device's speed once. */
-  async download(): Promise<HdStatus> {
+  download(): Promise<HdStatus> {
+    // Two opt-ins (two Settings tabs, a double click) share one download.
+    this.downloading ??= this.runDownload().finally(() => (this.downloading = null));
+    return this.downloading;
+  }
+
+  private async runDownload(): Promise<HdStatus> {
     try {
       let last = 0;
       await this.engine.download((loaded, total) => {
@@ -45,6 +54,8 @@ export class HdPlayer {
       });
       this.report({ state: 'checking', loaded: HD_TOTAL_BYTES, total: HD_TOTAL_BYTES });
       await this.ensureLoaded();
+      // The first inference includes one-time warm-up; time the second, as steps will run.
+      await this.generate(WARM_UP, 1);
       const t0 = this.now();
       const audio = await this.generate(CHECK_SENTENCE, 1);
       const ms = this.now() - t0;
@@ -75,6 +86,8 @@ export class HdPlayer {
       await this.ensureLoaded();
       const audio = await this.clip(text, speed);
       if (this.token !== token) return { ok: false, error: 'cancelled' };
+      // Nothing to say (no readable words): let the system voice try instead of staying silent.
+      if (!audio.samples.length) return { ok: false, error: 'no audio' };
       this.sink.play(audio, text);
       if (next) this.prefetch(next, speed);
       return { ok: true };
@@ -91,7 +104,7 @@ export class HdPlayer {
 
   /** Stops playback, unless a newer speak was sent after this stop. */
   stop(at = Infinity): void {
-    if (at < this.lastSpeak) return;
+    if (at < this.lastSpeak) return; // equal: the stop cancels the speak sent at that time
     this.token = null;
     this.sink.stop();
   }

@@ -8,7 +8,10 @@ import { HD_HOST_PATTERNS, HD_IDLE_MINUTES, HD_OFF, HD_WAIT_MS, HdStatusSchema, 
 import { clock, OFFSCREEN_TARGET, type EngineKind, type OffscreenRequest, type SpeakReply } from '../offscreen/protocol';
 
 const STATUS_KEY = 'hdStatus';
-/** Download hosts this opt-in granted; released when the download ends. */
+/**
+ * Download hosts this opt-in granted; released when the download ends. In local storage:
+ * session storage is cleared on a browser restart, but the permissions persist.
+ */
 const RELEASE_KEY = 'hdReleaseHosts';
 export const HD_IDLE_ALARM = 'hd-idle';
 const OFFSCREEN_URL = 'offscreen.html';
@@ -72,9 +75,12 @@ function toOffscreen<T>(msg: Untargeted<OffscreenRequest>): Promise<T> {
 }
 
 async function releaseHosts(): Promise<void> {
-  const hosts = ((await chrome.storage.session.get(RELEASE_KEY))[RELEASE_KEY] as string[] | undefined) ?? [];
+  const hosts = await enqueue(async () => {
+    const held = ((await chrome.storage.local.get(RELEASE_KEY))[RELEASE_KEY] as string[] | undefined) ?? [];
+    if (held.length) await chrome.storage.local.remove(RELEASE_KEY);
+    return held;
+  });
   if (!hosts.length) return;
-  await chrome.storage.session.remove(RELEASE_KEY);
   await chrome.permissions.remove({ origins: hosts }).catch(() => undefined);
 }
 
@@ -82,14 +88,19 @@ async function releaseHosts(): Promise<void> {
 export async function hdEnable(added: string[]): Promise<HdStatus> {
   const own = added.filter((h) => (HD_HOST_PATTERNS as readonly string[]).includes(h));
   const status: HdStatus = { ...HD_OFF, state: 'downloading' };
-  await enqueue(async () => {
-    const prev = ((await chrome.storage.session.get(RELEASE_KEY))[RELEASE_KEY] as string[] | undefined) ?? [];
-    await chrome.storage.session.set({ [RELEASE_KEY]: [...new Set([...prev, ...own])] });
-    await setHdStatus(status);
-  });
+  // The document exists before the status says "downloading", so Settings never sees a
+  // download without its document (which it would call failed).
   await ensureOffscreen();
-  await toOffscreen({ type: 'hd.download', engine: await engineKind() });
-  return status;
+  const started = await enqueue(async () => {
+    const prev = ((await chrome.storage.local.get(RELEASE_KEY))[RELEASE_KEY] as string[] | undefined) ?? [];
+    await chrome.storage.local.set({ [RELEASE_KEY]: [...new Set([...prev, ...own])] });
+    const now = await getHdStatus();
+    if (now.state === 'downloading' || now.state === 'checking') return false; // one download at a time
+    await setHdStatus(status);
+    return true;
+  });
+  if (started) await toOffscreen({ type: 'hd.download', engine: await engineKind() });
+  return getHdStatus();
 }
 
 /** A report from the offscreen document: progress, the result, or (in tests) what played. */
@@ -109,7 +120,11 @@ export async function onHdReport(report: { status?: HdStatus; played?: string })
     await setHdStatus(status);
     return true;
   });
-  if (stored && status.state !== 'downloading' && status.state !== 'checking') await releaseHosts();
+  if (!stored || status.state === 'downloading' || status.state === 'checking') return;
+  await releaseHosts();
+  // The speed check loaded the model (~800 MB): free it unless HD voice will be used soon.
+  if (status.state === 'ready') await chrome.alarms.create(HD_IDLE_ALARM, { delayInMinutes: HD_IDLE_MINUTES });
+  else await closeOffscreen();
 }
 
 /** Remove HD voice: delete the cached model, close the document, release the hosts. */
@@ -128,11 +143,14 @@ export async function hdRemove(): Promise<HdStatus> {
 }
 
 /**
- * Speaks with the HD voice. True when playback started; false (and silence from the HD voice)
- * when the model failed or took longer than HD_WAIT_MS, so the caller uses the system voice.
+ * Speaks with the HD voice.
+ * - 'played': playback started.
+ * - 'cancelled': a newer speak or a stop replaced it; say nothing.
+ * - 'failed': the model failed or took longer than HD_WAIT_MS; the caller may use the system voice.
  */
-export async function hdSpeak(token: string, text: string, speed: number, next: string | null): Promise<boolean> {
-  const at = clock();
+export type HdOutcome = 'played' | 'cancelled' | 'failed';
+
+export async function hdSpeak(token: string, text: string, speed: number, next: string | null, at = clock()): Promise<HdOutcome> {
   try {
     await ensureOffscreen();
     void chrome.alarms.create(HD_IDLE_ALARM, { delayInMinutes: HD_IDLE_MINUTES });
@@ -141,14 +159,14 @@ export async function hdSpeak(token: string, text: string, speed: number, next: 
     const timeout = new Promise<SpeakReply>((resolve) => (timer = setTimeout(() => resolve({ ok: false, error: 'timeout' }), HD_WAIT_MS)));
     const reply = await Promise.race([toOffscreen<SpeakReply>({ type: 'hd.speak', engine, token, text, speed, next, at }), timeout]);
     clearTimeout(timer);
-    if (!reply?.ok) {
-      // Cancel it, so late HD audio never plays over the system voice.
-      await toOffscreen({ type: 'hd.stop', at: clock() }).catch(() => undefined);
-      return false;
-    }
-    return true;
+    if (reply?.ok) return 'played';
+    if (reply?.error === 'cancelled') return 'cancelled';
+    // Cancel this speak, so its audio never plays late over the system voice. The stop carries
+    // this speak's own time: it cancels this one but never a newer step's.
+    await toOffscreen({ type: 'hd.stop', at }).catch(() => undefined);
+    return 'failed';
   } catch {
-    return false;
+    return 'failed';
   }
 }
 

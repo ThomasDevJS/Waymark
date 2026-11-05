@@ -63,7 +63,8 @@ const ORDINAL_WORDS: Record<string, string> = {
 
 export function ordinal(n: number): string {
   const words = cardinal(n);
-  const m = /([a-z]+)$/.exec(words)!;
+  const m = /([a-z]+)$/.exec(words);
+  if (!m) return words; // read digit by digit (too large to be a cardinal)
   const last = m[1]!;
   const ord = ORDINAL_WORDS[last] ?? (last.endsWith('y') ? `${last.slice(0, -1)}ieth` : `${last}th`);
   return words.slice(0, m.index) + ord;
@@ -96,7 +97,7 @@ export function numberToWords(token: string): string | undefined {
     prefix = 'minus ';
   }
   const ord = /^(\d+)(st|nd|rd|th)$/i.exec(t);
-  if (ord) return prefix + ordinal(Number(ord[1]));
+  if (ord) return prefix + (ord[1]!.length > 15 ? digits(ord[1]!) : ordinal(Number(ord[1])));
   const time = /^(\d{1,2}):(\d{2})$/.exec(t);
   if (time) {
     const m = Number(time[2]);

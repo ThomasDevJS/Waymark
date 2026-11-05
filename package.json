@@ -17,7 +17,7 @@
     "test:unit": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
     "test:e2e": "pnpm build:test && playwright test",
-    "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json",
+    "check:manifest": "node scripts/check-manifest.mjs .output/chrome-mv3/manifest.json && node scripts/check-manifest.mjs .output-test/chrome-mv3-test/manifest.json && node scripts/check-no-cdn.mjs .output/chrome-mv3 && node scripts/check-no-cdn.mjs .output-test/chrome-mv3-test",
     "fixture": "node test/fixtures/server.mjs",
     "test:e2e:xvfb": "pnpm build:test && xvfb-run -a playwright test",
     "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm build:test && pnpm check:manifest && pnpm test"

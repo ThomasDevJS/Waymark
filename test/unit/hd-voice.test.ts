@@ -84,6 +84,8 @@ describe('HD player', () => {
     expect(progress.length).toBeLessThanOrEqual(101);
     expect(reports.at(-2)?.state).toBe('checking');
     expect(engine.synth).toHaveBeenCalledWith(CHECK_SENTENCE, 1);
+    // A warm-up inference runs first; only the second one is timed.
+    expect((engine.synth as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual(['Hello.', CHECK_SENTENCE]);
   });
   it('download: a slow device reports slow; a failure reports error with the message', async () => {
     let t = 0;
@@ -142,6 +144,31 @@ describe('HD player', () => {
     expect(await player.speak('t1', 'Hi.', 1, null, 1)).toEqual({ ok: false, error: 'wasm failed' });
     fail = false;
     expect(await player.speak('t2', 'Hi.', 1, null, 2)).toEqual({ ok: true });
+  });
+  it('two opt-ins at once share one download', async () => {
+    const { engine } = fakeEngine();
+    const player = new HdPlayer(engine, fakeSink().sink, () => undefined);
+    const [a, b] = await Promise.all([player.download(), player.download()]);
+    expect(a).toEqual(b);
+    expect(engine.download).toHaveBeenCalledTimes(1);
+    await player.download(); // a later one runs again (a re-check)
+    expect(engine.download).toHaveBeenCalledTimes(2);
+  });
+  it('text with no readable words makes no audio: that is a failure, so the system voice can try', async () => {
+    const { engine } = fakeEngine({ synth: async () => ({ samples: new Float32Array(0), sampleRate: 24000 }) });
+    const { sink, played } = fakeSink();
+    const player = new HdPlayer(engine, sink, () => undefined);
+    expect(await player.speak('t1', '漢字', 1, null, 1)).toEqual({ ok: false, error: 'no audio' });
+    expect(played).toEqual([]);
+  });
+  it('a stop with the same time as a speak cancels that speak (the service worker cancelling its own late speak)', async () => {
+    const { engine } = fakeEngine();
+    const { sink, played } = fakeSink();
+    const player = new HdPlayer(engine, sink, () => undefined);
+    const speaking = player.speak('t1', 'Late.', 1, null, 5);
+    player.stop(5);
+    expect(await speaking).toEqual({ ok: false, error: 'cancelled' });
+    expect(played).toEqual([]);
   });
   it('remove deletes the cache, forgets clips and reports off', async () => {
     const { engine, synthCalls } = fakeEngine();
