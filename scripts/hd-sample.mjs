@@ -23,7 +23,7 @@ import { pathToFileURL } from 'node:url';
 const fromWxt = createRequire(createRequire(import.meta.url).resolve('wxt'));
 const { build } = await import(pathToFileURL(createRequire(fromWxt.resolve('vite')).resolve('rolldown')).href);
 
-export const SAMPLE_TEXT = 'Welcome to the practice page. Waymark guides you through it one step at a time.';
+export const SAMPLE_TEXT = "Hi! I'll guide you through this app, step by step.";
 
 const dir = resolve(process.argv[2] ?? '');
 if (!process.argv[2]) throw new Error('usage: node scripts/hd-sample.mjs <dir with the model files>');
@@ -65,8 +65,20 @@ for (const sentence of splitSentences(SAMPLE_TEXT)) {
   const at = 256 * Math.min(Math.max(input_ids.dims.at(-1) - 2, 0), 509);
   const out = await model({ input_ids, style: new Tensor('float32', style.slice(at, at + 256), [1, 256]), speed: new Tensor('float32', [1], [1]) });
   const wave = out.waveform.data;
-  for (let i = 0; i < wave.length; i++) if (!Number.isFinite(wave[i])) wave[i] = 0;
-  parts.push(wave, new Float32Array(24000 * 0.25)); // a short pause between sentences
+  // fp16 can return NaN for some phoneme sequences, even for a whole sentence ("I'll … one step
+  // at a time" did): a silent sample must never ship, so stop and ask for other words.
+  let bad = 0;
+  for (let i = 0; i < wave.length; i++) {
+    if (Number.isFinite(wave[i])) continue;
+    wave[i] = 0;
+    bad++;
+  }
+  if (bad > wave.length * 0.01) throw new Error(`"${sentence}" came out as ${Math.round((bad / wave.length) * 100)}% NaN (silence). Reword it.`);
+  // Trim the model's own quiet edges (keeping 50 ms), so the pause below is the only gap.
+  const loud = (v) => Math.abs(v) > 0.01;
+  const first = Math.max(0, wave.findIndex(loud) - 1200);
+  const last = Math.min(wave.length, wave.findLastIndex(loud) + 1200);
+  parts.push(wave.slice(first, last), new Float32Array(24000 * 0.25)); // a short pause between sentences
 }
 const total = parts.reduce((n, p) => n + p.length, 0);
 const pcm = new Int16Array(total);

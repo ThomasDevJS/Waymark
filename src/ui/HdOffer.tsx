@@ -12,7 +12,7 @@ import { HD_OFFER_KEY, shouldOfferHd, type HdOfferAnswer, type HdOfferInput } fr
 import { startHdDownload, type HdStart } from './hdDownload';
 import { Icon } from './Icon';
 
-/** The bundled sample (scripts/hd-sample.mjs): about 6 s of the HD voice, 21 KB. */
+/** The bundled sample (scripts/hd-sample.mjs): about 3 s of the HD voice, 12 KB. */
 export const HD_SAMPLE_URL = '/hd-sample.ogg';
 /** Test builds only: stands in for navigator's language, cores and memory. */
 export const HD_OFFER_TEST_ENV = 'test:hdOfferEnv';
