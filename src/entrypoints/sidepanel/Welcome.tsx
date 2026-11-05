@@ -10,24 +10,32 @@ import type { IconName } from '../../ui/icons';
 export const WELCOME_KEY = 'ui:welcomeDone';
 
 export const WELCOME_STEPS: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'shield', title: 'Allow', text: 'Open the web app you want to teach and press Allow on this site. Waymark only runs on the sites you allow.' },
+  { icon: 'shield', title: 'Allow', text: 'Open the web app you want to teach and press “Allow on this site”. Waymark only runs on the sites you allow.' },
   { icon: 'circle', title: 'Record', text: 'Name your guide, press Record and do the task once. Each click becomes a step. What you type is never saved.' },
   { icon: 'play', title: 'Play', text: 'Press Start on a guide. Waymark highlights each step on the page, explains it and reads it aloud.' },
 ];
 
-const show = signal(false);
+/** null until the flag is read, so the panel doesn't jump when the welcome appears. */
+export const welcomeShown = signal<boolean | null>(null);
 const index = signal(0);
 
+export function loadWelcome(): void {
+  void chrome.storage.local.get(WELCOME_KEY).then(
+    (r) => (welcomeShown.value = !r[WELCOME_KEY]),
+    () => (welcomeShown.value = false),
+  );
+}
+
 function finish() {
-  show.value = false;
+  welcomeShown.value = false;
   void chrome.storage.local.set({ [WELCOME_KEY]: true });
+  // The welcome is gone: put focus on the panel's next useful control, not on <body>.
+  requestAnimationFrame(() => (document.querySelector<HTMLElement>('.site-card button, [data-testid="guide-title"], .app-header button') ?? document.body).focus());
 }
 
 export function Welcome() {
-  useEffect(() => {
-    void chrome.storage.local.get(WELCOME_KEY).then((r) => (show.value = !r[WELCOME_KEY]));
-  }, []);
-  if (!show.value) return null;
+  useEffect(loadWelcome, []);
+  if (!welcomeShown.value) return null;
   const i = index.value;
   const step = WELCOME_STEPS[i]!;
   const last = i === WELCOME_STEPS.length - 1;
@@ -42,12 +50,11 @@ export function Welcome() {
       <p class="small muted">Waymark shows people how to use a web app, step by step, on the real page.</p>
       <ol class="welcome-steps" aria-label="How it works">
         {WELCOME_STEPS.map((s, n) => (
-          <li key={s.title} aria-current={n === i ? 'step' : undefined} class={n === i ? 'current' : n < i ? 'done' : ''}>
-            <button type="button" class="ghost sm" onClick={() => (index.value = n)} aria-label={`${n + 1}. ${s.title}`}>
-              <span class="num" aria-hidden="true">
-                {n + 1}
-              </span>
-              <span aria-hidden="true">{s.title}</span>
+          <li key={s.title} class={n === i ? 'current' : n < i ? 'done' : ''}>
+            <button type="button" class="ghost sm" aria-current={n === i ? 'step' : undefined} onClick={() => (index.value = n)}>
+              <span class="num">{n + 1}</span>
+              <span class="visually-hidden">. </span>
+              {s.title}
             </button>
           </li>
         ))}
@@ -64,11 +71,9 @@ export function Welcome() {
         </div>
       </div>
       <div class="row">
-        {i > 0 && (
-          <button type="button" class="ghost" onClick={() => (index.value = i - 1)}>
-            Back
-          </button>
-        )}
+        <button type="button" class="ghost" disabled={i === 0} onClick={() => (index.value = i - 1)}>
+          Back
+        </button>
         <button type="button" class="primary push" data-testid="welcome-next" onClick={() => (last ? finish() : (index.value = i + 1))}>
           {last ? 'Get started' : 'Next'}
           {!last && <Icon name="chevron-right" />}

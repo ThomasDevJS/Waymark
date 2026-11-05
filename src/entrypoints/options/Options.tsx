@@ -103,9 +103,35 @@ async function update(patch: Partial<VoiceSettings>) {
 
 /** Sites Waymark may run on (the same list the service worker registers the content script for). */
 const sites = signal<string[]>([]);
+/** The site whose Remove is waiting for "Remove access" to be confirmed. */
+const confirming = signal<string | null>(null);
+const sitesError = signal<string | null>(null);
+const shortcuts = signal<Record<string, string>>({});
 async function loadSites() {
   const { origins = [] } = await chrome.permissions.getAll();
   sites.value = grantedSitePatterns(origins);
+}
+
+async function removeSite(pattern: string) {
+  sitesError.value = null;
+  try {
+    await chrome.permissions.remove({ origins: [pattern] });
+  } catch (e) {
+    sitesError.value = e instanceof Error ? e.message : String(e);
+  }
+  confirming.value = null;
+  await loadSites();
+  document.getElementById('sites-title')?.focus();
+}
+
+/** True when the team library is read from this site (it needed the permission: no CORS). */
+export function isLibrarySite(pattern: string, libraryUrl: string | null | undefined): boolean {
+  if (!libraryUrl) return false;
+  try {
+    return originToMatchPattern(new URL(libraryUrl).origin) === pattern;
+  } catch {
+    return false;
+  }
 }
 
 /** "https://app.example.com/*" → "https://app.example.com" */
@@ -126,7 +152,7 @@ function Section({ id, title, icon, children, badge }: { id: string; title: stri
   return (
     <section class="card settings-section" id={id} aria-labelledby={`${id}-title`}>
       <div class="card-head">
-        <h2 id={`${id}-title`} class="section-title">
+        <h2 id={`${id}-title`} class="section-title" tabIndex={-1}>
           <Icon name={icon} />
           {title}
         </h2>
@@ -141,6 +167,10 @@ export function Options() {
   useEffect(() => {
     void load();
     void loadSites();
+    void chrome.commands
+      ?.getAll()
+      .then((all) => (shortcuts.value = Object.fromEntries(all.filter((c) => c.name).map((c) => [c.name!, c.shortcut ?? '']))))
+      .catch(() => undefined);
     chrome.permissions.onAdded.addListener(loadSites);
     chrome.permissions.onRemoved.addListener(loadSites);
     return () => {
@@ -287,10 +317,24 @@ export function Options() {
                 {sites.value.map((p) => (
                   <li key={p} class="list-item">
                     <Icon name="globe" />
-                    <span class="grow mono small">{sitePatternLabel(p)}</span>
-                    <button type="button" class="ghost sm danger" aria-label={`Remove access to ${sitePatternLabel(p)}`} onClick={() => void chrome.permissions.remove({ origins: [p] }).then(loadSites)}>
-                      Remove
-                    </button>
+                    <span class="grow">
+                      <span class="mono small">{sitePatternLabel(p)}</span>
+                      {isLibrarySite(p, lib?.url) && <span class="hint block">Used to read the team library. Removing it stops library refreshes.</span>}
+                    </span>
+                    {confirming.value === p ? (
+                      <span class="row nowrap" role="group" aria-label={`Remove access to ${sitePatternLabel(p)}?`}>
+                        <button type="button" class="sm danger" ref={(b) => b?.focus()} onClick={() => void removeSite(p)}>
+                          Remove access
+                        </button>
+                        <button type="button" class="ghost sm" onClick={() => (confirming.value = null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button type="button" class="ghost sm danger" aria-label={`Remove access to ${sitePatternLabel(p)}`} onClick={() => (confirming.value = p)}>
+                        Remove
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -303,6 +347,12 @@ export function Options() {
             )}
           </Section>
 
+          {sitesError.value && (
+            <p class="alert" role="alert">
+              <Icon name="error" />
+              {sitesError.value}
+            </p>
+          )}
           <Section
             id="team-library"
             title="Team library"
@@ -384,11 +434,24 @@ export function Options() {
                   ))}
                 </ul>
                 <div class="row">
-                  <button type="button" data-testid="copy-problems" onClick={() => void navigator.clipboard.writeText(problemReport(problems.value)).then(() => (copied.value = true))}>
+                  <button type="button" data-testid="copy-problems" onClick={() =>
+                      void navigator.clipboard.writeText(problemReport(problems.value)).then(() => {
+                        copied.value = true;
+                        setTimeout(() => (copied.value = false), 2000);
+                      })
+                    }
+                  >
                     <Icon name="copy" />
                     {copied.value ? 'Copied' : 'Copy as text'}
                   </button>
-                  <button type="button" class="ghost danger" onClick={() => void send('problems.clear', {}).then(() => (problems.value = []))}>
+                  <button
+                    type="button"
+                    class="ghost danger"
+                    onClick={() => {
+                      if (confirm(`Clear ${problems.value.length === 1 ? 'this report' : `all ${problems.value.length} reports`}? Copy them first if you need them.`))
+                        void send('problems.clear', {}).then(() => (problems.value = []));
+                    }}
+                  >
                     <Icon name="trash" />
                     Clear
                   </button>
@@ -403,7 +466,22 @@ export function Options() {
               <dd>{chrome.runtime.getManifest().version}</dd>
               <dt>Keyboard</dt>
               <dd>
-                <kbd>Alt</kbd>+<kbd>.</kbd> next step · <kbd>Alt</kbd>+<kbd>,</kbd> previous step · <kbd>Esc</kbd> in the tooltip exits the guide
+                <ul class="plain-list">
+                  {(
+                    [
+                      ['next-step', 'Next step'],
+                      ['previous-step', 'Previous step'],
+                      ['exit-guide', 'Exit the guide'],
+                    ] as const
+                  ).map(([name, label]) => (
+                    <li key={name}>
+                      {shortcuts.value[name] ? <kbd>{shortcuts.value[name]}</kbd> : <span class="muted">not set</span>} {label}
+                    </li>
+                  ))}
+                  <li>
+                    <kbd>Esc</kbd> in the tooltip exits the guide
+                  </li>
+                </ul>
               </dd>
             </dl>
             <div class="row">

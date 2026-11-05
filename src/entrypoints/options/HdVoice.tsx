@@ -67,7 +67,9 @@ export function HdVoice() {
           <Icon name="mic" />
           HD voice <span class="badge accent">Beta</span>
         </h2>
-        <span class={`badge ${tone}`}>{badge}</span>
+        <span class={`badge ${tone}`} aria-hidden="true">
+          {badge}
+        </span>
       </div>
       <p class="small muted">
         A natural-sounding English voice that runs on this device. It downloads {size} once (the Kokoro voice model from Hugging Face and its English word list from GitHub) and keeps it in the

@@ -499,3 +499,6 @@ textarea {
   background: var(--wm-accent-soft);
   color: var(--wm-accent-text);
 }
+.card-head h2 {
+  margin: 0;
+}
