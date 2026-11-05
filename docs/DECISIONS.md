@@ -379,6 +379,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Review** (independent, no High or Medium findings): the six Lows are fixed as above, each with a unit test (`index-reads.test.ts`: reads, rebuild, caps, badge counts and REC).
 - **Errors**: a request that fails schema validation now answers with one sentence ("Waymark could not use this data (steps.3.title is not valid)."), not Zod's JSON issue list. When the service worker gives no reply, the panel says "Waymark did not answer". Dead code removed: `saveGuide`.
 - **Bundle** (production build, minified; gzip in brackets): content script 165 KB (52 KB), service worker 141 KB (41 KB), shared panel chunk 118 KB (36 KB), side panel 45 KB (14 KB). Zod reaches the content script only through `core/voice/voice.ts` (`VoiceSettingsSchema` is defined at the top level next to `bestSpeechVoice`). That file belongs to the voice work, so moving the schema is left to it.
+
 ### D50. Flake hunt: one e2e race under CPU load
 - **Spec**: Tech stack, testing.
 - **Method**: on main at 0.2.3 (local), 5 full e2e runs, 3 unit and 3 browser runs on an idle machine. Then the full e2e suite with all but one core busy, to imitate a slow CI runner (the races in D45 and M4 only showed on CI).
