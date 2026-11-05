@@ -97,6 +97,8 @@ test('duplicate a guide and a step; tags filter the library', async ({ context, 
   // Editor: tags, a duplicated step, then a deleted step with Undo.
   const panel = await openPanel(context, extensionId, tabId, guideId);
   await panel.getByTestId('guide-tags').fill('orders, Onboarding');
+  await panel.getByTestId('step-0-toggle').click(); // steps start folded (D125)
+  await panel.getByTestId('step-0-more').click();
   await panel.getByTestId('step-0-duplicate').click();
   await expect(panel.getByTestId('step-2')).toBeVisible();
   await panel.getByTestId('step-2-delete').click();

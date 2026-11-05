@@ -12,7 +12,7 @@ import { voiceTextFor } from '../../core/voice/voice';
 import type { TestResult } from '../../background/editor';
 import { Markdown } from './Markdown';
 import { Icon } from '../../ui/Icon';
-import { FlagNotes, KIND } from './steps';
+import { FLAG_HELP, FlagNotes, KIND } from './steps';
 import { parseTags } from '../../core/discovery/tags';
 import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
@@ -29,6 +29,22 @@ const saving = signal(false);
 const base = signal<string | null>(null);
 /** The tags field as typed ("a, b"); the draft holds the parsed list. */
 const tagsText = signal('');
+/** Steps shown open (D125): steps start folded to one line, except those with a warning. */
+const openSteps = signal<Set<string>>(new Set());
+/** Steps whose "More options" (voice text, when to move on, optional, duplicate, note after) are open. */
+const moreSteps = signal<Set<string>>(new Set());
+
+function toggleIn(set: typeof openSteps, id: string, on?: boolean) {
+  const next = new Set(set.value);
+  if (on ?? !next.has(id)) next.add(id);
+  else next.delete(id);
+  set.value = next;
+}
+
+/** Which steps start open: those the recorder flagged, so the author sees what needs attention. */
+export function initiallyOpen(steps: Step[]): Set<string> {
+  return new Set(steps.filter((s) => s.flags?.length).map((s) => s.id));
+}
 let pickTimer: ReturnType<typeof setTimeout> | undefined;
 
 function endPicking() {
@@ -109,6 +125,7 @@ function insertNote(after: number) {
   setSteps((steps) => {
     const ref = steps[after] ?? steps[steps.length - 1];
     const note: Step = { id: newId(), kind: 'note', title: 'New note', url: ref?.url ?? { kind: 'prefix', value: '/' }, advance: 'next' };
+    toggleIn(openSteps, note.id, true);
     const copy = steps.slice();
     copy.splice(after + 1, 0, note);
     return copy;
@@ -141,6 +158,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     void attempt(async () => {
       const g = await send('guide.get', { id: guideId });
       draft.value = g;
+      openSteps.value = initiallyOpen(g.steps);
+      moreSteps.value = new Set();
       base.value = g.revisionId;
       tagsText.value = g.tags.join(', ');
     });
@@ -190,6 +209,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       </section>
     );
   const readOnly = g.source === 'library';
+  // Counted on the current steps: a deleted step's id may still be in the set.
+  const allOpen = g.steps.length > 0 && g.steps.every((x) => openSteps.value.has(x.id));
 
   const save = () => {
     const sent = draft.value!;
@@ -232,7 +253,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       </label>
       <label class="field">
         <span class="label">
-          Tags <span class="hint">· separated by commas; the library filters by them</span>
+          Tags <span class="hint">· optional, separated by commas. Use them to filter your list.</span>
         </span>
         <input
           data-testid="guide-tags"
@@ -247,7 +268,6 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         />
       </label>
       <div class="row">
-        <span class="badge">Version {g.version}</span>
         <span class="badge">
           {g.steps.length} {g.steps.length === 1 ? 'step' : 'steps'}
         </span>
@@ -255,10 +275,21 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {dirty.value && <span class="badge warn">Unsaved changes</span>}
       </div>
       {readOnly && <p class="small muted">Team guides are read-only. Use Duplicate in the list to edit your own copy.</p>}
-      <h3 class="section-label" id="steps-heading" tabIndex={-1}>
-        <Icon name="steps" />
-        Steps
-      </h3>
+      <div class="row steps-head">
+        <h3 class="section-label" id="steps-heading" tabIndex={-1}>
+          <Icon name="steps" />
+          Steps
+        </h3>
+        <button
+          type="button"
+          class="ghost sm push"
+          data-testid="toggle-all-steps"
+          onClick={() => (allOpen ? (openSteps.value = new Set()) : (openSteps.value = new Set(g.steps.map((x) => x.id))))}
+        >
+          {allOpen ? 'Fold all steps' : 'Open all steps'}
+        </button>
+      </div>
+      <p class="hint">Open a step to change its text, test it or point it at another element. Use the arrows to reorder.</p>
       <ol class="edit-steps" aria-label="Steps">
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
@@ -266,8 +297,12 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           const isPicking = picking.value === s.id;
           const kind = KIND[s.kind];
           const titleId = `step-title-${s.id}`;
+          const bodyId = `step-body-${s.id}`;
+          const open = openSteps.value.has(s.id) || isPicking;
+          const more = moreSteps.value.has(s.id);
+          const moreId = `step-more-${s.id}`;
           return (
-            <li key={s.id} class={`edit-step${isPicking ? ' picking' : ''}`} data-testid={`step-${i}`} aria-labelledby={titleId}>
+            <li key={s.id} class={`edit-step${isPicking ? ' picking' : ''}${open ? ' open' : ''}`} data-testid={`step-${i}`} aria-labelledby={titleId}>
               <div class="step-head">
                 <span class="num" aria-hidden="true">
                   {i + 1}
@@ -277,6 +312,12 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   {kind.label}
                 </span>
                 {s.optional && <span class="badge">Optional</span>}
+                {!open && s.flags?.length ? (
+                  <span class="badge warn" title={s.flags.map((f) => FLAG_HELP[f].label).join(', ')}>
+                    <Icon name="warn" />
+                    {FLAG_HELP[s.flags[0]!].label}
+                  </span>
+                ) : null}
                 <span class="push" />
                 <button type="button" class="ghost icon sm" data-testid={`step-${i}-up`} aria-label={`Move step ${i + 1} up`} title="Move up" disabled={readOnly || i === 0} onClick={() => move(i, -1)}>
                   <Icon name="arrow-up" />
@@ -297,117 +338,140 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                 </button>
               </div>
               <h4 class="step-title" id={titleId}>
-                <span class="visually-hidden">Step {i + 1}: </span>
-                <Markdown text={s.title || 'Untitled step'} />
+                <button type="button" class="step-toggle" data-testid={`step-${i}-toggle`} aria-expanded={open} aria-controls={open ? bodyId : undefined} disabled={isPicking} onClick={() => toggleIn(openSteps, s.id)}>
+                  <span class="visually-hidden">Step {i + 1}: </span>
+                  <span class="grow">
+                    <Markdown text={s.title || 'Untitled step'} noLinks />
+                  </span>
+                  <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+                </button>
               </h4>
-              <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
-              <label class="field">
-                <span class="label">Title</span>
-                <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
-              </label>
-              <label class="field">
-                <span class="label">Note</span>
-                <textarea
-                  data-testid={`step-${i}-note`}
-                  rows={1}
-                  value={s.note ?? ''}
-                  placeholder="Optional. Shown under the title."
-                  disabled={readOnly}
-                  onInput={(e) => patchStep(s.id, { note: (e.target as HTMLTextAreaElement).value })}
-                />
-              </label>
-              <label class="field">
-                <span class="label">
-                  Voice text <span class="hint">· read aloud; leave empty to read the title and note</span>
-                </span>
-                <textarea
-                  data-testid={`step-${i}-voice`}
-                  rows={1}
-                  value={s.voiceText ?? ''}
-                  placeholder={voiceTextFor({ ...s, voiceText: undefined })}
-                  disabled={readOnly}
-                  onInput={(e) => patchStep(s.id, { voiceText: (e.target as HTMLTextAreaElement).value })}
-                />
-              </label>
-              <div class="row step-options">
-                <label class="inline-field">
-                  <span class="label">Moves on</span>
-                  <select
-                    data-testid={`step-${i}-advance`}
-                    value={s.advance}
-                    disabled={readOnly || s.kind === 'note'}
-                    onChange={(e) => patchStep(s.id, { advance: (e.target as HTMLSelectElement).value as Step['advance'] })}
-                  >
-                    <option value="action">when the learner does it</option>
-                    <option value="next">with the Next button</option>
-                  </select>
-                </label>
-                <label class="check small">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    class="switch"
-                    data-testid={`step-${i}-optional`}
-                    checked={!!s.optional}
-                    disabled={readOnly}
-                    onChange={(e) => patchStep(s.id, { optional: (e.target as HTMLInputElement).checked || undefined })}
-                  />
-                  <span>Optional</span>
-                </label>
-              </div>
-              <div class="toolbar step-actions">
-                {canTarget && (
-                  <>
-                    <button
-                      type="button"
-                      class="sm"
-                      data-testid={`step-${i}-test`}
-                      disabled={tabId === null}
-                      onClick={() => {
-                        tests.value = { ...tests.value, [s.id]: 'running' };
-                        void attempt(async () => {
-                          const r = await send('step.test', { tabId: tabId!, step: s, origins: g.appOrigins });
-                          tests.value = { ...tests.value, [s.id]: r };
-                        });
-                      }}
-                    >
-                      <Icon name="test" />
-                      Test step
+              {open && (
+                <div class="step-body" id={bodyId}>
+                  <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
+                  <label class="field">
+                    <span class="label">
+                      Title <span class="hint">· to make words bold, put two stars on each side: **like this**</span>
+                    </span>
+                    <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
+                  </label>
+                  <label class="field">
+                    <span class="label">Note</span>
+                    <textarea
+                      data-testid={`step-${i}-note`}
+                      rows={1}
+                      value={s.note ?? ''}
+                      placeholder="Optional. Shown under the title."
+                      disabled={readOnly}
+                      onInput={(e) => patchStep(s.id, { note: (e.target as HTMLTextAreaElement).value })}
+                    />
+                  </label>
+                  <div class="toolbar step-actions">
+                    {canTarget && (
+                      <>
+                        <button
+                          type="button"
+                          class="sm"
+                          data-testid={`step-${i}-test`}
+                          disabled={tabId === null}
+                          title="Look for this step’s element on the page now"
+                          onClick={() => {
+                            tests.value = { ...tests.value, [s.id]: 'running' };
+                            void attempt(async () => {
+                              const r = await send('step.test', { tabId: tabId!, step: s, origins: g.appOrigins });
+                              tests.value = { ...tests.value, [s.id]: r };
+                            });
+                          }}
+                        >
+                          <Icon name="test" />
+                          Test step
+                        </button>
+                        <button
+                          type="button"
+                          class={`sm${isPicking ? ' primary' : ''}`}
+                          data-testid={`step-${i}-repick`}
+                          aria-pressed={isPicking}
+                          disabled={readOnly || tabId === null}
+                          title="Choose a different element on the page for this step"
+                          onClick={() => {
+                            if (picking.value === s.id) {
+                              void attempt(() => send('pick.cancel', { tabId: tabId! }));
+                              endPicking();
+                              return;
+                            }
+                            picking.value = s.id;
+                            clearTimeout(pickTimer);
+                            pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
+                            void attempt(() => send('pick.start', { tabId: tabId!, origins: g.appOrigins })).then((r) => {
+                              if (!r) endPicking();
+                            });
+                          }}
+                        >
+                          <Icon name={isPicking ? 'close' : 'crosshair'} />
+                          {isPicking ? 'Cancel picking' : 'Re-pick element'}
+                        </button>
+                      </>
+                    )}
+                    <button type="button" class="ghost sm push" data-testid={`step-${i}-more`} aria-expanded={more} aria-controls={more ? moreId : undefined} onClick={() => toggleIn(moreSteps, s.id)}>
+                      More options
+                      <Icon name={more ? 'chevron-up' : 'chevron-down'} />
                     </button>
-                    <button
-                      type="button"
-                      class={`sm${isPicking ? ' primary' : ''}`}
-                      data-testid={`step-${i}-repick`}
-                      aria-pressed={isPicking}
-                      disabled={readOnly || tabId === null}
-                      onClick={() => {
-                        if (picking.value === s.id) {
-                          void attempt(() => send('pick.cancel', { tabId: tabId! }));
-                          endPicking();
-                          return;
-                        }
-                        picking.value = s.id;
-                        clearTimeout(pickTimer);
-                        pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
-                        void attempt(() => send('pick.start', { tabId: tabId!, origins: g.appOrigins })).then((r) => {
-                          if (!r) endPicking();
-                        });
-                      }}
-                    >
-                      <Icon name={isPicking ? 'close' : 'crosshair'} />
-                      {isPicking ? 'Cancel picking' : 'Re-pick element'}
-                    </button>
-                  </>
-                )}
-                <button type="button" class="ghost sm" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
-                  <Icon name="plus" />
-                  Note after
-                </button>
-                <button type="button" class="ghost sm" data-testid={`step-${i}-duplicate`} aria-label={`Duplicate step ${i + 1}`} disabled={readOnly} onClick={() => setSteps((steps) => duplicateStepIn(steps, i))}>
-                  <Icon name="duplicate" />
-                  Duplicate
-                </button>
-              </div>
+                  </div>
+                  {more && (
+                    <div class="step-more" id={moreId}>
+                      <label class="field">
+                        <span class="label">
+                          Spoken text <span class="hint">· what the voice says; leave empty to read the title and note</span>
+                        </span>
+                        <textarea
+                          data-testid={`step-${i}-voice`}
+                          rows={1}
+                          value={s.voiceText ?? ''}
+                          placeholder={voiceTextFor({ ...s, voiceText: undefined })}
+                          disabled={readOnly}
+                          onInput={(e) => patchStep(s.id, { voiceText: (e.target as HTMLTextAreaElement).value })}
+                        />
+                      </label>
+                      <div class="row step-options">
+                        <label class="inline-field">
+                          <span class="label">Go to the next step</span>
+                          <select
+                            data-testid={`step-${i}-advance`}
+                            value={s.advance}
+                            disabled={readOnly || s.kind === 'note'}
+                            onChange={(e) => patchStep(s.id, { advance: (e.target as HTMLSelectElement).value as Step['advance'] })}
+                          >
+                            <option value="action">when the learner does it</option>
+                            <option value="next">when the learner presses Next</option>
+                          </select>
+                        </label>
+                        <label class="check small">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            class="switch"
+                            data-testid={`step-${i}-optional`}
+                            checked={!!s.optional}
+                            disabled={readOnly}
+                            onChange={(e) => patchStep(s.id, { optional: (e.target as HTMLInputElement).checked || undefined })}
+                          />
+                          <span>Optional (learners may skip it)</span>
+                        </label>
+                      </div>
+                      <div class="toolbar">
+                        <button type="button" class="ghost sm" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
+                          <Icon name="plus" />
+                          Add a note after
+                        </button>
+                        <button type="button" class="ghost sm" data-testid={`step-${i}-duplicate`} aria-label={`Duplicate step ${i + 1}`} disabled={readOnly} onClick={() => setSteps((steps) => duplicateStepIn(steps, i))}>
+                          <Icon name="duplicate" />
+                          Duplicate
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {isPicking && (
                 <p class="banner" role="status">
                   <Icon name="crosshair" />
@@ -433,7 +497,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       <div>
         <button type="button" class="ghost" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
           <Icon name="plus" />
-          Add note at end
+          Add a note at the end
         </button>
       </div>
       <div class="editor-bar">
@@ -476,17 +540,17 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
 
 /** The matcher's signal names in plain words (src/core/matcher/signals.ts). */
 const CLUE: Record<string, string> = {
-  testId: 'test id',
+  testId: 'a test label',
   id: 'id',
-  roleName: 'role and name',
+  roleName: 'its kind and name',
   text: 'text',
   name: 'name',
-  href: 'link',
+  href: 'its link',
   placeholder: 'placeholder',
-  css: 'CSS path',
-  ancestors: 'surroundings',
-  xpath: 'page position',
-  position: 'screen position',
+  css: 'its path in the page',
+  ancestors: 'what’s around it',
+  xpath: 'its position in the page',
+  position: 'where it is on screen',
   're-picked': 'picked by you',
 };
 
@@ -512,17 +576,21 @@ function TestResultView({ t }: { t: TestResult | 'running' }) {
       <Icon name={t.fragile ? 'warn' : 'check'} />
       <div class="stack-sm">
         <span>
-          <strong>{t.fragile ? 'Found, but fragile.' : 'Found.'}</strong>
-          {t.fragile && ' Only one strong clue matched, so a small app change may break it. Re-pick it, or add a data-guide-id to the element.'}
+          <strong>{t.fragile ? 'Found, but it may break.' : 'Found on this page.'}</strong>
+          {t.fragile && ' Waymark found it with only one strong clue, so a small change to the app could break this step. Re-pick the element to make it sturdier.'}
         </span>
-        <span class="clues">
-          <span class="visually-hidden">Matched: </span>
-          {t.matched.map((m) => (
-            <span key={m} class="badge">
-              {CLUE[m] ?? m}
-            </span>
-          ))}
-        </span>
+        <details class="clues">
+          <summary class="small">How Waymark found it</summary>
+          <span class="clue-list">
+            <span class="visually-hidden">Matched: </span>
+            {t.matched.map((m) => (
+              <span key={m} class="badge">
+                {CLUE[m] ?? m}
+              </span>
+            ))}
+          </span>
+          {t.fragile && <span class="small muted">If you own the app, a data-guide-id attribute on the element makes it easy to find.</span>}
+        </details>
       </div>
     </div>
   );

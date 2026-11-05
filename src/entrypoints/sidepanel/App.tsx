@@ -3,11 +3,13 @@ import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
+import { siteLabel } from '../../core/text/names';
 import { Recorder, showStopped } from './Recorder';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
 import { Mark } from '../../ui/Mark';
 import { Welcome, welcomeShown } from './Welcome';
+import { HelpCard, HelpTip, toggleHelp, helpOpen } from './Help';
 import { useShortcutOutcome } from './shortcut';
 
 const tab = signal<TabInfo | null>(null);
@@ -49,6 +51,9 @@ async function revoke(origin: string) {
 
 const initialEdit = new URLSearchParams(location.search).get('edit');
 const launcherOn = signal<boolean | null>(null);
+/** The allowed site's options (the ? button switch and Remove access) are folded away (D120). */
+const siteOptionsOpen = signal<string | null>(null); // the origin whose options are open
+
 
 /** The on-page "?" launcher is off by default and turned on per site (SPEC: Discovery). */
 function LauncherToggle({ origin }: { origin: string }) {
@@ -66,7 +71,8 @@ function LauncherToggle({ origin }: { origin: string }) {
         onChange={(e) => void send('site.settings.set', { origin, launcher: (e.target as HTMLInputElement).checked }).then((r) => (launcherOn.value = r.launcher))}
       />
       <span>
-        Show the <strong>?</strong> guide button on this site’s pages
+        Show a <strong>?</strong> button on this site’s pages
+        <span class="hint block">Your learners click it to find and start the guides for the page they are on.</span>
       </span>
     </label>
   );
@@ -87,42 +93,71 @@ function SiteCard({ t }: { t: TabInfo | null }) {
       <section class="card site-card" aria-label="Site access">
         <div class="empty">
           <Icon name="globe" />
-          <strong>No web app in this tab</strong>
-          <span class="small">Open the web app you want to guide, then click the Waymark icon in the toolbar.</span>
+          <strong>Open the web app you want to guide</strong>
+          <span class="small">In this tab, open the web app you want to record or play guides on. The panel follows the tab you are on.</span>
         </div>
       </section>
     );
   }
-  return (
-    <section class="card site-card" aria-label="Site access">
-      <div class="card-head">
-        <div class="site-id">
-          <Icon name="globe" />
-          <span class="origin" data-testid="site-origin">
-            {t.origin}
-          </span>
+  const host = siteLabel(t.origin);
+  if (!t.granted)
+    return (
+      <section class="card site-card" aria-labelledby="site-title">
+        <div class="card-head">
+          <h2 class="site-id" id="site-title">
+            <Icon name="globe" />
+            <span class="origin" data-testid="site-origin" title={t.origin}>
+              {host}
+            </span>
+          </h2>
+          <span class="badge">Off here</span>
         </div>
-        {t.granted ? <span class="badge success">Allowed</span> : <span class="badge">Not allowed</span>}
+        <p class="small">
+          Waymark is off on this site. Allow it to record and play guides here.{' '}
+          <HelpTip label="What does Allow do?" testid="help-allow">
+            Waymark asks your browser for access to this one site. It can then highlight steps and see your clicks while you record, and only here. You can turn it off again at any time.
+          </HelpTip>
+        </p>
+        <div>
+          <button type="button" class="primary" data-testid="allow-site" onClick={() => void allow(t.origin!)}>
+            <Icon name="shield" />
+            Allow on this site
+          </button>
+        </div>
+      </section>
+    );
+  const open = siteOptionsOpen.value === t.origin;
+  return (
+    <section class="card site-card compact" aria-labelledby="site-title">
+      <div class="card-head">
+        <h2 class="site-id" id="site-title">
+          <Icon name="globe" />
+          <span class="origin" data-testid="site-origin" title={t.origin}>
+            {host}
+          </span>
+          <span class="badge success">Allowed</span>
+        </h2>
+        <button
+          type="button"
+          class="ghost sm"
+          data-testid="site-options"
+          aria-expanded={open}
+          aria-controls={open ? 'site-options' : undefined}
+          onClick={() => (siteOptionsOpen.value = open ? null : t.origin)}
+        >
+          Site options
+          <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+        </button>
       </div>
-      {t.granted ? (
-        <>
-          <div class="row nowrap site-options">
-            <LauncherToggle origin={t.origin} />
-            <button type="button" class="ghost sm danger push" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
-              Remove access
+      {open && (
+        <div class="site-options stack-sm" id="site-options">
+          <LauncherToggle origin={t.origin} />
+          <div class="row">
+            <button type="button" class="ghost sm danger" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
+              Turn off Waymark on this site
             </button>
           </div>
-        </>
-      ) : (
-        <>
-          <p class="small muted">Allow Waymark on this site to record and play guides here. It sees only the sites you allow.</p>
-          <div>
-            <button type="button" class="primary" data-testid="allow-site" onClick={() => void allow(t.origin!)}>
-              <Icon name="shield" />
-              Allow on this site
-            </button>
-          </div>
-        </>
+        </div>
       )}
     </section>
   );
@@ -158,9 +193,14 @@ export function App() {
           <Mark />
           Waymark
         </h1>
-        <button type="button" class="ghost icon" data-testid="open-settings" aria-label="Settings" title="Settings" onClick={() => void chrome.runtime.openOptionsPage()}>
-          <Icon name="settings" />
-        </button>
+        <div class="row nowrap">
+          <button type="button" class="ghost icon" data-testid="open-help" aria-label="Help" title="Help" aria-expanded={helpOpen.value} aria-controls={helpOpen.value ? 'help' : undefined} onClick={toggleHelp}>
+            <Icon name="help" />
+          </button>
+          <button type="button" class="ghost icon" data-testid="open-settings" aria-label="Settings" title="Settings" onClick={() => void chrome.runtime.openOptionsPage()}>
+            <Icon name="settings" />
+          </button>
+        </div>
       </header>
       <main>
         {error.value && (
@@ -175,6 +215,7 @@ export function App() {
             <span class="grow">Recording didn’t start: {shortcutError.value}</span>
           </p>
         )}
+        <HelpCard />
         <Welcome />
         {welcomeShown.value !== null && (
           <>

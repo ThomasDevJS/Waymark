@@ -21,7 +21,7 @@ const CSS = `
 .wm-card { position: fixed; right: 16px; bottom: 72px; width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 96px); overflow: auto;
   box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
   padding: 8px; pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.4 var(--wm-font); text-align: left; }
-.wm-offer { bottom: 16px; padding: 14px 16px 12px; }
+.wm-offer { bottom: 72px; padding: 14px 16px 12px; }
 .wm-card h2 { font: 600 12px/1.4 var(--wm-font); letter-spacing: .04em; text-transform: uppercase; color: var(--wm-fg-muted); margin: 4px 8px 6px; }
 .wm-offer h2 { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
 .wm-offer h2 svg { width: 14px; height: 14px; color: var(--wm-accent-text); }

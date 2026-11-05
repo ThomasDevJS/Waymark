@@ -28,6 +28,11 @@ Not built yet (M6): the store listing, privacy policy, browser matrix, `docs/BRO
 - Settings → Problems → **Keep a debug log** (off by default). Core ring buffer, redaction and text format: `src/core/debug/log.ts`. Service worker logger, handlers and the copy header: `src/background/debug.ts` (`dlog`, its own write queue, never `enqueue`). Content logger: `src/content/debug.ts`. Hooks: the recorder's `debug` option, `watchAdvance`'s `debug` option, `promoteToRegion`/`clickableRegion`'s `why`, the player controller, `runs.ts`, `recording.ts` (inside `mutate`) and `voice.ts` (`stopSpeech(why)`).
 - Tests: `test/unit/debug-log.test.ts`, `test/browser/debug-log.test.ts`, the debug-on case in `test/unit/recording-race.test.ts`, e2e `test/e2e/q3-debug-log.spec.ts`. Tester steps: `docs/TESTING.md` section 4.
 
+## First-time UX (D120–D127, issue #37)
+- Audit, walkthrough findings, information architecture, copy rules and the tutorials design: `docs/UX.md`.
+- Panel: one primary action per state, Site options folded (`App.tsx`), Help card and inline `?` (`sidepanel/Help.tsx`), one-card welcome, library rows with Edit / More / Start and export selection mode (`Library.tsx`), folded editor steps (`Editor.tsx`), Technical details in the export review. On the page: the tooltip's action hint (`actionHint`, `content/player/ui.ts`).
+- Tests: `test/browser/panel-clarity.test.ts`, `test/unit/names.test.ts`. E2E opens a step (`step-N-toggle`, `step-N-more`) and Site options before using what's inside.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

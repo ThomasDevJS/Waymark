@@ -17,6 +17,7 @@ import { Icon } from '../../ui/Icon';
 import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
 import { showToast, ToastSlot, toast } from './Toast';
 import { UNDO_MS } from '../../core/storage/trash';
+import { HelpTip } from './Help';
 
 /** The guide index (D49): the list, search and "For this page" never need full guides. */
 const all = signal<GuideIndexEntry[]>([]);
@@ -35,6 +36,8 @@ const completed = signal<Record<string, string>>({});
 const tagFilter = signal<string[]>([]);
 /** The guide whose "More" actions are open. */
 const moreOpen = signal<string | null>(null);
+/** Export picks guides with checkboxes, shown only while choosing (D124). */
+const selecting = signal(false);
 /** "Start from step" choice per guide (0-based). */
 const startFrom = signal<Record<string, number>>({});
 
@@ -138,14 +141,14 @@ async function allowAll() {
 async function readFile(file: File) {
   message.value = null;
   if (file.size > 5 * 1024 * 1024) {
-    error.value = 'This pack is larger than 5 MB.';
+    error.value = 'This file is larger than 5 MB.';
     return;
   }
   const text = await file.text();
   const check = await attempt(() => send('pack.check', { text }));
   if (!check) return;
   if (!check.ok) {
-    error.value = check.error ?? 'This file is not a Waymark pack.';
+    error.value = check.error ?? 'This file is not a Waymark guide file.';
     return;
   }
   importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])), origins: check.origins };
@@ -171,6 +174,26 @@ export function deepLinkFor(g: Pick<Guide, 'id' | 'startUrl'>): string | null {
   return u.href;
 }
 
+/** Export… shows checkboxes; focus goes to the bar, which says what to do (the button that was pressed is gone). */
+function startSelecting() {
+  selecting.value = true;
+  requestAnimationFrame(() => document.getElementById('select-bar')?.focus());
+}
+
+function endSelecting() {
+  selecting.value = false;
+  selected.value = new Set();
+  requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="export"]')?.focus());
+}
+
+/** Share… in a guide's More menu: the export review for that one guide. */
+async function shareOne(id: string) {
+  const r = await attempt(() => send('guide.many', { ids: [id] }));
+  if (!r) return;
+  moreOpen.value = null;
+  exporting.value = r.guides;
+}
+
 export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | null; tabUrl: string | null; onEdit: (id: string) => void; onStart: (id: string, stepIndex?: number) => void }) {
   useEffect(() => {
     void load().then(resumeUndo);
@@ -191,11 +214,21 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g),
     activeTags,
   );
+  // "Select all" picks the guides on screen, never ones hidden by search or tags.
+  const allShown = results.length > 0 && results.every((g) => selected.value.has(g.id));
   const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
   const others = results.filter((g) => !forPage.includes(g));
 
   if (exporting.value) {
-    return <ExportReview guides={exporting.value} onDone={() => (exporting.value = null)} />;
+    return (
+      <ExportReview
+        guides={exporting.value}
+        onDone={() => {
+          exporting.value = null;
+          endSelecting();
+        }}
+      />
+    );
   }
 
   const copyLink = (g: GuideIndexEntry) => {
@@ -219,6 +252,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     return (
       <li key={g.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`guide-${g.id}`}>
         <div class="guide-row">
+          {selecting.value && (
           <input
             type="checkbox"
             aria-label={`Select ${g.title} for export`}
@@ -230,6 +264,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               selected.value = next;
             }}
           />
+          )}
           <div class="guide-main">
             <span class="guide-title">{g.title}</span>
             <span class="guide-meta">
@@ -246,9 +281,6 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             </span>
           </div>
           <div class="guide-actions">
-            <button type="button" class="ghost icon sm" data-testid={`link-${g.id}`} aria-label={`Copy link to ${g.title}`} title="Copy link: opening it offers this guide" onClick={() => copyLink(g)}>
-              <Icon name="link" />
-            </button>
             {g.source === 'library' ? (
               <button
                 type="button"
@@ -261,8 +293,9 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                 <Icon name="copy" />
               </button>
             ) : (
-              <button type="button" class="ghost icon sm" data-testid={`edit-${g.id}`} aria-label={`Edit ${g.title}`} title="Edit" onClick={() => onEdit(g.id)}>
+              <button type="button" class="ghost sm" data-testid={`edit-${g.id}`} aria-label={`Edit ${g.title}`} onClick={() => onEdit(g.id)}>
                 <Icon name="edit" />
+                Edit
               </button>
             )}
             <button
@@ -316,6 +349,14 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </div>
             )}
             <div class="toolbar">
+              <button type="button" class="sm" data-testid={`share-${g.id}`} onClick={() => void shareOne(g.id)}>
+                <Icon name="share" />
+                Share…
+              </button>
+              <button type="button" class="sm" data-testid={`link-${g.id}`} title="Opening the link offers this guide" onClick={() => copyLink(g)}>
+                <Icon name="link" />
+                Copy link
+              </button>
               {g.source === 'local' && (
                 <button
                   type="button"
@@ -512,55 +553,74 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
             <div class="empty">
               <Icon name="book" />
               <strong>No guides yet</strong>
-              <span class="small">Record one above, or import a pack someone shared with you.</span>
+              <span class="small">{tabId === null ? 'A guide walks someone through a task, one highlighted step at a time. Allow Waymark on a site to record one, or import a guide file someone sent you.' : 'A guide walks someone through a task, one highlighted step at a time. Record one above, or import a guide file someone sent you.'}</span>
             </div>
           ) : null}
         </section>
       )}
-      <div class="toolbar library-actions">
-        {all.value.length > 0 && (
-          <button
-            type="button"
-            data-testid="export"
-            disabled={selected.value.size === 0}
-            onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
-          >
-            <Icon name="download" />
-            Export {selected.value.size ? `${selected.value.size} selected` : 'selected'}…
-          </button>
-        )}
-        <label class="btn">
-          <Icon name="upload" />
-          Import…
-          <input
-            type="file"
-            accept=".json,.waymark.json,application/json"
-            data-testid="import-file"
-            aria-label="Import a guide pack"
-            class="visually-hidden"
-            onChange={(e) => {
-              const f = (e.target as HTMLInputElement).files?.[0];
-              if (f) void readFile(f);
-              (e.target as HTMLInputElement).value = '';
-            }}
-          />
-        </label>
-        {selected.value.size === 1 && (
-          <button
-            type="button"
-            class="danger push"
-            data-testid="delete-selected"
-            onClick={() => {
-              const g = byId.get([...selected.value][0]!);
-              if (g) void deleteGuide(g);
-            }}
-          >
-            <Icon name="trash" />
-            Delete
-          </button>
-        )}
-      </div>
-      {all.value.length > 0 && selected.value.size === 0 && <p class="hint">Select guides with their checkboxes to export them.</p>}
+      {selecting.value ? (
+        <div class="banner select-bar" role="group" aria-labelledby="select-bar-text" id="select-bar" tabIndex={-1} data-testid="select-bar">
+          <Icon name="download" />
+          <div class="grow stack-sm">
+            <span id="select-bar-text">Select the guides to export, then press Export.</span>
+            <div class="row">
+              <button
+                type="button"
+                class="primary sm"
+                data-testid="export-selected"
+                disabled={selected.value.size === 0}
+                onClick={() => void attempt(async () => (exporting.value = (await send('guide.many', { ids: all.value.map((g) => g.id).filter((id) => selected.value.has(id)) })).guides))}
+              >
+                Export {selected.value.size ? `${selected.value.size} selected` : 'selected'}…
+              </button>
+              <button
+                type="button"
+                class="ghost sm"
+                data-testid="select-all"
+                onClick={() => (selected.value = allShown ? new Set() : new Set(results.map((g) => g.id)))}
+              >
+                {allShown ? 'Select none' : results.length === all.value.length ? 'Select all' : `Select all ${results.length} shown`}
+              </button>
+              <button
+                type="button"
+                class="ghost sm push"
+                data-testid="select-cancel"
+                onClick={endSelecting}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div class="toolbar library-actions">
+          {all.value.length > 0 && (
+            <button type="button" data-testid="export" onClick={startSelecting}>
+              <Icon name="download" />
+              Export…
+            </button>
+          )}
+          <label class="btn">
+            <Icon name="upload" />
+            Import…
+            <input
+              type="file"
+              accept=".json,.waymark.json,application/json"
+              data-testid="import-file"
+              aria-label="Import a guide file"
+              class="visually-hidden"
+              onChange={(e) => {
+                const f = (e.target as HTMLInputElement).files?.[0];
+                if (f) void readFile(f);
+                (e.target as HTMLInputElement).value = '';
+              }}
+            />
+          </label>
+          <HelpTip label="About sharing guides" testid="help-share">
+            Export saves guides to a file (or a printable how-to) that you can send. Import adds guides from such a file. To share one guide quickly, use Copy link in its ⋯ menu. A team can also publish a file at a web address: see Settings → Team library.
+          </HelpTip>
+        </div>
+      )}
       {message.value && (
         <p class="status-text ok" role="status" data-testid="library-message">
           {message.value}

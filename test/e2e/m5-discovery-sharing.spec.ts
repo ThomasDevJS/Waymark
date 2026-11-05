@@ -89,8 +89,9 @@ test('a pack exported after review and imported into a second browser profile pl
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await expect(panel.getByTestId('for-this-page')).toContainText('Shared guide');
+  await panel.getByTestId('export').click(); // checkboxes appear only while choosing (D124)
   await panel.getByLabel('Select Shared guide for export').check();
-  await panel.getByTestId('export').click();
+  await panel.getByTestId('export-selected').click();
   const review = panel.getByTestId('export-review');
   await expect(review).toContainText('Click **Import**');
   await expect(review).toContainText(`${site.main}/app/orders`);
@@ -153,6 +154,7 @@ test('on-page launcher (off by default, on per site) and deep links start a guid
   const tabId = await tabIdFor(ext, app);
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId('site-options').click(); // folded away (D120)
   await panel.getByTestId('launcher-toggle').check();
   await app.bringToFront();
   await app.reload();
@@ -228,6 +230,7 @@ test('review fixes: unsubscribing during a slow library fetch wins; a malformed 
   // Copy link gives a working deep link (clipboard, or the link itself shown when it is blocked).
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  await panel.getByTestId(`more-${guideId}`).click(); // Copy link moved into More (D124)
   await panel.getByTestId(`link-${guideId}`).click();
   await expect(panel.getByTestId('library-message')).toContainText(/Link copied|waymark=/);
 

@@ -101,12 +101,13 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await first.goto(`${base}/sidepanel.html?tab=${tabId}`);
   await expect(first.getByTestId('welcome')).toBeVisible();
   await panelShot(first, 'panel-00-welcome-1');
-  await first.getByTestId('welcome-next').click();
-  await first.getByTestId('welcome-next').click();
-  await panelShot(first, 'panel-00-welcome-3');
-  await first.getByTestId('welcome-next').click();
+  await first.getByTestId('welcome-done').click();
   await expect(first.getByTestId('welcome')).toHaveCount(0);
   await panelShot(first, 'panel-00-no-site');
+  await first.getByTestId('open-help').click();
+  await first.getByTestId('help-warnings').locator('summary').click();
+  await panelShot(first, 'panel-00-help');
+  await first.getByTestId('help-close').click();
   await first.addInitScript((origin) => {
     const real = chrome.runtime.sendMessage.bind(chrome.runtime) as (m: unknown) => Promise<{ ok: boolean; data: Record<string, unknown> }>;
     (chrome.runtime as unknown as { sendMessage: unknown }).sendMessage = async (m: { type: string }) => {
@@ -117,6 +118,7 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   }, DEMO);
   await first.reload();
   await expect(first.getByTestId('allow-site')).toBeVisible();
+  await first.getByTestId('help-allow').click();
   await panelShot(first, 'panel-01-not-allowed');
   await first.close();
   const panel = await context.newPage();
@@ -170,6 +172,7 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   const guideId = guides[0]!.id;
   await panel.goto(`${base}/sidepanel.html?tab=${tabId}&edit=${guideId}`);
   await expect(panel.getByTestId('save-guide')).toBeVisible();
+  await panel.getByTestId('step-3-toggle').click(); // step 0 is flagged, so it starts open
   const testBtn = panel.getByTestId('step-3-test');
   if (await testBtn.count()) {
     await testBtn.click();
@@ -177,6 +180,9 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   }
   await panel.getByTestId('step-0-title').fill('Look at the **revenue chart**');
   await panelShot(panel, 'panel-04-editor');
+  await panel.getByTestId('step-3-more').click();
+  await panel.getByTestId('step-3').scrollIntoViewIfNeeded();
+  await panelShot(panel, 'panel-04b-editor-more', false);
   await panel.getByTestId('save-guide').click();
   await expect(panel.getByTestId('editor-status')).toBeVisible();
   await panel.getByTestId('close-editor').click();
@@ -188,15 +194,20 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await app.goto(`${DEMO}/index.html`);
   await panel.goto(`${base}/sidepanel.html?tab=${tabId}`);
   await expect(panel.getByTestId(`start-${guideId}`)).toBeVisible();
+  await panel.getByTestId('site-options').click();
   await panel.getByTestId('launcher-toggle').check();
+  await panelShot(panel, 'panel-05b-site-options', false);
+  await panel.getByTestId('site-options').click();
   await panelShot(panel, 'panel-05-library');
   await panel.getByTestId('search').fill('payroll');
   await panelShot(panel, 'panel-06-search-empty');
   await panel.getByTestId('search').fill('');
 
   // 5. Export review and import dialog.
-  await panel.getByRole('checkbox', { name: /Select Create an invoice for export/ }).first().check();
   await panel.getByTestId('export').click();
+  await panel.getByRole('checkbox', { name: /Select Create an invoice for export/ }).first().check();
+  await panelShot(panel, 'panel-07a-export-select', false);
+  await panel.getByTestId('export-selected').click();
   await expect(panel.getByTestId('export-review')).toBeVisible();
   await panelShot(panel, 'panel-07-export-review');
   await panel.getByTestId('format-markdown').check();
@@ -271,6 +282,7 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await pageShot(app, 'page-12-deep-link');
   await app.reload();
   await panel.goto(`${base}/sidepanel.html?tab=${tabId}&edit=${guideId}`);
+  await panel.getByTestId('step-3-toggle').click();
   await panel.getByTestId('step-3-repick').click();
   await expect.poll(() => marker(app, 'picking'), { timeout: 10_000 }).toBe('on');
   await app.bringToFront();

@@ -16,10 +16,10 @@ export function parsePack(text: string): ParseResult {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: 'This file is not a Waymark pack (not valid JSON).' };
+    return { ok: false, error: 'This file is not a Waymark guide file (not valid JSON).' };
   }
   const r = raw as { format?: unknown; formatVersion?: unknown; guides?: unknown };
-  if (!r || typeof r !== 'object' || r.format !== 'waymark-pack') return { ok: false, error: 'This file is not a Waymark pack.' };
+  if (!r || typeof r !== 'object' || r.format !== 'waymark-pack') return { ok: false, error: 'This file is not a Waymark guide file.' };
   if (typeof r.formatVersion === 'number' && r.formatVersion > FORMAT_VERSION) {
     return { ok: false, error: 'This pack was made by a newer version of Waymark. Update Waymark to import it.' };
   }

@@ -874,3 +874,76 @@ Each has a regression test that fails on the first version (`test/unit/debug-log
 - **Page-written roles** (low): a near-miss click logged the element's raw `role` attribute, which a page can fill with any text. Roles are logged only when they are WAI-ARIA role names (`ariaRole`), also in the recorder's facts.
 - **Step rules** (low): `page` and `expected` values (step URL rules) are logged without a query or fragment, like every address.
 - **Clear and off** (low): Clear stores its time, and entries from before it, still waiting in a page, are dropped when they arrive. Turning the switch off stops collecting before the setting is written.
+
+## 2026-11-05 — UX for first-time users (issue #37)
+
+The audit, the first-time-user walkthrough and the plan are in `docs/UX.md`.
+
+### D120. One primary action per panel state; site options folded away
+*5 Nov 2026 · SPEC: Side panel; Permissions ("Site access")*
+
+- On an allowed site, the site card is one line: the site, the Allowed badge and **Site options**, a disclosure (`aria-expanded`). Inside it are the `?` button switch (now with one line saying who it is for) and **Turn off Waymark on this site** (was "Remove access", red, next to the switch and above Record). Turning a site off is never next to the primary action.
+- On a site that isn't allowed, the card says "Waymark is off on this site", the badge says **Off here** (was "Not allowed", which read as an error), with **Allow on this site** as its only button and a "?" that explains what Allow does.
+- With no web page, the empty state says what to do ("Open a web app to get started") and that the panel follows the tab.
+- The recorder card is titled **Record a guide**, with "Guide name" (was "New guide") and one line on what happens next. The recording card says what Stop does (saves and opens the editor). The playing card shows the current step's title.
+- **Test change**: e2e opens **Site options** before using the launcher switch.
+
+### D121. The welcome is one card
+*5 Nov 2026 · SPEC: Discovery ("First-run access"); D92*
+
+- The three cards with Back / Next / step tabs / Skip become one card that lists Allow, Record and Play at once, with **Get started**. Reading three sentences took up to five clicks. It still shows once (`ui:welcomeDone`), and Help → **Show the welcome again** brings it back.
+- **Test change**: m0 clicked `welcome-next` three times; it now checks all three words and clicks `welcome-done` once.
+
+### D122. Help: a header button and inline "?" disclosures
+*5 Nov 2026 · SPEC: Side panel; Accessibility*
+
+- The header gets a **Help** icon button next to Settings. It opens a Help card: Show the welcome again, Keyboard shortcuts and Something isn't working (each opens Settings at that section, `options.html#about` / `#problems`; Settings scrolls to and focuses the section heading), and **What the warnings mean**, every warning in one place (the recorder flags, Not recorded, Found but it may break, Can't find this step). Before, that list was only in `docs/TESTING.md`.
+- Inline help is a small "?" button (`HelpTip`) next to a concept: Allow, sharing. It is a disclosure (`aria-expanded`, `aria-controls`) that shows one or two plain sentences in place, never a hover tooltip, so keyboard and touch users reach it.
+
+### D123. Names people read
+*5 Nov 2026 · SPEC: UI copy (D94)*
+
+- Sites show as their host (`app.example.com`, or `127.0.0.1:8093`), in the normal font, not as a monospace origin with `https://`. The full origin stays in the `title`. Pure helper: `siteLabel` in `src/core/text/names.ts`.
+- Settings shows language names ("English (en)", `Intl.DisplayNames`), shortcuts as "Exit the guide: no key set" (was "not set Exit the guide"), and the debug log says "paste it into your bug report" (was "into the chat").
+- Other copy: "guide file" for a pack everywhere a person reads it ("Waymark guide file", "Download guide file", "Import a guide file", "Address of the team's guide file"); "Spoken text" for voice text; "Go to the next step: when the learner does it / when the learner presses Next" for "Moves on"; "Optional (learners may skip it)"; plainer recorder warnings that say where to fix them; Test step's "Found on this page." / "Found, but it may break." with the matched clues folded under "How Waymark found it", in plain words. Team library and HD voice are explained for people who don't know the terms; where the HD voice downloads from is folded away.
+
+### D124. Library rows: Edit, More, Start; export picks guides only when asked
+*5 Nov 2026 · SPEC: Side panel; Sharing ("Before export, show a review")*
+
+- A row shows the title and its badges, then **Edit** (with its label), **⋯ More** and **Start**. The export checkbox and the unlabelled Copy link icon are gone from the row. More now holds Start from step, **Share…** (the export review for that guide, the common case), **Copy link**, Duplicate and Delete. The "Delete" button that appeared only with one guide ticked is gone (Delete is in More).
+- **Export…** under the list enters a selection mode: checkboxes appear on the rows, with "Select the guides to export", **Export n selected…**, Select all / none and Cancel. After the review, the panel leaves selection mode.
+- **Test changes**: e2e clicks `export` (enter selection), ticks the guide, then `export-selected`; Copy link (`link-<id>`) is clicked after opening More; q2's second export goes through Share….
+
+### D125. Editor: steps fold to one line
+*5 Nov 2026 · SPEC: User flows (Edit); D91*
+
+- The editor showed every field of every step: a 7-step guide was 4,400 px tall at side-panel width. Each step is now a header (number, kind, warning badge, Move up / down, Delete) and its rendered title as a toggle button (`aria-expanded`, `aria-controls`). Opening it shows the warnings explained, Title (with how to make text bold), Note, Test step, Re-pick element and **More options**, which holds Spoken text, Go to the next step, Optional, Add a note after and Duplicate. The same guide is now 2,000 px tall, with two steps open.
+- Steps the recorder flagged start open, so the author sees what needs attention. A new note step opens unfolded. "Open all steps / Fold all steps" sits next to the Steps heading. A step being re-picked stays open. The Test step result and the pick banner stay outside the folded part, so their live region stays mounted (D91).
+- The Version badge is gone from the editor (the version is still in "Saved (version n).").
+- **Test changes**: e2e and browser tests open a step (`step-N-toggle`) before using its fields, and More options (`step-N-more`) before Optional, Add a note after and Duplicate.
+
+### D126. Export review: element paths under "Technical details"
+*5 Nov 2026 · SPEC: Sharing ("show a review of everything the pack contains")*
+
+- The first-time-user walkthrough found the review to be "a wall of code": every step's CSS and XPath ("Element path /html[1]/body[1]…") and link paths, each with Remove, among the titles and notes. Those kinds (`selector`, `link`) are now listed under a closed **Technical details (n): how Waymark finds each element**, with a line saying they rarely hold private data and what removing one does. Nothing is hidden from the file or from removal: every row is still listed and removable, and the export is unchanged. Texts stay raw (not rendered as markdown) because the review shows the file word for word, and rendering a link would hide its address.
+
+### D127. The tooltip says what to do on the page
+*5 Nov 2026 · SPEC: Player and overlay; D93*
+
+- An action step's tooltip (click, select, check, submit, navigate that moves on by itself) has no Next button, and the walkthrough persona got stuck on step 1 waiting for one. Under the title it now says, in the accent colour: "Click the highlighted element to continue." (or "Choose an option…", "Tick or untick it…", "Send the form…", "Go to that page…"). The pure helper is `actionHint` in `src/content/player/ui.ts`. It shows only in a real run, never in the editor's Test step highlight (which has no voice handlers). Input steps already have Next. Nothing about advancing changed.
+- **REC pill**: a notice wraps onto a second line instead of being cut off ("Not recorded: … Click a button, link or field." was cut after "Click…").
+- **Deep-link offer**: it sat at the same corner as the `?` launcher, which covered its Start button. It now sits above the launcher, like the launcher's menu.
+
+### Fixes from the independent reviews (D120–D127)
+A design and accessibility review of the code, and a second first-time-user walkthrough of the new screenshots. Regression tests are in `test/browser/panel-clarity.test.ts` ("review fixes").
+- **Focus** (high): Export… replaced the button that had focus, so focus fell to the page. Focus now moves to the selection bar, which is labelled by its instruction, and Cancel or the end of the review puts it back on Export…. Dismissing the welcome focuses the guide name field (or Allow) first, in that order. Before, a selector list picked the first match in page order. Escape closes Help.
+- **Link inside a button** (high): the step toggle rendered a title's markdown link as `<a>` inside the button. Titles in the toggle show links as their text (`Markdown noLinks`).
+- **"pagesYour"** (high, both reviews): the `?` button switch's explanation ran into its label because `.hint.block` existed only in Settings' styles. It now exists in the panel's styles too.
+- **Select all** picks only the guides on screen (search and tags can hide some) and says "Select all N shown" when the list is filtered.
+- **Open all / Fold all** counts the steps there are; a deleted step's id no longer counts as open. The toggle is disabled while its step is being re-picked.
+- **Warnings** no longer say "In the editor" (they are shown in the editor too). While recording, a warned step adds "You can fix this in the editor after you press Stop."
+- **Tooltip hint**: it is in the tooltip's `aria-describedby`, and input steps get "Fill in the highlighted field to continue."
+- **Recorder**: while paused, the hint says clicks aren't recorded and what Resume and Stop do. While a guide plays, the Record card is hidden, so it doesn't invite recording during playback. The playing card's "Now:" line wraps instead of being cut off.
+- **Copy**: "Open the web app you want to guide" (the no-site empty state said "get started" right under the welcome's Get started). Settings → Sites says **Turn off** (as the panel does). Import errors say "guide file", not "pack". The broken-step confirmation says the Problems list is in Waymark's Settings. Help's Settings links say they open a new tab (visually hidden text). The bold tip reads "to make words bold, put two stars on each side: **like this**".
+- **Layout**: "Go to the next step" stacks its label above a full-width select, which was cut off. Export checkboxes are 20 px. In forced colours the step toggle has a border. Site options stay open only for the site they were opened on.
+- Not changed: the stitched full-page editor screenshot shows the sticky header and Save bar over the content. That is how a full-page capture draws sticky elements, not a layout bug (the design review checked). The not-found card, "Done" card counter and tooltip icon labels are the player's (D93/D106) and keep their accessible names and titles.
