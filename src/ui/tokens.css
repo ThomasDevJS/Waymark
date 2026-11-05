@@ -1,0 +1,111 @@
+/*
+ * Waymark design tokens (D90). One set for the extension pages (on :root) and for the on-page
+ * UI (on .wm-theme, the layer inside the overlay's shadow root, so host page styles can't reach
+ * them; there :root never matches). Both follow the browser's colour scheme, not the host page's:
+ * on-page surfaces are always opaque, so they read the same on any page. Sizes are in px, never
+ * rem: in a shadow root rem follows the host page's root size.
+ *
+ * Text colours meet WCAG AA (4.5:1) on --wm-surface and --wm-surface-2; --wm-border-input meets
+ * 3:1 for control edges. Check new pairs with the table in docs/DECISIONS.md D90.
+ */
+:root,
+.wm-theme {
+  color-scheme: light;
+
+  /* colour: neutrals */
+  --wm-bg: #f6f7f9;
+  --wm-surface: #ffffff;
+  --wm-surface-2: #f1f3f6;
+  --wm-surface-hover: #eceff3;
+  --wm-fg: #1a1d23;
+  --wm-fg-muted: #5b6270;
+  --wm-border: #dde1e7;
+  --wm-border-input: #7c8390;
+
+  /* colour: brand and status */
+  --wm-accent: #2a5bd7;
+  --wm-accent-hover: #2149b3;
+  --wm-accent-fg: #ffffff;
+  --wm-accent-text: #2a5bd7;
+  --wm-accent-soft: #e9eefc;
+  --wm-warn: #9a5b00;
+  --wm-warn-soft: #fff4e0;
+  --wm-danger: #c62828;
+  --wm-danger-soft: #fdecea;
+  --wm-success: #1e7a3c;
+  --wm-success-soft: #e6f4ea;
+  --wm-rec: #d93025;
+  --wm-focus: #2a5bd7;
+  /* the dim around a spotlighted element, and its ring (seen on light and dark pages alike) */
+  --wm-scrim: rgba(10, 13, 20, 0.5);
+  --wm-ring: #3d6cf0;
+
+  /* spacing (4 px grid) */
+  --wm-space-1: 4px;
+  --wm-space-2: 8px;
+  --wm-space-3: 12px;
+  --wm-space-4: 16px;
+  --wm-space-5: 24px;
+  --wm-space-6: 32px;
+
+  /* radius */
+  --wm-radius-sm: 6px;
+  --wm-radius-md: 8px;
+  --wm-radius-lg: 12px;
+  --wm-radius-pill: 999px;
+
+  /* type */
+  --wm-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --wm-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --wm-text-xs: 12px;
+  --wm-text-sm: 13px;
+  --wm-text-md: 14px;
+  --wm-text-lg: 16px;
+  --wm-text-xl: 18px;
+  --wm-leading: 1.45;
+  --wm-weight-medium: 500;
+  --wm-weight-bold: 600;
+
+  /* elevation */
+  --wm-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --wm-shadow-2: 0 4px 12px rgba(16, 24, 40, 0.12), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --wm-shadow-3: 0 12px 32px rgba(16, 24, 40, 0.22), 0 2px 6px rgba(16, 24, 40, 0.12);
+
+  /* motion */
+  --wm-ease: cubic-bezier(0.2, 0, 0, 1);
+  --wm-fast: 120ms;
+  --wm-slow: 240ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  .wm-theme {
+    color-scheme: dark;
+    --wm-bg: #131519;
+    --wm-surface: #1e2128;
+    --wm-surface-2: #262a32;
+    --wm-surface-hover: #2d323b;
+    --wm-fg: #e8eaee;
+    --wm-fg-muted: #a3a9b5;
+    --wm-border: #343944;
+    --wm-border-input: #6f7684;
+    --wm-accent: #7ea2ff;
+    --wm-accent-hover: #9bb7ff;
+    --wm-accent-fg: #0b1020;
+    --wm-accent-text: #9db8ff;
+    --wm-accent-soft: #243256;
+    --wm-warn: #f0b350;
+    --wm-warn-soft: #3a2c12;
+    --wm-danger: #ff8a80;
+    --wm-danger-soft: #3d1f1d;
+    --wm-success: #7fd19b;
+    --wm-success-soft: #173323;
+    --wm-rec: #ff6b5e;
+    --wm-focus: #9db8ff;
+    --wm-scrim: rgba(0, 0, 0, 0.6);
+    --wm-ring: #7ea2ff;
+    --wm-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --wm-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --wm-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+}
