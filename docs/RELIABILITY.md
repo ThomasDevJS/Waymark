@@ -29,7 +29,7 @@ Last full run: 2026-11-05, version 0.2.6. "Before" is the same harness on main a
 | MUI (React) | modal dialog | 2 | 2/2 | 2/2 (×2) | |
 | MUI X (React) | date picker | 2 | 2/2 | 2/2 | |
 | Ant Design (React) | portaled select in a form | 2 | 3/4 | 4/4 (×2) | The one miss before was the page remount closing the open dropdown (see the date picker); the task now waits for it. |
-| Ant Design (React) | date picker | 2 | **1 wrong** (intermittent) | 2/2 | ant.design remounts the page about 3 s after load; for about 1.5 s the only "Select date" field is a look-alike in another demo (taken in 4 of 6 runs before). D57 refuses it: 0 wrong in 21 runs since. The task now waits out the remount (which also closed the open calendar); the fixture tests cover the case. |
+| Ant Design (React) | date picker | 2 | **1 wrong** (intermittent) | 2/2 | ant.design remounts the page about 3 s after load; for about 1.5 s the only "Select date" field is a look-alike in another demo (taken in 4 of 6 runs before). D64 refuses it: 0 wrong in 21 runs since. The task now waits out the remount (which also closed the open calendar); the fixture tests cover the case. |
 | Angular Material | portaled select | 2 | 0/2 (not found) | 2/2 (×2) | D54: `mat-select-10` style ids are generated. |
 
 Tasks passing: **8 of 16 before, 14 of 16 after**. Wrong matches: **1 (intermittent) before, 0 after**. TodoMVC Vue and Angular show as "recorded 4 steps, expected 5" (next fix).

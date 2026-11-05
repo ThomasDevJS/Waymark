@@ -89,7 +89,7 @@ export const ElementFingerprintSchema = z.object({
   framePath: z.array(shortStr(2000)).max(20),
   rect: RectSchema,
   /**
-   * Non-positional signals that each look-alike on the page matched at record time (D57). A
+   * Non-positional signals that each look-alike on the page matched at record time (D64). A
    * unique match that matched no more than one of these is refused.
    */
   lookalikes: z.array(z.array(shortStr(32)).max(16)).max(5).optional(),
