@@ -73,3 +73,17 @@ describe('frameAlive', () => {
     expect(await slow).toBe(true);
   });
 });
+
+describe('board id (#36, D87)', () => {
+  it('a new board gets a new id, kept while reports come in; the view carries it', async () => {
+    const { runView } = await import('../../src/core/player/run');
+    const a = recordReport(undefined, rep(1, 'x'));
+    const id = a.id;
+    expect(id).toBeTruthy();
+    expect(recordReport(a, rep(2, 'y')).id).toBe(id);
+    expect(recordReport(undefined, rep(1, 'x')).id).not.toBe(id); // cleared and created anew
+    const run = { stepToken: 's', status: 'running', stepIndex: 0, guideSnapshot: { id: 'g', title: 't', appOrigins: [], steps: [{ id: 'a' }] }, startedAt: 'r', rev: 1, cause: null } as unknown as Parameters<typeof runView>[0];
+    expect(runView(run, a).boardId).toBe(id);
+    expect(runView(run, { ...a, stepToken: 'other' }).boardId).toBeNull();
+  });
+});

@@ -1,6 +1,7 @@
 /** Frame winner bookkeeping for one step: each frame's matcher reports; one frame draws. */
 import { pickWinnerFrame } from '../matcher/frames';
 import type { MatchBoard } from './run';
+import { newId } from '../model/ids';
 
 export interface MatchReport {
   frameToken: string;
@@ -16,7 +17,7 @@ export interface MatchReport {
 }
 
 export function emptyBoard(stepToken: string): MatchBoard {
-  return { stepToken, reports: {}, winner: null, topGaveUp: false };
+  return { stepToken, reports: {}, winner: null, topGaveUp: false, id: newId() };
 }
 
 /** Records a report and recomputes the winner. A report for an older step starts a fresh board for it. */
