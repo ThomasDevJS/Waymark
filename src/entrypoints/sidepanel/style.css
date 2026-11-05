@@ -382,7 +382,8 @@ button.record .rec-dot {
   min-width: 0;
   display: grid;
 }
-.guide-title {
+.guide-title,
+.tutorial-title {
   font-weight: var(--wm-weight-medium);
   overflow-wrap: anywhere;
   display: -webkit-box;

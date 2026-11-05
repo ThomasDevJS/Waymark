@@ -359,6 +359,10 @@ test('screenshots', async ({ context, ext, extensionId }) => {
   await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
   await panelShot(practice, 'practice-03-record-picture', false);
   await practice.setViewportSize({ width: 375, height: 667 });
+  await practice.goto(`${base}/practice.html?tutorial=record`);
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:0');
+  await practice.locator('waymark-overlay [data-action="next"]').click();
+  await expect.poll(() => marker(practice, 'practice')).toBe('drawn:1');
   await panelShot(practice, 'practice-04-phone', false);
   await panel.goto(`${base}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId('tutorial-more-record').click();

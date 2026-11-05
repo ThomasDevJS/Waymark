@@ -25,7 +25,7 @@ test('the panel lists the tutorials; Start opens the practice page, which plays 
   await panel.getByTestId('welcome-done').click();
   const list = panel.getByTestId('tutorials');
   await expect(list).toContainText('Built-in');
-  await expect(list.locator('.guide-title')).toHaveText(['How Waymark works', 'Record your first guide', 'Edit a guide', 'Share a guide', 'What the warnings mean']);
+  await expect(list.locator('.tutorial-title')).toHaveText(['How Waymark works', 'Record your first guide', 'Edit a guide', 'Share a guide', 'What the warnings mean']);
 
   const [practice] = await Promise.all([context.waitForEvent('page'), panel.getByTestId('tutorial-start-tour').click()]);
   await practice.waitForLoadState();

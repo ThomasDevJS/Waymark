@@ -99,7 +99,7 @@ export function Tutorials({ tabUrl }: { tabUrl: string | null }) {
             <li key={t.id} class={`guide-item${open ? ' open' : ''}`} data-testid={`tutorial-${t.id}`}>
               <div class="guide-row">
                 <div class="guide-main">
-                  <span class="guide-title">{t.title}</span>
+                  <span class="tutorial-title">{t.title}</span>
                   <span class="guide-meta">
                     <span class="count">
                       {t.steps.length} steps · {t.minutes} min
