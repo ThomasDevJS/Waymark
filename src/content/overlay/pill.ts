@@ -71,7 +71,7 @@ export function showPill(view: RecordingView): void {
   const last = document.createElement('span');
   last.className = 'last';
   if (view.lastStepTitle) last.append(document.createTextNode(`${view.count}. `), ...renderInline(view.lastStepTitle));
-  else last.textContent = view.count ? `${view.count} steps` : 'Use the page; each action becomes a step';
+  else last.textContent = view.count ? `${view.count} ${view.count === 1 ? 'step' : 'steps'}` : 'Use the page; each action becomes a step';
   pill.classList.remove('notice');
   pill.replaceChildren(dot, label, sep, last);
 }

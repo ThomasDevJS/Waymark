@@ -40,7 +40,7 @@ async function subscribe() {
     return;
   }
   if (!libraryUrlAllowed(url.href)) {
-    libraryError.value = 'The library URL must start with https://';
+    libraryError.value = 'The pack address must start with https://';
     return;
   }
   libraryBusy.value = true;
@@ -364,7 +364,7 @@ export function Options() {
               Subscribe to a pack file your team publishes at a fixed HTTPS address. Waymark reads it now and every 6 hours and shows its guides as read-only team guides. Anyone with the address can read the pack.
             </p>
             <label class="field">
-              <span class="label">Library URL</span>
+              <span class="label">Pack address</span>
               <input data-testid="library-url" type="url" placeholder="https://example.com/guides.waymark.json" value={libraryUrl.value} onInput={(e) => (libraryUrl.value = (e.target as HTMLInputElement).value)} />
             </label>
             <div class="row">

@@ -31,7 +31,6 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 ### A. Allow a site
 - [ ] Open the app, then click the Waymark icon (a white flag on a blue tile). The side panel opens with a short welcome (Allow, Record, Play); read it or press **Skip**. The panel shows the site's address.
 - [ ] Click **Allow on this site** and accept the browser's prompt. The site card now shows a green **Allowed** badge.
-
 - [ ] Open **Settings** (the gear in the panel). Under **Sites**, the site is listed with **Remove**.
 
 ### B. Record a guide
@@ -58,7 +57,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 ### D. Play the guide
 - [ ] First, open **Settings** in the panel. Under **Voice**, **In use** names the voice Waymark picked by itself (the best one on this device). Press **Test voice**. You should hear a sample sentence. If you hear nothing, there may be no voice installed for English; the guide still works, silently.
 - [ ] If the voice sounds robotic, open **Get better voices** and follow the steps for your system, then restart the browser. **In use** should now show the new voice; on macOS its name contains Premium or Enhanced. On Windows, the natural voices added for Narrator can't be used by browsers. In Edge, turning on **Allow online voices** switches to an “Online (Natural)” voice instead; that one sends the step text to Microsoft. Please tell us which voice **In use** shows on your machine.
-- [ ] **HD voice** (optional; downloads 170 MB). In **Settings**, press **Turn on HD voice**. The browser asks to access huggingface.co and raw.githubusercontent.com: allow it (Waymark gives this access back when the download ends). A bar shows the download, then "Checking how fast this device speaks…", then "On. English guides use the HD voice." Press **Test HD voice**: the sample should sound natural. If it says **too slow**, your computer can't generate speech fast enough; guides keep using the system voice. Please tell us which one you got.
+- [ ] **HD voice** (optional; downloads 170 MB). In **Settings**, press **Turn on HD voice**. The browser asks to access huggingface.co and raw.githubusercontent.com: allow it (Waymark gives this access back when the download ends). A bar shows the download, then "Checking how fast this device speaks…", then "On. English guides use the HD voice." Press **Test HD voice**: the sample should sound natural. If it says **Too slow**, your computer can't generate speech fast enough; guides keep using the system voice. Please tell us which one you got.
 - [ ] With HD voice on, play an English guide. Each step should start speaking within a second or two (the first step can take a few seconds). If a step's HD audio isn't ready in 4 seconds, the system voice reads it instead.
 - [ ] Press **Remove HD voice** in Settings. It says "Off.", and guides use the system voice again.
 - [ ] Go back to the guide's first page and press **Start** in the panel. The page dims around the first element, with a tooltip reading "Step 1 of N". The step is read aloud.
@@ -77,7 +76,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 - [ ] Click **Copy link** next to the guide, paste the link into the address bar and open it. The page offers "Start the guide …?".
 
 ### F. Share a guide (export and import)
-- [ ] In the panel, tick the guide's checkbox and click **Export 1 selected…**. Read the review: it lists every text and address that will be in the file. Click **Remove** on anything that is business data, then **Download pack**.
+- [ ] In the panel, select the guide's checkbox and click **Export 1 selected…**. Read the review: it lists every text and address that will be in the file. Click **Remove** on anything that is business data, then **Download pack**.
 - [ ] Make a second browser profile: Chrome profile menu (top right), then **Add**. Install Waymark there too (section 1).
 - [ ] In the second profile, open the panel, click **Import…** and choose the file. Confirm **Import**.
 - [ ] The panel offers **Allow** for the guide's site. Accept the prompt.
@@ -86,7 +85,7 @@ Use a real web app you can log in to, ideally one with forms and more than one p
 
 ### G. Team library (optional)
 - [ ] Put an exported pack at a fixed HTTPS address (for example a raw file in a GitHub repository).
-- [ ] In **Settings**, under **Team library**, paste the address and press **Subscribe**. Its guides appear as read-only "team library" guides. **Duplicate** gives you an editable copy.
+- [ ] In **Settings**, under **Team library**, paste the address and press **Subscribe**. Its guides appear with a **Team** badge and are read-only. **Duplicate** gives you an editable copy.
 
 ## 3. What the warnings mean
 

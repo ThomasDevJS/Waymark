@@ -11,8 +11,10 @@ const executablePath = process.env.WAYMARK_CHROMIUM ?? '/opt/pw-browsers/chromiu
 const browser = await chromium.launch({ executablePath }).catch(() => chromium.launch());
 const page = await browser.newPage();
 for (const size of [16, 32, 48, 128]) {
-  // 16 px has its own drawing: the dotted path and the pole's foot would blur at that size.
-  const svg = (size <= 16 ? small : big).replace('<svg ', `<svg width="${size}" height="${size}" `);
+  // 16 and 32 px have their own drawing: the dotted path would read as specks at that size.
+  let svg = (size <= 32 ? small : big).replace('<svg ', `<svg width="${size}" height="${size}" `);
+  // The store's 128 px icon is a 96 px tile with 16 px of transparent padding.
+  if (size === 128) svg = svg.replace(/(<svg[^>]*>)([\s\S]*)(<\/svg>)/, '$1<g transform="translate(16 16) scale(.75)">$2</g>$3');
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(`<html><body style="margin:0;background:transparent">${svg}</body></html>`);
   await page.screenshot({ path: `public/icon/${size}.png`, omitBackground: true });

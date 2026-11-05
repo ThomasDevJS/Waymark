@@ -245,7 +245,7 @@ export const discoveryHandlers: Handlers = {
   },
   'library.get': () => libraryState(),
   'library.set': async ({ url }) => {
-    if (url !== null && !libraryUrlAllowed(url)) throw new Error('The library URL must start with https://');
+    if (url !== null && !libraryUrlAllowed(url)) throw new Error('The pack address must start with https://');
     await setLibraryState({ url, lastError: null, ...(url === null ? { count: 0, lastFetchAt: null } : {}) });
     if (url === null) {
       // Unsubscribing removes the library guides.
