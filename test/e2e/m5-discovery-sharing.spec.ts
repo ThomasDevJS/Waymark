@@ -197,7 +197,11 @@ test(`on-page launcher with the production closed shadow root: a guide in the me
   expect(await app.evaluate(() => [!!document.querySelector('waymark-overlay'), !!document.querySelector('waymark-overlay')?.shadowRoot])).toEqual([true, false]); // closed
   const vp = app.viewportSize()!;
   // No waiting for the pop-in (D134): it scales about its centre, so the press lands mid-animation.
-  await app.mouse.click(vp.width - 16 - 22, vp.height - 16 - 22); // the ? button, bottom right
+  // But not before the button can be hit: a press within ~20 ms of its insertion, with motion on,
+  // went to the page about 1 run in 12 (D134, release 0.4.0). A real press can't come that soon.
+  const [cx, cy] = [vp.width - 16 - 22, vp.height - 16 - 22]; // the ? button, bottom right
+  await expect.poll(() => app.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.tagName, [cx, cy]), { intervals: [10] }).toBe('WAYMARK-OVERLAY');
+  await app.mouse.click(cx, cy);
   await expect.poll(() => marker(app, 'launcher-item')).not.toBeNull();
   const [x, y] = (await marker(app, 'launcher-item'))!.split(',').map(Number);
   await app.mouse.click(x!, y!);
