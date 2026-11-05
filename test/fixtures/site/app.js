@@ -350,7 +350,13 @@ export function createApp(options = {}, doc = document) {
     h('div', { id, cls: 'picker' }, [h('input', { type: 'text', cls: 'dateinput', placeholder: 'Select date', 'data-fx': key })]);
   const dates = h('div', { cls: 'dates' }, [datePicker('picker-basic', 'date-basic'), datePicker('picker-range', 'date-other')]);
 
-  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), dates, todos, table, cards, drafts].map(maybeWrap));
+  // Unlabelled fields told apart by camelCase ids with a digit (D66: not data).
+  const address = h('div', { cls: 'address' }, [
+    h('input', { type: 'text', id: 'address1', name: 'address1', cls: 'field', 'data-fx': 'addr-1' }),
+    h('input', { type: 'text', id: 'address2', name: 'address2', cls: 'field', 'data-fx': 'addr-2' }),
+  ]);
+
+  const mainSections = order([toolbar, search, profile, billing, prefs, h('div', { cls: 'pickers' }, [combo, tabs, priority, printIcon, chart]), dates, todos, address, table, cards, drafts].map(maybeWrap));
   const main = h('main', { cls: 'main content' }, [...mainSections, widgetHost, pagination, docsLink]);
   const app = h('div', { cls: 'app', id: 'app-root' }, [header, main, footer]);
 

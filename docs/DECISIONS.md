@@ -583,6 +583,21 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 - **Privacy**: an item label is usually user content (a todo, a contact's name). The data-like filter drops emails, numbers and codes, not names, the same as for own text.
 - **Cost**: when the item's text changes, the step is not found, the same contract as own text. Toggles in richer rows (a contact list with name and email) stay unnamed and, since D47, unrecordable.
 
+### D66. Ids, test ids, names and guide ids that look like data are not stored
+- **Spec**: Element targeting, record step 2 (the data-like filter runs on text, names, option labels, link paths and titles); Privacy (never store what the user typed or sees as data).
+- **Finding** (security audit): element ids, test ids, `name` and `data-guide-id` skipped the data-like filter. A value like `data-testid="user-row-jane.doe@acme.com"` went into `testId` and the CSS path, and from a shadow host or iframe into `shadowPath` and `framePath`, and from there into exported packs.
+- **Change**: a new attribute filter, `isDataLikeAttr`, rejects a value that holds an email, a phone number (7+ digits), an amount, a UUID or a run of 4+ digits, or is longer than 80 characters. It applies to:
+  - ids and test ids;
+  - `data-guide-id`;
+  - `name`;
+  - the key attributes in CSS path segments (`name`, `type`, `role`);
+  - classes.
+  Iframe and shadow-host selectors are built from the same CSS path, so `framePath` and `shadowPath` are covered too. Such an element is found by its other signals (its text, label, role), or not at all.
+- **Why not the full text filter** (independent review): the text rules for long mixed tokens, dates, codes and decimals would also drop ordinary author ids such as `address1`, `addressLine1`, `col-1-2-3`, `AB-12` or `scale-1.25`. Two unlabelled fields `address1` / `address2` then had no strong signal at all. The fixture now has that pair.
+- **Cost**: rows told apart only by a data id (`edit-bob@acme.com` / `edit-jane@acme.com`, both "Edit") now record as `instance: 'any'`, the same contract as rows told apart only by data text.
+- **Numbers**: robustness set A 542/544 before; 559/560 after with the address pair added; 0 wrong. Set B: 0 wrong. Real-site harness: 16/16, 0 wrong.
+- **Not covered here**: link paths and step URLs keep path segments that are not key-like, such as `/users/jane.doe` (`isKeyLikeSegment` in `src/core/url/url.ts` replaces numbers, codes and emails only). Names in visible text and item labels pass by design, as before.
+
 ## 2026-11-05 — Team library access and schedule (issues #21, #22)
 
 ### D80. A library site granted only to fetch the pack is not a guide site
