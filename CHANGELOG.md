@@ -6,6 +6,12 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+- The recording outline no longer slows down large pages: its check takes under a millisecond instead of about a third of a second (D156).
+
+### Added
+- Embedded apps (for example in Google Sites): when a page shows content from other sites, the side panel offers **Allow** for them, so you can record and play guides inside the embed (D155, #77).
+
 ## [0.5.0] - 2026-11-06
 
 ### Added

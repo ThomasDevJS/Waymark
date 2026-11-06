@@ -80,3 +80,57 @@ export async function injectIntoOpenTabs(patterns: string[]): Promise<number> {
   );
   return n;
 }
+
+/**
+ * Does an http(s) origin fall under a host match pattern? Covers what Chrome's own site access
+ * grants too (review of D155): scheme `*` (http and https), host `*`, `*.domain` (the domain and
+ * its subdomains), and any port. The path part does not matter for an origin.
+ */
+export function originMatchesPattern(origin: string, pattern: string): boolean {
+  const m = /^(\*|https?):\/\/([^/]+)\/.*$/.exec(pattern);
+  if (!m) return false;
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const [, scheme, host] = m as unknown as [string, string, string];
+  if (scheme !== '*' && u.protocol !== `${scheme}:`) return false;
+  const h = host.replace(/:\d+$/, '').toLowerCase();
+  if (h === '*') return true;
+  if (h.startsWith('*.')) {
+    const base = h.slice(2);
+    return u.hostname === base || u.hostname.endsWith(`.${base}`);
+  }
+  return u.hostname === h;
+}
+
+/**
+ * Injects the content script into the frames of newly granted sites, in every open tab, and only
+ * there (D155): an embedded app's frame inside a page on another site gets it at once, and frames
+ * where it already runs are not restarted. Frames are found by asking each tab's frames for their
+ * origin (only frames Waymark may access answer).
+ */
+export async function injectIntoFrames(patterns: string[]): Promise<number> {
+  if (!patterns.length) return 0;
+  const tabs = await chrome.tabs.query({});
+  let n = 0;
+  await Promise.all(
+    tabs.map(async (tab) => {
+      if (tab.id === undefined) return;
+      try {
+        const probe = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: () => location.origin, injectImmediately: true });
+        const frameIds = probe.filter((r) => typeof r.result === 'string' && patterns.some((p) => originMatchesPattern(r.result as string, p))).map((r) => r.frameId);
+        if (!frameIds.length) return;
+        await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds }, files: [CONTENT_SCRIPT_FILE], injectImmediately: true });
+        n += frameIds.length;
+      } catch {
+        // no access to this tab, or it closed, was discarded or shows an error page
+      }
+    }),
+  );
+  return n;
+}
+

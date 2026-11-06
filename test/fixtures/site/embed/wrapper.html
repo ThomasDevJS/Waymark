@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Embed wrapper</title><style>body{margin:0} iframe{border:0;width:100%;height:400px;display:block}</style></head>
+<body>
+  <script>
+    const f = document.createElement('iframe');
+    f.src = `${location.protocol}//localhost:${location.port}/embed/app.html${location.search}`;
+    f.title = 'Shipping app';
+    f.className = 'embed-inner';
+    document.body.append(f);
+    document.documentElement.setAttribute('data-waymark-test-wrapper', 'yes');
+  </script>
+</body>
+</html>

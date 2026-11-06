@@ -21,6 +21,7 @@ import { LEARNER_SHADES } from '../player/shade';
 import type { PlayerSettings } from '../player/settings';
 import { MAX_FOR_PAGE, MAX_FOR_PAGE_TAG, MAX_FOR_PAGE_TAGS, MAX_FOR_PAGE_TITLE } from '../discovery/page-search';
 import type { ContentRecorderSettings, RecorderSettings } from '../recorder/settings';
+import { MAX_EMBED_ORIGINS } from '../frames/embeds';
 
 const url = z.string().max(4096);
 
@@ -112,6 +113,9 @@ export const RequestSchemas = {
   'player.settings.set': z.object({ patch: z.object({ shade: z.enum(LEARNER_SHADES) }).partial() }),
   // Recording settings (D153). Content scripts may read them (the hover outline), never set them.
   'recorder.settings.get': z.object({}),
+  // Sites embedded in a frame (D155): a content script reports its direct child frames' origins.
+  'frame.embeds': z.object({ origins: z.array(z.string().max(500)).max(MAX_EMBED_ORIGINS) }),
+  'embeds.pending': z.object({ tabId: z.number().int() }),
   'recorder.settings.set': z.object({ patch: z.object({ hover: z.boolean() }).partial() }),
   // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
   'hd.status': z.object({}),
@@ -214,6 +218,8 @@ export interface ResponseMap {
   'voice.settings.set': VoiceSettings;
   'player.settings.get': PlayerSettings;
   'player.settings.set': PlayerSettings;
+  'frame.embeds': { ok: true };
+  'embeds.pending': { origins: string[] };
   'recorder.settings.get': RecorderSettings | ContentRecorderSettings; // content senders get only the hover switch (D154)
   'recorder.settings.set': RecorderSettings;
   'hd.status': HdStatus;
@@ -315,6 +321,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'debug.log',
   'debug.copy', // the sender tab's entries since its run started, on that guide's site only (D111)
   'recorder.settings.get', // the hover outline's on/off while recording (D153); read only
+  'frame.embeds', // the sender frame's direct child frame origins, for the panel's Allow (D155)
 ]);
 
 /** Extension pages may send everything except content-only reports. */
@@ -367,6 +374,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'player.settings.set',
   'recorder.settings.get',
   'recorder.settings.set',
+  'embeds.pending',
   'hd.status',
   'hd.enable',
   'hd.remove',
