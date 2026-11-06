@@ -3,6 +3,7 @@
  * chrome.storage.session (run:<tabId>) with a snapshot of the guide; frame match reports for
  * the current step live next to it (match:<tabId>). Nothing is kept in memory.
  */
+import { fillRule } from '../core/url/fill';
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { GuideSchema, type Guide } from '../core/model/schema';
@@ -271,7 +272,14 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
   if (stepIndex > 0) {
     const step = guide.steps[stepIndex];
     if (!step) throw new Error(`This guide has no step ${stepIndex + 1}.`);
-    if (!url || !onStepPage(guide, stepIndex, url)) return { status: 'needs-start', startUrl: guide.startUrl, reachable: false, pattern: step.url.value, stepIndex };
+    let opened = false;
+    if (!url || !onStepPage(guide, stepIndex, url)) {
+      // That step's page, its ids filled in from the page the learner is on (D203).
+      const page = fillRule(step.url.value, origin, url);
+      if (!openStart || !page) return { status: 'needs-start', startUrl: page ?? guide.startUrl, reachable: !!page, pattern: step.url.value, stepIndex };
+      await chrome.tabs.update(tabId, { url: page });
+      opened = true;
+    }
     const run = startRun(guide, Date.now(), stepIndex);
     dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url) }));
     await enqueue(async () => {
@@ -279,15 +287,17 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
       await chrome.storage.session.set({ [runKey(tabId)]: run });
     });
     await broadcast(tabId);
-    await voiceSync(tabId);
+    if (!opened) await voiceSync(tabId);
     return { status: 'started' };
   }
   if (!url || !onStartPage(guide, url)) {
-    // The stored start URL has no ids (D33); when the first page needs one, the learner has
-    // to open it themselves (D36).
-    const reachable = onStartPage(guide, guide.startUrl);
-    if (!openStart || !reachable) return { status: 'needs-start', startUrl: guide.startUrl, reachable, pattern: guide.steps[0]?.url.value ?? '/' };
-    await chrome.tabs.update(tabId, { url: guide.startUrl });
+    // The stored start URL has no ids (D33). When the first page needs one, it is filled in
+    // from the page the learner is on, on the same site (D203); only without one does the
+    // learner have to open it themselves (D36).
+    const firstRule = guide.steps[0]?.url.value ?? '/';
+    const page = onStartPage(guide, guide.startUrl) ? guide.startUrl : fillRule(firstRule, origin, url);
+    if (!openStart || !page) return { status: 'needs-start', startUrl: page ?? guide.startUrl, reachable: !!page, pattern: firstRule };
+    await chrome.tabs.update(tabId, { url: page });
   }
   const run = startRun(guide);
   dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url) }));
