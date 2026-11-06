@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-06
+
 ### Added
 - Embedded apps (for example in Google Sites): when a page shows content from other sites, the side panel offers **Allow** for them, so you can record and play guides inside the embed (D155, #77).
 
@@ -205,7 +207,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.5.0
 [0.4.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.0
