@@ -7,6 +7,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- Settings → Appearance: choose the theme, System (the default), Light or Dark (D200, #88).
 - The printable how-to has links: the start page, “Open this page” where a step’s page changes, and links in notes to the guide’s own sites (D159, #85).
 - In the HTML how-to, click a screenshot to see it full size (D159, #86).
 - The team library can be a Google Drive file shared as “Anyone with the link”: paste its share link in Settings → Team library (D157, #83).

@@ -121,9 +121,11 @@
   }
 }
 
+/* Dark (D200): from the system unless Light was chosen in Settings, or always when Dark was. Both
+   blocks hold the same values; test/unit/theme.test.ts checks they stay identical. */
 @media (prefers-color-scheme: dark) {
-  :root,
-  .wm-theme {
+  :root:not([data-wm-theme='light']),
+  .wm-theme:not([data-wm-theme='light']) {
     color-scheme: dark;
     --wm-bg: #131519;
     --wm-surface: #1e2128;
@@ -153,3 +155,33 @@
     --wm-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   }
 }
+:root[data-wm-theme='dark'],
+.wm-theme[data-wm-theme='dark'] {
+    color-scheme: dark;
+    --wm-bg: #131519;
+    --wm-surface: #1e2128;
+    --wm-surface-2: #262a32;
+    --wm-surface-hover: #2d323b;
+    --wm-fg: #e8eaee;
+    --wm-fg-muted: #a3a9b5;
+    --wm-border: #343944;
+    --wm-border-input: #6f7684;
+    --wm-accent: #7ea2ff;
+    --wm-accent-hover: #9bb7ff;
+    --wm-accent-fg: #0b1020;
+    --wm-accent-text: #9db8ff;
+    --wm-accent-soft: #243256;
+    --wm-warn: #f0b350;
+    --wm-warn-soft: #3a2c12;
+    --wm-danger: #ff8a80;
+    --wm-danger-soft: #3d1f1d;
+    --wm-success: #7fd19b;
+    --wm-success-soft: #173323;
+    --wm-rec: #ff6b5e;
+    --wm-focus: #9db8ff;
+    --wm-scrim: rgba(0, 0, 0, 0.5);
+    --wm-ring: #7ea2ff;
+    --wm-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --wm-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --wm-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }

@@ -1402,6 +1402,21 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - `test/unit/qol-sharing.test.ts`: start link, page links (start page, same page twice, ids, query, frame, hash route), own-site and other-site note links, `ownLink` against look-alike hosts and `javascript:`, the zoom markup, and the base page linking only to its own site;
   - `test/browser/howto-preview.test.ts`: the preview's links and the saved file's links and zoom.
 
+### D200. A theme setting: System, Light or Dark
+*6 Nov 2026 · SPEC: UI (design system, D90); issue #88*
+
+- **Why**: Waymark follows the computer's light or dark setting. Thomas asked for a setting to pick one, with System as the default.
+- **Tokens** (`src/ui/tokens.css`): the dark values apply under `prefers-color-scheme: dark` unless Light was chosen (`:not([data-wm-theme='light'])`), and always when Dark was chosen (`[data-wm-theme='dark']`), on `:root` (extension pages) and `.wm-theme` (the overlay layer). The two blocks hold the same values; `test/unit/theme.test.ts` checks they stay identical. System sets no attribute.
+- **Setting**: `uiTheme` in storage.local (`system`, `light` or `dark`). Messages `ui.theme.get` (content and extension; it returns the choice only) and `ui.theme.set` (extension pages). Settings → Appearance has the three choices.
+- **Where it applies**:
+  - **Extension pages** (side panel, Settings, the practice page) call `watchPageTheme()` before they render. It reads a localStorage copy synchronously, so a page opens in its theme, then the stored value, and it follows changes.
+  - **The on-page overlay** asks once, and the service worker tells every tab when the choice changes, so an open page switches without a reload.
+  - **The practice chart** redraws on a change.
+  - **The how-to preview** stays a light, paper-like document.
+- **Tests**:
+  - `test/unit/theme.test.ts`: the two dark blocks are identical; System leaves the attribute off.
+  - `test/e2e/r3-theme.spec.ts`: Dark on a light system and Light on a dark system, in Settings and live in the overlay of a recording page; System again; a reopened page starts in the stored choice.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

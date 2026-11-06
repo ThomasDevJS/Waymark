@@ -20,6 +20,7 @@ import type { IconName } from '../../ui/icons';
 import type { DebugStatus } from '../../core/messaging/protocol';
 import { ShadeSetting } from './Shade';
 import { RecHoverSetting } from './RecHover';
+import { AppearanceSetting } from './Appearance';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
@@ -419,6 +420,10 @@ export function Options() {
           </Section>
 
           <HdVoice />
+
+          <Section id="appearance" title="Appearance" icon="settings">
+            <AppearanceSetting />
+          </Section>
 
           <Section id="highlight" title="Highlight" icon="crosshair">
             <ShadeSetting />

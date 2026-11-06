@@ -123,7 +123,13 @@ function Chart() {
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const onScheme = () => requestAnimationFrame(draw);
     mq.addEventListener('change', onScheme);
-    return () => mq.removeEventListener('change', onScheme);
+    // …and when a theme is chosen in Settings (D200).
+    const mo = new MutationObserver(onScheme);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-theme'] });
+    return () => {
+      mq.removeEventListener('change', onScheme);
+      mo.disconnect();
+    };
   }, []);
   return <canvas ref={ref} class="chart" width={360} height={110} data-guide-id="practice-chart" role="img" aria-label="Revenue chart for this year (practice data)" />;
 }

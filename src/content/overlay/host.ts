@@ -4,6 +4,15 @@
  * z-index. Pointer, mouse and click events inside it do not reach the app.
  */
 import { THEME_CSS } from './theme';
+import { applyTheme, type ThemeChoice } from '../../core/theme';
+
+/** The theme chosen in Settings (D200); the layer is made with it and follows changes. */
+let overlayTheme: ThemeChoice = 'system';
+export function setOverlayTheme(theme: ThemeChoice): void {
+  overlayTheme = theme;
+  const layer = root?.querySelector('.wm-theme');
+  if (layer) applyTheme(layer, theme);
+}
 
 const HOST_TAG = 'waymark-overlay';
 let host: HTMLElement | null = null;
@@ -65,6 +74,7 @@ export function overlayRoot(): ShadowRoot {
   style.textContent = THEME_CSS + BASE_CSS;
   const layer = document.createElement('div');
   layer.className = 'layer wm-theme';
+  applyTheme(layer, overlayTheme);
   root.append(style, layer);
   for (const type of ISOLATED_EVENTS) host.addEventListener(type, (e) => e.stopPropagation());
   applyShotHidden();
