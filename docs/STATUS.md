@@ -1,6 +1,6 @@
 # Waymark status and handoff
 
-As of 5 Nov 2026 the version is 0.7.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D49, D51 and D60–D67 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D49: guide index for the panel and badges, `pnpm bench`; D51: HD voice; D60–D67: real-site harness fixes, the id privacy filter and the recording race, `docs/RELIABILITY.md`), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
+As of 5 Nov 2026 the version is 0.8.0, on branch `waymark-v1`. This file is for a new session that has none of the history. Read `docs/SPEC.md` first, then `docs/DECISIONS.md`: D1–D49, D51 and D60–D67 are mine (D48: security audit, threat model in `docs/SECURITY.md`; D49: guide index for the panel and badges, `pnpm bench`; D51: HD voice; D60–D67: real-site harness fixes, the id privacy filter and the recording race, `docs/RELIABILITY.md`), R1–R7 came from the PR #1 review. Then read `CLAUDE.md`.
 
 ## What works today
 | Area | State | Main code |
@@ -11,7 +11,7 @@ As of 5 Nov 2026 the version is 0.7.0, on branch `waymark-v1`. This file is for 
 | Player (M3) | Top-layer overlay, also inside modal dialogs. Spotlight, Floating UI tooltip, advance rules, runs across pages and tabs, not-found / off-track / done cards, Report broken step, keyboard commands. | `src/content/player/*`, `src/core/player/*`, `src/background/runs.ts` |
 | Editor and voice (M4) | Edit, reorder, delete and note steps; Test step; Re-pick. `chrome.tts` reads each step once, on-device voices only by default, with a mute toggle and a `speechSynthesis` fallback. The best voice is picked automatically (D46). Optional HD voice: Kokoro-82M on the device in an offscreen document, with a GPL-free English G2P over the misaki lexicon (D51). | `src/entrypoints/sidepanel/Editor.tsx`, `src/content/editor.ts`, `src/background/{editor,voice,hd}.ts`, `src/offscreen/*`, `src/core/voice/g2p/*` |
 | Discovery and sharing (M5) | Badge count; "For this page" and MiniSearch; the `?` launcher; deep links and Copy link; export review; pack import with the spec's rules; library URL on `chrome.alarms`; first-run Allow; Problems list. | `src/background/discovery.ts`, `src/core/sharing/*`, `src/core/discovery/*`, `src/content/launcher.ts`, `src/entrypoints/sidepanel/{Library,ExportReview}.tsx`, `src/entrypoints/options/Options.tsx` |
-| M6 (partial) | Popup fallback without `chrome.sidePanel` (D43); version 0.2.0 (now 0.7.0: D46–D48, D51, D53, D60–D63); CI uploads the production zip as the `waymark-extension` artifact. | `src/background/panel-fallback.ts`, `.github/workflows/ci.yml` |
+| M6 (partial) | Popup fallback without `chrome.sidePanel` (D43); version 0.2.0 (now 0.8.0: D46–D48, D51, D53, D60–D63); CI uploads the production zip as the `waymark-extension` artifact. | `src/background/panel-fallback.ts`, `.github/workflows/ci.yml` |
 
 Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The privacy policy is `docs/PRIVACY.md`. There is no store listing: Waymark is for internal use and installed from GitHub Releases (D58). Phase 2 has not been started.
 

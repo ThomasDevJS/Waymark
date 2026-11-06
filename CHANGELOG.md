@@ -6,11 +6,16 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-06
+
 ### Added
 - Menus that open when you point at them (such as a side nav's flyout): recording adds a **Point at** step before the click on the menu's item, and playing it moves on when you point at the item or Tab to it. Guide files with such steps need this version of Waymark (D204, #94).
 
 ### Changed
-- Starting a guide from another page of its site: **Open start page** fills in ids such as the organisation number from the page you are on, instead of showing a pattern (D203).
+- Starting a guide from another page of its site: **Open start page** fills in ids such as the organisation number from the page you are on, instead of showing a pattern (D203, #93).
+
+### For developers
+- CI runs the end-to-end suite on every code change again, since the repository is public and its runner time is free (D162, #101).
 
 ## [0.7.0] - 2026-11-06
 
@@ -234,7 +239,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.8.0
 [0.7.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.7.0
 [0.6.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.1
 [0.6.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.0
