@@ -250,6 +250,7 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 - Build a pending fingerprint on `pointerdown`, before the app can re-render the element. On `click`, use it if the click target is that node, or is linked to it in `composedPath()`, within 1 second.
 - Otherwise build the fingerprint from the click target. This also covers keyboard activation (Enter or Space on a button), which fires `click` with no `pointerdown`.
 - Ignore untrusted events (`isTrusted === false`) and anything inside Waymark's own overlay.
+- While recording, an outline in the overlay shows what a click under the pointer would record: the control, or the card it is promoted to (D82). It is dashed orange with "Hard to find" for a low-confidence target, and red with "Won't be recorded" when there is nothing to find it by (D47). It takes no pointer events and is never recorded. On by default; Settings → Highlight turns it off (D153).
 
 **Merge rules**
 

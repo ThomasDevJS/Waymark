@@ -7,6 +7,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- While recording, an outline shows what a click will record, with a warning when it would be hard to find or not recorded. On by default; Settings → Highlight turns it off (D153, #70).
 - When a page has 6 or more guides, the on-page **?** menu and the side panel's **For this page** list get a search box and up to three tag chips. In the menu, type to filter, use the arrow keys and press Enter to start a guide; Esc clears the search, a second Esc closes the menu (D170, D171, #69).
 
 ### Changed

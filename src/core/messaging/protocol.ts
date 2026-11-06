@@ -20,6 +20,7 @@ import { ContentEntrySchema, MAX_BATCH } from '../debug/log';
 import { LEARNER_SHADES } from '../player/shade';
 import type { PlayerSettings } from '../player/settings';
 import { MAX_FOR_PAGE, MAX_FOR_PAGE_TAG, MAX_FOR_PAGE_TAGS, MAX_FOR_PAGE_TITLE } from '../discovery/page-search';
+import type { RecorderSettings } from '../recorder/settings';
 
 const url = z.string().max(4096);
 
@@ -104,6 +105,9 @@ export const RequestSchemas = {
   // Player settings (D144): the shade around the highlight, for every guide or per guide.
   'player.settings.get': z.object({}),
   'player.settings.set': z.object({ patch: z.object({ shade: z.enum(LEARNER_SHADES) }).partial() }),
+  // Recording settings (D153). Content scripts may read them (the hover outline), never set them.
+  'recorder.settings.get': z.object({}),
+  'recorder.settings.set': z.object({ patch: z.object({ hover: z.boolean() }).partial() }),
   // HD voice (D51). hd.enable names the download hosts this opt-in newly granted, to release later.
   'hd.status': z.object({}),
   'hd.enable': z.object({ added: z.array(z.enum(HD_HOST_PATTERNS)).max(HD_HOST_PATTERNS.length) }),
@@ -205,6 +209,8 @@ export interface ResponseMap {
   'voice.settings.set': VoiceSettings;
   'player.settings.get': PlayerSettings;
   'player.settings.set': PlayerSettings;
+  'recorder.settings.get': RecorderSettings;
+  'recorder.settings.set': RecorderSettings;
   'hd.status': HdStatus;
   'hd.enable': HdStatus;
   'hd.remove': HdStatus;
@@ -295,6 +301,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   // Debug log (D110): only while the switch is on, own tab and frame, rate-limited and capped.
   'debug.log',
   'debug.copy', // the sender tab's entries since its run started, on that guide's site only (D111)
+  'recorder.settings.get', // the hover outline's on/off while recording (D153); read only
 ]);
 
 /** Extension pages may send everything except content-only reports. */
@@ -343,6 +350,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'voice.settings.set',
   'player.settings.get',
   'player.settings.set',
+  'recorder.settings.get',
+  'recorder.settings.set',
   'hd.status',
   'hd.enable',
   'hd.remove',

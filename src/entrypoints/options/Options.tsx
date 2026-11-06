@@ -18,6 +18,7 @@ import { Mark } from '../../ui/Mark';
 import type { IconName } from '../../ui/icons';
 import type { DebugStatus } from '../../core/messaging/protocol';
 import { ShadeSetting } from './Shade';
+import { RecHoverSetting } from './RecHover';
 
 const library = signal<LibraryState | null>(null);
 const problems = signal<Problem[]>([]);
@@ -418,6 +419,7 @@ export function Options() {
 
           <Section id="highlight" title="Highlight" icon="crosshair">
             <ShadeSetting />
+            <RecHoverSetting />
           </Section>
           <Section id="sites" title="Sites" icon="globe" badge={<span class="badge">{sites.value.length}</span>}>
             <p class="small muted">Waymark runs only on these sites. Allow a new one from the side panel while you’re on it.</p>
