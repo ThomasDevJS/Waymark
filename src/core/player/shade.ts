@@ -9,7 +9,7 @@ export type Shade = (typeof SHADES)[number];
 export const LEARNER_SHADES = ['guide', ...SHADES] as const;
 export type LearnerShade = (typeof LEARNER_SHADES)[number];
 
-/** Lighter by default (D151): Thomas found Medium heavy on busy app pages. */
+/** Lighter by default (D151): the owner found Medium heavy on busy app pages. */
 export const DEFAULT_SHADE: Shade = 'lighter';
 
 export function isShade(v: unknown): v is Shade {
