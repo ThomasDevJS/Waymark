@@ -254,3 +254,19 @@ describe('the results follow the guide (D211)', () => {
     expect(local['statsIndex']).toEqual({});
   });
 });
+
+describe('a fix from the player (D210) resets that step’s results (D211)', () => {
+  it('the fixed step starts over; the other steps keep theirs', async () => {
+    await setup();
+    const g = local['guide:g1'] as Guide;
+    local['stats:g1'] = play(play({}, g.steps[0]!, [found(1)]), g.steps[1]!, [missed, missed]);
+    local['statsIndex'] = { g1: 2 };
+    const { fixHandlers } = await import('../../src/background/fix');
+    const { editorHandlers } = await import('../../src/background/editor');
+    const fh = { ...fixHandlers, ...editorHandlers } as unknown as Record<string, H>;
+    expect(await fh['run.fix.start']!({ stepId: 's2' }, ctx(0))).toEqual({ ok: true });
+    expect(await fh['pick.result']!({ target: fp('Download'), title: '' }, ctx(0))).toEqual({ ok: true });
+    expect(Object.keys(stored())).toEqual(['s1']);
+    expect(local['statsIndex']).toEqual({ g1: 1 });
+  });
+});
