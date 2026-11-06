@@ -1279,3 +1279,33 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - unit: `framesAtPath` order;
   - e2e (`m6-nested-frames.spec.ts`): record a step in the nested frame, let the app rebuild its frames, then Test step finds it. Before the fix it failed with the message above.
 
+## 2026-11-06 — Search among a page's guides (issue #69)
+
+### D170. A search box for "For this page" and the `?` menu, from 6 guides
+*6 Nov 2026 · SPEC: Discovery and hints ("Side panel", "On-page launcher"); issue #69*
+
+- **Threshold**: the box shows only when the page has **6 or more** guides (`PAGE_SEARCH_FROM`, `src/core/discovery/page-search.ts`), in both places. The issue asked for 7+; the feedback suggested 6, because the menu holds about six rows before it scrolls. With fewer guides nothing changes: the menu is the same list of buttons, the panel the same section.
+- **`?` menu** (`src/content/launcher.ts`, `searchList`):
+  - The ARIA 1.2 combobox pattern: the box (`role=combobox`, `aria-autocomplete=list`, `aria-controls`, `aria-activedescendant`) keeps focus while the arrow keys move through a `role=listbox` of options, so typing goes on filtering. Focus is in the box when the menu opens.
+  - Typing selects the best match, so Enter starts it; ArrowUp/Down move (stopping at the ends); Enter with nothing selected does nothing. Esc clears the text and chips first; the next Esc closes the menu and puts focus back on the `?` button. Tab reaches the chips.
+  - A visible "No guides match" when nothing matches; otherwise a visually hidden "n of N guides" in the same `role=status`.
+  - At most 3 tag chips, the page's most common tags (`pageTagChips`). A tag every guide carries is left out, since it filters nothing. Chips are toggles (`aria-pressed`) and combine like the panel's (D102): a guide must carry all selected tags.
+  - Closed root: the menu is in the overlay, so focus and keys stay inside it; options take `mousedown` with `preventDefault` so a click keeps focus in the box; outside presses still go through `pressInsideLauncher` (D85). Key and input events (`keydown`, `keyup`, `keypress`, `beforeinput`, `input`) stop at the menu: in a closed root the page sees them as coming from the overlay host, not from a text field, so a page's own one-key shortcuts would otherwise fire while someone types a search.
+- **Side panel** (`Library.tsx`): from 6 guides for the page, the "For this page" section gets its own box and up to 3 chips (the same `pageTagChips`). They narrow that section only, with the library's existing MiniSearch index (`searchGuides`) and tag rule (`withTags`); there is no second search engine. The main search box above still narrows both sections, and the two combine. Esc in the box clears it. The section stays (with its box) when the filter leaves nothing, and says "No guides match". "Select all" picks only the rows on screen. The filter resets when the panel follows another page.
+- **Why a second box in the panel, not just the main one**: the main search and up to 30 tag chips sit above "For this page" and search every guide; the issue asked for a box on the page's own list, matching the menu. Its placeholder and label say "the guides for this page".
+- **Not done** (optional in the issue): sorting recently used and unfinished guides first. The menu would need completion data from the service worker, which grows the message and the PR; left for later.
+- **Test hooks**: `launcher-menu` (`list`, `search`, `closed`), `launcher-results` (ids shown, in order), `launcher-active` (the selected id). `startLauncher(isTop)` takes the top-frame check as a parameter so browser tests, which run in an iframe, can mount it.
+
+### D171. `guide.forPage` sends tags, capped, for the sender's own origin only
+*6 Nov 2026 · SPEC: Discovery; Permissions, privacy and security ("send content scripts only data for their own origin")*
+
+- Each entry is `{ id, title, tags }`. Filtering runs in the content script over this data; nothing else is sent (no description or step titles, which the panel searches but the menu does not need).
+- The handler still lists only guides whose `appOrigins` include the sender's origin and whose rules match the sender tab's URL, top frame only. A guide whose rule matches but whose origin differs is never sent (unit test).
+- Caps: at most 100 guides, titles of 500 characters, 10 tags per guide of 60 characters each; tags trimmed, blank and duplicate (case- and accent-insensitive) tags dropped (`forPageEntry`). The answer is parsed with `ForPageResponseSchema` (protocol.ts) before it goes out, and the response type is inferred from it.
+- The constants live in `page-search.ts`, which has no Zod, because the content script imports it.
+
+### D172. Search ignores accents, in the panel too
+*6 Nov 2026 · SPEC: Discovery ("Side panel": search)*
+
+- The menu's matching is case- and accent-insensitive (`fold`: NFKD, marks removed, lower case, plus ß→ss, æ→ae, œ→oe, ø→o, ł→l, đ/ð→d, þ→th, ı→i). Every typed word must be the start of a word in the title or a tag: "inv acme" finds "Send an invoice" tagged ACME; "voice" does not.
+- The library's MiniSearch index uses the same `fold` as its term processor, so the panel's searches (the main box and the page box) find "Crème brûlée" for "creme" too. Before, only fuzzy matching could, and only for short words.

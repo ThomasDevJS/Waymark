@@ -8,7 +8,8 @@ import { send } from '../core/messaging/client';
 import { eventPath, overlayHost, overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
 import { dlog } from './debug';
-import { CircleQuestionMark, MapPin, Play } from 'lucide';
+import { CircleQuestionMark, MapPin, Play, Search } from 'lucide';
+import { matchPageGuides, PAGE_SEARCH_FROM, pageTagChips, type PageGuide } from '../core/discovery/page-search';
 import { buildSvg } from '../ui/svg';
 
 /** The launcher's styles (exported for the motion test, D134). */
@@ -19,7 +20,7 @@ export const LAUNCHER_CSS = `
 .wm-launch:hover { background: var(--wm-accent-hover); }
 .wm-launch svg { width: 22px; height: 22px; }
 .wm-launch[aria-expanded='true'] { background: var(--wm-surface); color: var(--wm-fg); border-color: var(--wm-border); }
-.wm-launch:focus-visible, .wm-card button:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
+.wm-launch:focus-visible, .wm-card button:focus-visible, .wm-search input:focus-visible { outline: 2px solid var(--wm-focus); outline-offset: 2px; }
 .wm-card { position: fixed; right: 16px; bottom: 72px; width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 96px); overflow: auto;
   box-sizing: border-box; background: var(--wm-surface); color: var(--wm-fg); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-lg);
   padding: 8px; pointer-events: auto; box-shadow: var(--wm-shadow-3); font: 14px/1.4 var(--wm-font); text-align: left; }
@@ -37,6 +38,21 @@ export const LAUNCHER_CSS = `
 .wm-card .wm-primary:hover { background: var(--wm-accent-hover); }
 .wm-card .wm-primary svg { color: inherit; }
 .wm-text { margin: 0; overflow-wrap: anywhere; }
+/* Search among many guides (D170): a box, up to three tag chips, and a list the arrow keys move through. */
+.wm-search { position: relative; margin: 0 2px 6px; }
+.wm-search svg { position: absolute; left: 9px; top: 50%; translate: 0 -50%; width: 16px; height: 16px; color: var(--wm-fg-muted); pointer-events: none; }
+.wm-search input { box-sizing: border-box; width: 100%; min-height: 36px; margin: 0; padding: 7px 10px 7px 32px; font: inherit; font-size: 14px; color: var(--wm-fg);
+  background: var(--wm-surface); border: 1px solid var(--wm-border); border-radius: var(--wm-radius-sm); box-shadow: none; }
+.wm-search input::placeholder { color: var(--wm-fg-muted); opacity: 1; }
+.wm-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 2px 6px; }
+.wm-card .wm-chip { width: auto; min-height: 28px; padding: 3px 10px; font-size: 13px; line-height: 20px; border: 1px solid var(--wm-border); border-radius: 999px; }
+.wm-card .wm-chip[aria-pressed='true'] { background: var(--wm-accent); color: var(--wm-accent-fg); border-color: var(--wm-accent); }
+.wm-list { max-height: min(260px, calc(100vh - 240px)); overflow: auto; }
+.wm-option { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 10px; box-sizing: border-box; border-radius: var(--wm-radius-sm); cursor: pointer; overflow-wrap: anywhere; }
+.wm-option:hover { background: var(--wm-surface-hover); }
+.wm-option[aria-selected='true'] { background: var(--wm-surface-hover); outline: 2px solid var(--wm-focus); outline-offset: -2px; }
+.wm-option svg { width: 16px; height: 16px; flex: none; color: var(--wm-accent-text); }
+.wm-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .wm-note { font-size: 13px; color: var(--wm-fg-muted); margin: 8px; }
 /* Motion (D130, D134): transform and opacity only, and nothing moves under reduced motion. The
    button pops in with a small spring, grows a little on hover and squeezes when pressed; the
@@ -48,6 +64,7 @@ export const LAUNCHER_CSS = `
   .wm-launch:hover { transform: scale(1.06); }
   .wm-launch:active { transform: scale(.92); transition-duration: var(--wm-dur-press); }
   .wm-card { animation: wm-launch-rise var(--wm-dur-base) var(--wm-ease-enter); }
+  .wm-option { transition: background-color var(--wm-dur-fast) var(--wm-ease-standard); }
   .wm-card button { transition: background-color var(--wm-dur-fast) var(--wm-ease-standard), transform var(--wm-dur-fast) var(--wm-ease-spring); }
   .wm-card button:active { transform: scale(var(--wm-press-lg)); transition-duration: var(--wm-dur-press); }
   .wm-row button:active, .wm-card .wm-primary:active { transform: scale(var(--wm-press)); }
@@ -56,7 +73,11 @@ export const LAUNCHER_CSS = `
 @keyframes wm-launch-pop { from { opacity: 0; scale: .6; } }
 @keyframes wm-launch-rise { from { opacity: 0; translate: 0 var(--wm-move-lg); } }
 @keyframes wm-launch-focus-in { from { outline-offset: 5px; outline-color: transparent; } }
-@media (forced-colors: active) { .wm-launch, .wm-card { border: 2px solid CanvasText; } }
+@media (forced-colors: active) {
+  .wm-launch, .wm-card { border: 2px solid CanvasText; }
+  .wm-option[aria-selected='true'] { outline-color: Highlight; }
+  .wm-card .wm-chip[aria-pressed='true'] { border-width: 3px; }
+}
 `;
 
 /** Reads and removes `waymark=<id>` from the URL (query or hash), keeping hash routes intact. */
@@ -110,12 +131,15 @@ export function pressInsideLauncher(path: EventTarget[], menu: Element | null, b
   return (!!menu && path.includes(menu)) || (!!button && path.includes(button)) || (!!host && path.includes(host));
 }
 
-export function startLauncher(): { refresh(): void; offerDeepLink(id: string): void; dispose(): void } {
-  if (window !== window.top) return { refresh() {}, offerDeepLink() {}, dispose() {} };
+/** `isTop`: only the top frame shows the launcher (a parameter so browser tests, run in an iframe, can say yes). */
+export function startLauncher(isTop = window === window.top): { refresh(): void; offerDeepLink(id: string): void; dispose(): void } {
+  if (!isTop) return { refresh() {}, offerDeepLink() {}, dispose() {} };
   let button: HTMLButtonElement | null = null;
   let menu: HTMLElement | null = null;
   let offer: HTMLElement | null = null;
-  let guides: { id: string; title: string }[] = [];
+  let guides: PageGuide[] = [];
+  /** The menu's search, when the page has many guides (D170). */
+  let search: { clear(): boolean; input: HTMLInputElement } | null = null;
 
   const ensureStyle = () => {
     const root = overlayRoot();
@@ -135,6 +159,8 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     document.removeEventListener('pointerdown', onOutsidePress, true);
     menu?.remove();
     menu = null;
+    search = null;
+    testMark('launcher-menu', 'closed');
     button?.setAttribute('aria-expanded', 'false');
     button?.removeAttribute('aria-controls');
     if (refocus) button?.focus();
@@ -179,6 +205,135 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     }
   };
 
+  /**
+   * The menu's search (D170): a combobox whose list the arrow keys move through while focus stays
+   * in the box, so typing goes on filtering. Enter starts the selected guide. Matching runs here,
+   * over the titles and tags `guide.forPage` sent for this origin only (D171).
+   */
+  const searchList = (m: HTMLElement): { clear(): boolean; input: HTMLInputElement } => {
+    let query = '';
+    let picked: string[] = [];
+    let shown: PageGuide[] = guides;
+    let active = -1;
+    const box = document.createElement('div');
+    box.className = 'wm-search';
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.id = 'wm-launcher-q';
+    input.placeholder = 'Search guides';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-label', 'Search the guides for this page');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', 'wm-launcher-list');
+    box.append(buildSvg(Search), input);
+    m.append(box);
+
+    const chipTags = pageTagChips(guides);
+    const chips: HTMLButtonElement[] = [];
+    if (chipTags.length) {
+      const row = document.createElement('div');
+      row.className = 'wm-chips';
+      row.setAttribute('role', 'group');
+      row.setAttribute('aria-label', 'Filter by tag');
+      for (const tag of chipTags) {
+        const c = document.createElement('button');
+        c.type = 'button';
+        c.className = 'wm-chip';
+        c.textContent = tag;
+        c.dataset.tag = tag;
+        c.setAttribute('aria-pressed', 'false');
+        c.addEventListener('click', () => {
+          picked = picked.includes(tag) ? picked.filter((t) => t !== tag) : [...picked, tag];
+          c.setAttribute('aria-pressed', String(picked.includes(tag)));
+          draw(true);
+        });
+        chips.push(c);
+        row.append(c);
+      }
+      m.append(row);
+    }
+
+    const list = document.createElement('div');
+    list.className = 'wm-list';
+    list.id = 'wm-launcher-list';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-labelledby', 'wm-launcher-title');
+    const status = document.createElement('div');
+    status.className = 'wm-note';
+    status.setAttribute('role', 'status');
+    m.append(list, status);
+
+    const setActive = (i: number) => {
+      active = i;
+      list.querySelectorAll<HTMLElement>('[role=option]').forEach((o, j) => o.setAttribute('aria-selected', String(j === i)));
+      const opt = i >= 0 ? list.querySelector<HTMLElement>(`#wm-launcher-opt-${i}`) : null;
+      if (opt) {
+        input.setAttribute('aria-activedescendant', opt.id);
+        opt.scrollIntoView?.({ block: 'nearest' });
+      } else input.removeAttribute('aria-activedescendant');
+      if (__WAYMARK_TEST__) testMark('launcher-active', shown[i]?.id ?? '');
+    };
+
+    // `filtered`: the query or the chips changed. Then the best match is selected, so Enter starts it.
+    const draw = (filtered: boolean) => {
+      shown = matchPageGuides(guides, query, picked);
+      const opts = shown.map((g, i) => {
+        const o = document.createElement('div');
+        o.className = 'wm-option';
+        o.id = `wm-launcher-opt-${i}`;
+        o.setAttribute('role', 'option');
+        o.dataset.guide = g.id;
+        o.append(buildSvg(Play), g.title);
+        // Keep focus in the box when an option is pressed.
+        o.addEventListener('mousedown', (e) => e.preventDefault());
+        o.addEventListener('click', () => void start(g.id));
+        return o;
+      });
+      list.replaceChildren(...opts);
+      list.hidden = shown.length === 0;
+      const filtering = !!query.trim() || picked.length > 0;
+      status.textContent = shown.length === 0 ? 'No guides match' : filtering ? `${shown.length} of ${guides.length} guides` : '';
+      status.classList.toggle('wm-sr', shown.length > 0);
+      setActive(filtered && filtering && shown.length ? 0 : Math.min(active, shown.length - 1));
+      if (__WAYMARK_TEST__) testMark('launcher-results', shown.map((g) => g.id).join(','));
+    };
+
+    input.addEventListener('input', () => {
+      query = input.value;
+      draw(true);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!shown.length) return;
+        setActive(e.key === 'ArrowDown' ? Math.min(active + 1, shown.length - 1) : Math.max(active - 1, 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const g = shown[active];
+        if (g) void start(g.id);
+      }
+    });
+    // Keys typed here are Waymark's: the page's own shortcuts (on document or window, which see
+    // only the overlay host in a closed root) must not fire while someone types a search.
+    for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input']) m.addEventListener(type, (e) => e.stopPropagation());
+    draw(false);
+    return {
+      input,
+      clear() {
+        if (!query && !picked.length) return false;
+        query = input.value = '';
+        picked = [];
+        for (const c of chips) c.setAttribute('aria-pressed', 'false');
+        draw(false);
+        setActive(-1);
+        return true;
+      },
+    };
+  };
+
   // A disclosure: the button shows a small panel of buttons, one per guide. Esc closes it and
   // returns focus to the button; Tab moves through the guides.
   const openMenu = () => {
@@ -193,18 +348,25 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     h.id = 'wm-launcher-title';
     h.textContent = 'Guides for this page';
     menu.append(h);
-    for (const g of guides) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.append(buildSvg(Play), g.title);
-      b.dataset.guide = g.id;
-      b.addEventListener('click', () => void start(g.id));
-      menu.append(b);
+    if (guides.length >= PAGE_SEARCH_FROM) {
+      search = searchList(menu);
+    } else {
+      for (const g of guides) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.append(buildSvg(Play), g.title);
+        b.dataset.guide = g.id;
+        b.addEventListener('click', () => void start(g.id));
+        menu.append(b);
+      }
     }
     menu.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        closeMenu(true);
+        e.preventDefault();
+        // With a search: the first Esc clears it, the next one closes (D170).
+        if (search?.clear()) search.input.focus();
+        else closeMenu(true);
       }
     });
     // Close when focus or a press goes elsewhere.
@@ -216,10 +378,12 @@ export function startLauncher(): { refresh(): void; offerDeepLink(id: string): v
     button?.setAttribute('aria-expanded', 'true');
     button?.setAttribute('aria-controls', menu.id);
     document.addEventListener('pointerdown', onOutsidePress, true);
-    menu.querySelector('button')?.focus();
+    testMark('launcher-menu', search ? 'search' : 'list');
+    if (search) search.input.focus();
+    else menu.querySelector('button')?.focus();
     if (__WAYMARK_TEST__) {
       // With a closed root (production) tests cannot query inside: they click where the first guide is.
-      const r = menu.querySelector('button[data-guide]')?.getBoundingClientRect();
+      const r = menu.querySelector('[data-guide]')?.getBoundingClientRect();
       if (r) testMark('launcher-item', `${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}`);
     }
   };

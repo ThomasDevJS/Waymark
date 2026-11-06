@@ -6,9 +6,13 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- When a page has 6 or more guides, the on-page **?** menu and the side panel's **For this page** list get a search box and up to three tag chips. In the menu, type to filter, use the arrow keys and press Enter to start a guide; Esc clears the search, a second Esc closes the menu (D170, D171, #69).
+
 ### Changed
 - The on-page **?** button is on by default on sites where a page has guides; turn it off per site in the side panel (D150, #66).
 - The shade around a highlighted step is **Lighter** by default; Medium and Darker stay in Settings and the editor (D151).
+- Search ignores accents: "creme" finds "Crème brûlée", in the panel and in the menu (D172).
 
 ### Fixed
 - **Test step** works on apps that rebuild their frames: it no longer says "Waymark is not running on this page" for a step in a frame the app replaced (D152).

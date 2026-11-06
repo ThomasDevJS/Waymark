@@ -1,6 +1,7 @@
 /** Client-side guide search (SPEC: Discovery: title, description, tags and step titles; MiniSearch). */
 import MiniSearch from 'minisearch';
 import type { GuideIndexEntry } from '../storage/guides';
+import { fold } from './page-search';
 
 /** What search reads: an index entry (D49), never the full guide. */
 export type Searchable = Pick<GuideIndexEntry, 'id' | 'title' | 'description' | 'tags' | 'stepTitles'>;
@@ -17,6 +18,8 @@ export function buildSearch(guides: Searchable[]): MiniSearch<Doc> {
   const ms = new MiniSearch<Doc>({
     fields: ['title', 'description', 'tags', 'steps'],
     storeFields: ['id'],
+    // Case- and accent-insensitive, like the ? menu (D172): "creme" finds "Crème".
+    processTerm: (term) => fold(term) || null,
     searchOptions: { boost: { title: 3, tags: 2 }, prefix: true, fuzzy: 0.2 },
   });
   ms.addAll(

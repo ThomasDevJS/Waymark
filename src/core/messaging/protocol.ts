@@ -19,8 +19,26 @@ import type { Conflict } from '../sharing/pack';
 import { ContentEntrySchema, MAX_BATCH } from '../debug/log';
 import { LEARNER_SHADES } from '../player/shade';
 import type { PlayerSettings } from '../player/settings';
+import { MAX_FOR_PAGE, MAX_FOR_PAGE_TAG, MAX_FOR_PAGE_TAGS, MAX_FOR_PAGE_TITLE } from '../discovery/page-search';
 
 const url = z.string().max(4096);
+
+/**
+ * What a content script gets for its own page (D171): ids, titles and tags of its own origin's
+ * guides, capped. The service worker parses its answer with this before sending it.
+ */
+export const ForPageResponseSchema = z.object({
+  guides: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        title: z.string().max(MAX_FOR_PAGE_TITLE),
+        tags: z.array(z.string().min(1).max(MAX_FOR_PAGE_TAG)).max(MAX_FOR_PAGE_TAGS),
+      }),
+    )
+    .max(MAX_FOR_PAGE),
+  launcher: z.boolean(),
+});
 
 /** A record with at most `max` entries (Zod records have no size limit of their own; D53). */
 const boundedRecord = <V extends z.ZodType>(key: z.ZodString, value: V, max: number) =>
@@ -202,7 +220,7 @@ export interface ResponseMap {
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
   'pick.abort': { ok: boolean };
-  'guide.forPage': { guides: { id: string; title: string }[]; launcher: boolean };
+  'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
   'guide.many': { guides: Guide[] };
