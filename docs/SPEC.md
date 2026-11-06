@@ -274,7 +274,7 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 
 - Content scripts run in all frames of granted sites, including `about:blank` and `srcdoc` frames.
 - A cross-origin frame cannot compute its own path (`frameElement` is null there). Instead, the service worker issues a nonce, the parent frame posts it into the iframe, and the child sends it back. The service worker then maps the iframe's selector to its `frameId`.
-- Cross-origin iframes need their own site permission. The side panel shows Allow for that site, because content scripts cannot request permissions.
+- Cross-origin iframes need their own site permission. The side panel shows Allow for that site, because content scripts cannot request permissions. Each allowed frame reports its direct child frames' origins (origins only); the panel offers one Allow for the ones not allowed yet, a level at a time for nested embeds such as Google Sites' wrapper frames (D155).
 - Closed shadow roots cannot be entered. The recorder records the host element and flags the step.
 
 **Privacy guards**

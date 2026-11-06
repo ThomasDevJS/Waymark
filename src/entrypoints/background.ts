@@ -3,7 +3,7 @@
  * everything lives in chrome.storage. Routes every message, owns storage and registrations.
  */
 import { createRouter, type Handlers } from '../core/messaging/router';
-import { injectIntoOpenTabs, syncRegistrations, grantedSitePatterns } from '../core/permissions/registration';
+import { injectIntoFrames, injectIntoOpenTabs, syncRegistrations, grantedSitePatterns } from '../core/permissions/registration';
 import { claimNonce, framePathFor, framesKey, issueNonce, noncesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { enqueue } from '../core/storage/queue';
@@ -27,6 +27,7 @@ import { getPlayerSettings, setPlayerSettings } from '../background/player-setti
 import { getRecorderSettings, setRecorderSettings } from '../background/recorder-settings';
 import { SHOTS_ALARM, sweepShots } from '../background/shots';
 import { recorderSettingsFor } from '../core/recorder/settings';
+import { clearEmbeds, onEmbedsReport, pendingEmbeds } from '../background/embeds';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -108,7 +109,7 @@ const handlers: Handlers = {
     const sites = origins.filter((o) => isSiteOrigin(o) && marked.includes(originToMatchPattern(o)));
     for (const o of sites) await setFetchOnly(o, false);
     const registered = await sync();
-    if (sites.length) await injectIntoOpenTabs(sites.map(originToMatchPattern).filter((p) => registered.includes(p)));
+    if (sites.length) await injectIntoFrames(sites.map(originToMatchPattern).filter((p) => registered.includes(p)));
     return { registered };
   },
   'route.report': async (payload, ctx) => {
@@ -138,6 +139,12 @@ const handlers: Handlers = {
     const frameId = ctx.frameId;
     return { ok: await enqueue(() => claimNonce(sessionKV, nonce, tabId, frameId)) };
   },
+  // A frame's direct child frames (D155). Its own tab and frame only; cleaned and capped there.
+  'frame.embeds': async ({ origins }, ctx) => {
+    if (ctx.tabId !== undefined && ctx.frameId !== undefined) await onEmbedsReport(ctx.tabId, ctx.frameId, origins);
+    return { ok: true as const };
+  },
+  'embeds.pending': async ({ tabId }) => ({ origins: await pendingEmbeds(tabId) }),
   'frame.path': async (_p, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId === undefined) return { framePath: null };
     const map = (await sessionKV.get<FrameMap>(framesKey(ctx.tabId))) ?? {};
@@ -185,11 +192,14 @@ export default defineBackground(() => {
   // The badge learns the URL from tabs.onUpdated (readable on granted sites) and route reports.
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     if (info.url || info.status === 'complete') void updateBadge(tabId, tab.url);
+    // A new page: its frames report their embedded sites again as they load (D155).
+    if (info.status === 'loading') void clearEmbeds(tabId);
   });
 
   chrome.permissions.onAdded.addListener(async (added) => {
     await sync();
-    await injectIntoOpenTabs(grantedSitePatterns(added.origins ?? [], await fetchOnlyPatterns()));
+    // Into the frames of the new sites only, in any tab: embedded apps too (D155).
+    await injectIntoFrames(grantedSitePatterns(added.origins ?? [], await fetchOnlyPatterns()));
   });
   chrome.permissions.onRemoved.addListener(() => {
     void sync();
@@ -208,6 +218,7 @@ export default defineBackground(() => {
   });
   chrome.tabs.onRemoved.addListener((tabId) => {
     void chrome.storage.session.remove([framesKey(tabId), noncesKey(tabId), `test:route:${tabId}`]);
+    void clearEmbeds(tabId);
     void onTabRemoved(tabId);
     void resumeRunsMovedTo(tabId).then(() => dropRun(tabId));
     void onDebugTabRemoved(tabId);

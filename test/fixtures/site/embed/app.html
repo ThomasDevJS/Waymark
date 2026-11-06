@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Shipping app</title></head>
+<body>
+  <h2>Shipments</h2>
+  <button type="button" id="approve" onclick="document.documentElement.setAttribute('data-waymark-test-approved', String(Number(document.documentElement.getAttribute('data-waymark-test-approved') ?? 0) + 1))">Approve shipment</button>
+  <script>document.documentElement.setAttribute('data-waymark-test-app', 'yes');</script>
+</body>
+</html>

@@ -50,6 +50,73 @@ async function revoke(origin: string) {
   await refresh();
 }
 
+/** Embedded sites in this tab that Waymark can't run in yet (D155). */
+const embeds = signal<{ tabId: number; origins: string[] } | null>(null);
+async function refreshEmbeds(tabId: number) {
+  try {
+    const { origins } = await send('embeds.pending', { tabId });
+    embeds.value = { tabId, origins };
+  } catch {
+    embeds.value = { tabId, origins: [] };
+  }
+}
+
+/** One Allow for exactly the listed sites; only the user's click asks (D155). */
+async function allowEmbeds(tabId: number, origins: string[]) {
+  try {
+    const ok = await chrome.permissions.request({ origins: origins.map(originToMatchPattern) }).catch(() => false);
+    // A site held only for fetching the library becomes a guide site now (D80).
+    if (ok) await send('site.allowed', { origins });
+  } finally {
+    await refreshEmbeds(tabId);
+  }
+}
+
+function EmbedsOffer({ tabId }: { tabId: number }) {
+  useEffect(() => {
+    embeds.value = null;
+    void refreshEmbeds(tabId);
+    const key = `embeds:${tabId}`;
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && key in changes) void refreshEmbeds(tabId);
+    };
+    const onPerms = () => void refreshEmbeds(tabId);
+    chrome.storage.onChanged.addListener(onStorage);
+    chrome.permissions.onAdded.addListener(onPerms);
+    chrome.permissions.onRemoved.addListener(onPerms);
+    return () => {
+      chrome.storage.onChanged.removeListener(onStorage);
+      chrome.permissions.onAdded.removeListener(onPerms);
+      chrome.permissions.onRemoved.removeListener(onPerms);
+    };
+  }, [tabId]);
+  const e = embeds.value;
+  if (!e || e.tabId !== tabId || !e.origins.length) return null;
+  return (
+    <div class="banner" role="status" data-testid="embeds-offer">
+      <Icon name="globe" />
+      <div class="stack-sm grow">
+        <span>
+          This page shows content from {e.origins.length === 1 ? 'another site' : 'other sites'}. Allow Waymark there too, so you can record and play guides inside it.
+        </span>
+        <ul class="sites" data-testid="embeds-sites">
+          {e.origins.map((o) => (
+            <li key={o} class="mono small" title={o}>
+              {siteLabel(o)}
+            </li>
+          ))}
+        </ul>
+        <div>
+          <button type="button" class="primary sm" data-testid="allow-embeds" onClick={() => void allowEmbeds(tabId, e.origins)}>
+            <Icon name="shield" />
+            Allow {e.origins.length === 1 ? 'this site' : `these ${e.origins.length} sites`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const initialEdit = new URLSearchParams(location.search).get('edit');
 const launcherOn = signal<boolean | null>(null);
 /** The allowed site's options (the ? button switch and Remove access) are folded away (D120). */
@@ -163,6 +230,7 @@ function SiteCard({ t }: { t: TabInfo | null }) {
           <Icon name="chevron-down" class="chev" />
         </button>
       </div>
+      {t.tabId !== null && <EmbedsOffer tabId={t.tabId} />}
       {open && (
         <div class="site-options stack-sm unfold" id="site-options">
           <LauncherToggle origin={t.origin} />

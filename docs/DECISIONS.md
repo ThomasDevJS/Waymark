@@ -1315,6 +1315,33 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Change**: `recorder.settings.get` is the one settings read open to content scripts (D153). It returned the whole `RecorderSettings`, so any setting added later would have reached every granted page. The handler now passes the result through `recorderSettingsFor(settings, ctx.kind)`, which gives content senders `{ hover }` only. Extension pages still get everything.
 - **Tests**: `test/unit/recorder-settings.test.ts`: with an extra future field, a content sender gets `{ hover }` only; the default is on, and a bad stored value falls back to on.
 
+### D155. Embedded sites: each frame reports its child frames' sites; the panel offers Allow
+*6 Nov 2026 · SPEC: Recorder ("Frames and shadow DOM"); Permissions; issue #77*
+
+- **Finding**: Thomas recorded on a Google Sites page that embeds a web app, and Waymark did nothing inside it. Google Sites shows an embed through a wrapper frame on `<n>-atari-embeds.googleusercontent.com`, with the app's own site inside it. Waymark runs per frame, only on allowed sites, and nothing told the user which sites to allow. SPEC said the panel offers Allow for a cross-origin frame's site; that was never built. Recording and playback across frames already worked once each site was allowed (nonce frame mapping; `appOrigins` grows per frame).
+- **Reports** (`src/content/embeds.ts`, `src/core/frames/embeds.ts`):
+  - every frame Waymark runs in sends `frame.embeds` with its **direct** child frames' origins, including frames in open shadow roots. These are http(s) origins only, never paths or queries; about:blank, srcdoc and other schemes are left out;
+  - it sends at start and after frames are added or change `src` (a MutationObserver, debounced 500 ms), and only when the list changed. It sends again after a route report, because the list is cleared on page changes.
+  - The message is content-allowed and Zod-validated, with at most 20 strings of 500 characters.
+- **Store** (`src/background/embeds.ts`):
+  - session storage `embeds:<tab>`, per frame, through `enqueue`;
+  - cleaned with `isSiteOrigin` (no wildcards), deduplicated and capped at 20 per frame and 50 frames per tab, written only when it changes;
+  - cleared when the tab starts loading a page (`tabs.onUpdated` status `loading`) and when it closes.
+- **Panel** (`App.tsx`, `EmbedsOffer`):
+  - under an allowed site: "This page shows content from other sites. Allow Waymark there too…", listing each site with `siteLabel`, and one **Allow** button;
+  - only that click calls `permissions.request`, for exactly the listed origins; content can never trigger a request, and nothing is granted automatically;
+  - origins that are granted only to fetch the library count as not allowed and become guide sites through `site.allowed` (D80);
+  - nested embeds unlock one level at a time: once the wrapper is allowed, its content script reports the app inside it.
+- **Injection after a grant** (`injectIntoFrames`): `permissions.onAdded` and `site.allowed` used to inject into tabs whose top page was on the new site. An embedded frame inside a page on another site never got the script until a reload. Now each tab's frames are asked for their origin (only frames Waymark may access answer), and the script goes only into frames on the newly granted sites. Frames where it already runs are not restarted. Install and update still use `injectIntoOpenTabs`.
+- **Google Sites' wrapper changes address on every publish** (community reports; no Google documentation): after a republish the panel offers Allow for the new wrapper. A wildcard grant for `*.googleusercontent.com` is not part of this: it would also cover Drive and Docs previews, Apps Script apps and more, so it needs Thomas's explicit choice and its own switch. Guides keep playing after a republish: framePath is made of selectors, and the step is in the app frame, whose origin is stable. The wrapper frame is not a guide site, so it gets only the "run exists" view (D48), never guide data.
+- **Tests**:
+  - `test/unit/embeds.test.ts`: origin extraction, shadow roots, cleaning, per-frame store, frame/pattern matching;
+  - `test/e2e/r2-embeds.spec.ts`, a three-origin fixture (top → wrapper → app, `test/fixtures/site/embed/`) with the closed overlay root:
+    - Allow the wrapper from the panel, then the app;
+    - record a click in the innermost frame (framePath of 2);
+    - move the wrapper to another origin and Allow it again;
+    - play back in the app frame (the wrapper draws nothing), and the click finishes the guide.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides
