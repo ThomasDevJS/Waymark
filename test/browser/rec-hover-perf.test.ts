@@ -1,4 +1,4 @@
-/** D156: the recording outline's check stays cheap on a large page (Thomas: hover hit performance). */
+/** D156: the recording outline's check stays cheap on a large page (the owner: hover hit performance). */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildFingerprint } from '../../src/core/fingerprint';
 import { previewClick } from '../../src/core/recorder/preview';

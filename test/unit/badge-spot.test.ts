@@ -13,7 +13,7 @@ const overlaps = (s: { cx: number; cy: number; r: number }, hl: Box) => {
 const inside = (s: { cx: number; cy: number; r: number }, w: number, h: number) => s.cx - s.r >= 0 && s.cy - s.r >= 0 && s.cx + s.r <= w && s.cy + s.r <= h;
 
 describe('badgeSpot (D158)', () => {
-  it('a small tab touching the top of the image (Thomas: "Safety" read "afety"): beside it, not on it', () => {
+  it('a small tab touching the top of the image (the owner: "Safety" read "afety"): beside it, not on it', () => {
     const hl = { x: 304, y: 2, w: 86, h: 40 };
     const s = badgeSpot(hl, 1600, 1013, 1);
     expect(overlaps(s, hl)).toBe(false);
