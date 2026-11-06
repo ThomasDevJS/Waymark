@@ -13,7 +13,7 @@ import { enqueue } from '../core/storage/queue';
 import { dropShotsOf, scheduleShotSweep, sweepShots } from './shots';
 import { addToTrash, liveTrash, TRASH_KEY, trashIsStale, trashItems, UNDO_MS } from '../core/storage/trash';
 import { lastCompletions } from '../core/storage/problems';
-import { readCounts, STATS_INDEX_KEY, statsKey, withCount } from '../core/stats/plays';
+import { sweepStatsInQueue } from './stats';
 import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
@@ -83,16 +83,9 @@ export function purgeTrash(now = Date.now()) {
     if (trashIsStale(raw, now)) {
       if (live.length) await chrome.storage.local.set({ [TRASH_KEY]: live });
       else await chrome.storage.local.remove(TRASH_KEY);
-      // The guides that left the trash are gone for good: their play results go too (D211).
-      const kept = new Set([...live.map((e) => e.guide.id), ...(await listGuides()).map((g) => g.id)]);
-      const gone = Array.isArray(raw) ? (raw as { guide?: { id?: unknown } }[]).map((e) => e?.guide?.id).filter((id): id is string => typeof id === 'string' && !kept.has(id)) : [];
-      if (gone.length) {
-        await chrome.storage.local.remove(gone.map(statsKey));
-        let counts = readCounts((await chrome.storage.local.get(STATS_INDEX_KEY))[STATS_INDEX_KEY]);
-        for (const id of gone) counts = withCount(counts, id, null);
-        await chrome.storage.local.set({ [STATS_INDEX_KEY]: counts });
-      }
     }
+    // Guides gone for good (out of the trash, however their entry left it) lose their play results (D211).
+    await sweepStatsInQueue(now);
     return live;
   });
 }

@@ -282,6 +282,16 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('[data-testid$="-up"], [data-testid$="-down"]'));
     (buttons.find((b) => b.dataset.testid!.endsWith(`-${r.dir}`) && !b.disabled) ?? buttons.find((b) => !b.disabled))?.focus();
   });
+  // Results from a play while the editor is open show at once (review of D211), for a kept draft too.
+  useEffect(() => {
+    void loadPlays(guideId);
+    const statsKey = `stats:${guideId}`;
+    const onStats = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && statsKey in changes) void loadPlays(guideId);
+    };
+    chrome.storage.onChanged.addListener(onStats);
+    return () => chrome.storage.onChanged.removeListener(onStats);
+  }, [guideId]);
   useEffect(() => {
     // Back from a recording started with the shortcut: the unsaved draft of this guide is kept.
     if (draft.value?.id === guideId && dirty.value) return () => dismissScope('editor');
@@ -290,9 +300,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     status.value = null;
     tests.value = {};
     shots.value = null;
-    plays.value = {};
     void loadShots(guideId);
-    void loadPlays(guideId);
     void attempt(async () => {
       const g = await send('guide.get', { id: guideId });
       draft.value = g;
@@ -573,9 +581,9 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                             <Icon name="test" />
                             Test step
                           </button>
-                          <button type="button" class="ghost sm" data-testid={`step-${i}-plays-repick`} disabled={readOnly || tabId === null} onClick={repick}>
-                            <Icon name="crosshair" />
-                            Re-pick element
+                          <button type="button" class={`sm${isPicking ? ' primary' : ' ghost'}`} data-testid={`step-${i}-plays-repick`} aria-pressed={isPicking} disabled={readOnly || tabId === null} onClick={repick}>
+                            <Icon name={isPicking ? 'close' : 'crosshair'} />
+                            {isPicking ? 'Cancel picking' : 'Re-pick element'}
                           </button>
                         </div>
                       )}

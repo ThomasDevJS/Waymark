@@ -18,14 +18,17 @@ export const MISSES_TO_FLAG = 2;
 /** A found element less than this many points ahead of the runner-up is "barely ahead" (accepted from UNIQUE_MARGIN). */
 export const LOW_MARGIN = UNIQUE_MARGIN + 10;
 
-/** One play of one step: [minutes since epoch, found 1 / not found 0, score, margin, strong signals matched]. */
+/**
+ * One play of one step: [the run's start (ms since epoch), found 1 / not found 0, score, margin,
+ * strong signals matched]. The run's start is the play's date and its key: one run gives a step
+ * one result, however often frames report it, the learner goes Back and on again, or presses
+ * Retry (the last outcome counts), and two tabs playing the guide never mix (review of D211).
+ */
 export type PlayResult = [number, 0 | 1, number, number, number];
 
 export interface StepStats {
   /** The hash of the step's element the results are about: another element starts empty. */
   t: string;
-  /** The step token of the last result: a run reports a step once, however often frames repeat. */
-  k: string;
   /** 1 when the step's element is repeated (`instance: 'any'`): margins say nothing there. */
   a?: 1;
   r: PlayResult[];
@@ -34,21 +37,23 @@ export interface StepStats {
 export type GuideStats = Record<string, StepStats>;
 
 export const statsKey = (guideId: string) => `stats:${guideId}`;
-/** Flagged steps per guide, kept with every write of a guide's results: the library reads this one small key. */
+/**
+ * Every guide with results, and its flagged steps (0 or more), kept with every write of a guide's
+ * results: the library reads this one small key, and the sweep finds results whose guide is gone.
+ */
 export const STATS_INDEX_KEY = 'statsIndex';
 
-/** The index with one guide's count set (0 or no results: the guide leaves it). */
+/** The index with one guide's count set; no results: the guide leaves it. */
 export function withCount(index: Record<string, number>, guideId: string, stats: GuideStats | null): Record<string, number> {
   const out = { ...index };
-  const n = stats ? flaggedSteps(stats) : 0;
-  if (n) out[guideId] = n;
+  if (stats && Object.keys(stats).length) out[guideId] = flaggedSteps(stats);
   else delete out[guideId];
   return out;
 }
 
 export function readCounts(raw: unknown): Record<string, number> {
   if (!raw || typeof raw !== 'object') return {};
-  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === 'number' && Number.isInteger(e[1]) && e[1] > 0));
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === 'number' && Number.isInteger(e[1]) && e[1] >= 0));
 }
 
 /** The strong signals among those a match used (same STRONG set as the matcher). */
@@ -74,17 +79,17 @@ export function isFragile(strong: number): boolean {
 }
 
 /**
- * Adds one result for a step (or replaces the result of the same step token: one per play). A
- * step whose element changed starts over. Returns the stats to store.
+ * Adds one result for a step, or replaces the result of the same run (its start, `result[0]`): one
+ * per play. A step whose element changed starts over. Returns the stats to store.
  */
-export function recordResult(stats: GuideStats, step: Pick<Step, 'id' | 'target'>, stepToken: string, result: PlayResult): GuideStats {
+export function recordResult(stats: GuideStats, step: Pick<Step, 'id' | 'target'>, result: PlayResult): GuideStats {
   const t = targetHash(step.target);
   const old = stats[step.id];
-  const entry: StepStats = old && old.t === t ? { ...old, r: old.r.slice() } : { t, k: '', r: [] };
+  const entry: StepStats = old && old.t === t ? { ...old, r: old.r.slice() } : { t, r: [] };
   if (step.target?.instance === 'any') entry.a = 1;
-  if (entry.k === stepToken && entry.r.length) entry.r[entry.r.length - 1] = result;
-  else entry.r.push(result);
-  entry.k = stepToken;
+  const same = entry.r.findIndex((r) => r[0] === result[0]);
+  if (same >= 0) entry.r.splice(same, 1);
+  entry.r.push(result);
   if (entry.r.length > MAX_RESULTS) entry.r = entry.r.slice(-MAX_RESULTS);
   return { ...stats, [step.id]: entry };
 }
@@ -133,12 +138,10 @@ export function readStats(raw: unknown): GuideStats {
   const out: GuideStats = {};
   for (const [id, e] of Object.entries(raw as Record<string, unknown>)) {
     const v = e as Partial<StepStats>;
-    if (typeof v?.t !== 'string' || typeof v.k !== 'string' || !Array.isArray(v.r)) continue;
+    if (typeof v?.t !== 'string' || !Array.isArray(v.r)) continue;
     const r = v.r.filter((x): x is PlayResult => Array.isArray(x) && x.length === 5 && x.every((n) => typeof n === 'number' && Number.isFinite(n))).slice(-MAX_RESULTS);
-    out[id] = { t: v.t, k: v.k, r, ...(v.a === 1 ? { a: 1 as const } : {}) };
+    out[id] = { t: v.t, r, ...(v.a === 1 ? { a: 1 as const } : {}) };
   }
   return out;
 }
 
-/** Minutes since the epoch: the date of a play, without the second it happened. */
-export const playMinute = (now = Date.now()) => Math.floor(now / 60_000);

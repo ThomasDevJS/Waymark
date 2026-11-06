@@ -1780,15 +1780,15 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
 
 - **What is kept**: per guide, `stats:<guideId>` in storage.local. For each step:
   - the hash of the element the results are about (`targetHash`, the same hash the screenshots use);
-  - the last step token;
   - whether the element is repeated;
-  - the last 20 results as `[minute, found, score, margin, strong signals]`.
+  - the last 20 results as `[run start (ms), found, score, margin, strong signals]`.
   
-  Only numbers, ids and dates: no names, text or URLs. `statsIndex` holds the number of flagged steps per guide. The library reads that one key; reading every guide's results took 600 ms at 500 × 50 steps × 20 plays (`pnpm bench`), the index takes 0.5 ms. In that worst case the results are 12 MB.
+  Only numbers, ids and dates: no names, text or URLs. `statsIndex` lists every guide with results and its number of flagged steps. The library reads that one key; reading every guide's results took 600 ms at 500 × 50 steps × 20 plays (`pnpm bench`), the index takes 0.5 ms. In that worst case the results are 12 MB.
 - **When a result is recorded** (`run.match`, `src/background/runs.ts` → `recordPlay`, `src/background/stats.ts`):
   - **found**: when a frame wins, with that frame's score, margin and strong count. Only the winner counts.
   - **not found**: when the top frame gives up and no frame found it, while the tab is on the step's page. That is the not-found card; the off-track card, or a step skipped before either, records nothing.
-  - **once per play**: one result per step token. Repeated reports (several frames, a service worker restart, Retry) replace that play's result, so the last outcome counts, never twice.
+  - **once per play**: one result per run and step, keyed by the run's start. Repeated reports (several frames, a service worker restart, Retry, Back and on again) replace that run's result, so the last outcome counts, never twice; two tabs playing the guide never mix.
+  - **a frame that leaves**: when the frame that had the element leaves (`run.leave`, D84's prune) and the top frame had given up, the card shows, and the play becomes "not found".
   - **only for the current element**: nothing is recorded when the stored guide's step now has another element (the run plays an old snapshot).
   - **real runs only**: tutorials and the Practice page don't use `run.match`, so they never write results.
 - **Reasons** (`src/core/stats/plays.ts`, thresholds in one place):
@@ -1806,6 +1806,21 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
   - The library row says "N steps may break". For team guides the hint says to tell the author or duplicate it.
   - In the editor, a folded step shows a "May break" badge. The open step lists each reason, "From plays on this device", with **Test step** and **Re-pick element** buttons.
   - An unsaved Re-pick hides the step's reasons at once: they are for the old element's hash.
+- **Fixes from the independent review** (each with a test that fails on the first version: "review fixes" in `play-stats.test.ts`, and `test/browser/editor-plays.test.ts`):
+  - Results of a guide whose trash entry was dropped by a later delete or restore stayed forever; the trash purge now sweeps every guide in `statsIndex` that is neither stored nor in the live trash.
+  - One play counted twice when the learner went Back and on again (each visit is a new step token): results are keyed by the run's start instead.
+  - Recording ran before the board's broadcast, so it held up the spotlight, and a failing write failed the report: it runs last now, and never throws.
+  - `writeGuides` rewrote every guide's results on each library refresh: only when a step lost its results, and `statsIndex` only when a count changed.
+  - The editor's flags only loaded when it opened: it listens for its guide's results, also for a draft kept from before.
+  - A winning frame that leaves after the top frame gave up now makes the play "not found" (the card shows).
+  - A report without the strong count records nothing instead of "one signal".
+  - The top frame's own document URL decides "on the step's page" (the tab's URL can lag a navigation).
+  - The warning's Re-pick button shows the pick under way (`aria-pressed`, Cancel picking).
+- **Limits, by design**:
+  - Undo of a fix from the player (D210) brings the old element back, but not its results: they were dropped when the fix was saved.
+  - A Re-pick of the same element keeps the step's results: the results are about the element, and it did not change.
+  - `statsIndex` counts are not recomputed if a later version changes the thresholds; that version must recompute them on update.
+  - A service worker stopped between the board's write and the result's write loses that one result; it is never counted twice.
 - **Tests**:
   - `test/unit/play-stats.test.ts`: thresholds; the shared rule and the fast path; one result per token; starting over on another element; pruning; the run's recording (winner only, the card only on the step's page, an old snapshot); messages; following the guide through save, delete, Undo, purge and removal.
   - `test/e2e/f2-play-stats.spec.ts`: two plays of a guide where step 1 is found by its text alone and step 3 is gone. The library says "2 steps may break" and the editor gives both reasons; a step found by its test id is not flagged; Re-pick clears the flag before and after Save.

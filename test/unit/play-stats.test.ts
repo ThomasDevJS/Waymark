@@ -27,9 +27,11 @@ const makeGuide = (over: Partial<Guide> = {}): Guide => ({
 const found = (strong = 3, margin = 60): PlayResult => [1, 1, 90, margin, strong];
 const missed: PlayResult = [1, 0, 30, 0, 0];
 
+let runSeq = 1_700_000_000_000;
 function play(stats: GuideStats, step: Guide['steps'][number], results: PlayResult[]): GuideStats {
   let out = stats;
-  results.forEach((r, i) => (out = recordResult(out, step, `tok${i}-${Math.random()}`, r)));
+  // Each result its own run (its start time).
+  results.forEach((r) => (out = recordResult(out, step, [++runSeq, r[1], r[2], r[3], r[4]])));
   return out;
 }
 
@@ -73,20 +75,25 @@ describe('thresholds and reasons (D211)', () => {
     expect(many[s2.id]!.r).toHaveLength(MAX_RESULTS);
   });
 
-  it('one result per step token: repeated reports (several frames, a service worker restart) count once, the last outcome wins', () => {
-    let st = recordResult({}, s2, 'tokA', missed);
-    st = recordResult(st, s2, 'tokA', missed);
-    st = recordResult(st, s2, 'tokA', found());
-    expect(st[s2.id]!.r).toEqual([found()]);
-    st = recordResult(st, s2, 'tokB', missed);
+  it('one result per run: repeated reports, Retry, Back and on again count once, the last outcome wins; another run adds one', () => {
+    const runA = (r: PlayResult): PlayResult => [111, r[1], r[2], r[3], r[4]];
+    let st = recordResult({}, s2, runA(missed));
+    st = recordResult(st, s2, runA(missed));
+    st = recordResult(st, s2, runA(found()));
+    expect(st[s2.id]!.r).toEqual([runA(found())]);
+    st = recordResult(st, s2, [222, 0, 30, 0, 0]);
+    expect(st[s2.id]!.r).toHaveLength(2);
+    // Two tabs playing the same guide alternate: still one result per run.
+    st = recordResult(st, s2, runA(missed));
+    st = recordResult(st, s2, [222, 1, 90, 60, 3]);
     expect(st[s2.id]!.r).toHaveLength(2);
   });
 
   it('another element (Re-pick, a fix, a library refresh) starts over; pruning drops gone and changed steps', () => {
     let st = play({}, s2, [missed, missed]);
     const repicked = { ...s2, target: fp('B2') };
-    st = recordResult(st, repicked, 'x', found());
-    expect(st[s2.id]!.r).toEqual([found()]);
+    st = recordResult(st, repicked, [999, 1, 90, 60, 3]);
+    expect(st[s2.id]!.r).toEqual([[999, 1, 90, 60, 3]]);
     const stats = play(play({}, g.steps[0]!, [missed]), s2, [missed]);
     const pruned = pruneStats(stats, { steps: [g.steps[0]!, repicked] });
     expect(Object.keys(pruned)).toEqual(['s1']);
@@ -95,7 +102,7 @@ describe('thresholds and reasons (D211)', () => {
   it('counts flagged steps; malformed stored values are dropped', () => {
     const st = play(play({}, g.steps[0]!, [found(1)]), s2, [found(3)]);
     expect(flaggedSteps(st)).toBe(1);
-    expect(readStats({ s1: { t: 'x', k: 'y', r: [[1, 1, 'bad', 0, 0], [1, 1, 90, 60, 3]] }, s2: 'nope' })).toEqual({ s1: { t: 'x', k: 'y', r: [[1, 1, 90, 60, 3]] } });
+    expect(readStats({ s1: { t: 'x', r: [[1, 1, 'bad', 0, 0], [1, 1, 90, 60, 3]] }, s2: 'nope' })).toEqual({ s1: { t: 'x', r: [[1, 1, 90, 60, 3]] } });
   });
 });
 
@@ -268,5 +275,106 @@ describe('a fix from the player (D210) resets that step’s results (D211)', () 
     expect(await fh['pick.result']!({ target: fp('Download'), title: '' }, ctx(0))).toEqual({ ok: true });
     expect(Object.keys(stored())).toEqual(['s1']);
     expect(local['statsIndex']).toEqual({ g1: 1 });
+  });
+});
+
+// Fixes from the independent review (D211). Each test fails on the first version.
+describe('review fixes (D211)', () => {
+  it('a guide whose trash entry was dropped by a later delete loses its results at the next purge', async () => {
+    const a = makeGuide({ id: 'A' });
+    const b = makeGuide({ id: 'B' });
+    local['guide:A'] = a;
+    local['guide:B'] = b;
+    local['guides:index'] = [];
+    const { writeGuides } = await import('../../src/core/storage/guides');
+    const { enqueue } = await import('../../src/core/storage/queue');
+    await enqueue(() => writeGuides([a, b], []));
+    local['stats:A'] = play({}, a.steps[1]!, [found(1)]);
+    local['statsIndex'] = { A: 1 };
+    const { discoveryHandlers, purgeTrash } = await import('../../src/background/discovery');
+    const dh = discoveryHandlers as unknown as Record<string, H>;
+    const now = Date.now();
+    vi.useFakeTimers({ now, toFake: ['Date'] });
+    try {
+      await dh['guide.delete']!({ id: 'A' }, {});
+      vi.setSystemTime(now + 60_000);
+      await dh['guide.delete']!({ id: 'B' }, {}); // drops A's expired entry from the trash
+      await purgeTrash();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(local['stats:A']).toBeUndefined();
+    expect(local['statsIndex']).toEqual({});
+  });
+
+  it('Back and on again in one run records the step once (the last outcome)', async () => {
+    const { run, h } = await setup();
+    await h['run.match']!(report(run.stepToken, false), ctx(0));
+    const { runOp, getRun } = await import('../../src/background/runs');
+    await runOp(7, 'back', 's2');
+    await runOp(7, 'next', 's1');
+    const again = (await getRun(7))!;
+    expect(again.stepToken).not.toBe(run.stepToken);
+    await h['run.match']!(report(again.stepToken, false), ctx(0));
+    expect(stored()['s2']!.r).toHaveLength(1);
+    expect(await h['stats.summary']!({ ids: ['g1'] }, {})).toEqual({ counts: {} });
+  });
+
+  it('the spotlight is broadcast before the result is written, and a failing write never fails the report', async () => {
+    const { run, h } = await setup();
+    const order: string[] = [];
+    const send = chrome.tabs.sendMessage as unknown as ReturnType<typeof vi.fn>;
+    send.mockImplementation(async (_t: number, m: { type: string }) => void order.push(m.type));
+    const set = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>;
+    set.mockImplementation(async (o: Record<string, unknown>) => {
+      if ('stats:g1' in o) {
+        order.push('stats');
+        throw new Error('quota');
+      }
+      Object.assign(local, o);
+    });
+    expect(await h['run.match']!(report(run.stepToken, true, { strong: 3 }), ctx(0))).toMatchObject({ ok: true });
+    expect(order.indexOf('run.changed')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('run.changed')).toBeLessThan(order.indexOf('stats'));
+  });
+
+  it('a library refresh of unchanged guides does not rewrite their results', async () => {
+    const g = makeGuide();
+    local['guide:g1'] = g;
+    local['guides:index'] = [];
+    local['stats:g1'] = play({}, g.steps[1]!, [found(1)]);
+    local['statsIndex'] = { g1: 1 };
+    const set = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>;
+    const { writeGuides } = await import('../../src/core/storage/guides');
+    set.mockClear();
+    await writeGuides([{ ...g, title: 'Renamed' }], []);
+    const keys = set.mock.calls.flatMap(([o]) => Object.keys(o as object));
+    expect(keys).not.toContain('stats:g1');
+    expect(keys).not.toContain('statsIndex');
+  });
+
+  it('the frame that had the element leaves after the top frame gave up: the card shows, and the play is not found', async () => {
+    const { run, h } = await setup();
+    await h['run.match']!(report(run.stepToken, false), ctx(0));
+    // An iframe has it: found replaces the play.
+    const iframe = { tabId: 7, frameId: 4, sender: { id: 'ext', tab: { id: 7, url: 'https://app.test/' }, url: 'https://app.test/f', origin: 'https://app.test', documentId: 'doc4' } } as never;
+    await h['run.match']!(report(run.stepToken, true, { strong: 3, frameToken: 'f4' }), iframe);
+    expect(stored()['s2']!.r[0]![1]).toBe(1);
+    await h['run.leave']!({}, iframe);
+    expect(stored()['s2']!.r).toHaveLength(1);
+    expect(stored()['s2']!.r[0]![1]).toBe(0);
+  });
+
+  it('a found report without the strong count records nothing (not "one signal")', async () => {
+    const { run, h } = await setup();
+    await h['run.match']!(report(run.stepToken, true), ctx(0));
+    expect(local['stats:g1']).toBeUndefined();
+  });
+
+  it('the top frame’s own document URL decides "on the step’s page", not a lagging tab URL', async () => {
+    const { run, h } = await setup();
+    const top = { tabId: 7, frameId: 0, sender: { id: 'ext', tab: { id: 7, url: 'https://elsewhere.test/' }, url: 'https://app.test/', origin: 'https://app.test' } } as never;
+    await h['run.match']!(report(run.stepToken, false), top);
+    expect(stored()['s2']!.r[0]![1]).toBe(0);
   });
 });

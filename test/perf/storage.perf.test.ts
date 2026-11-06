@@ -74,7 +74,7 @@ describe('service worker paths with 500 guides x 50 steps', () => {
     let counts: Record<string, number> = {};
     for (const g of all) {
       let st = {};
-      for (const step of g.steps) for (let i = 0; i < 20; i++) st = recordResult(st, step, `t${i}`, [29900000 + i, i % 7 ? 1 : 0, 88, 40, i % 3]);
+      for (const step of g.steps) for (let i = 0; i < 20; i++) st = recordResult(st, step, [1_790_000_000_000 + i, i % 7 ? 1 : 0, 88, 40, i % 3]);
       statBytes += JSON.stringify(st).length;
       counts = withCount(counts, g.id, st);
       await local.set({ [statsKey(g.id)]: st, [STATS_INDEX_KEY]: counts });
