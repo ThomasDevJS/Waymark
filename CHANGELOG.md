@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-06
+
 ### Added
 - Google Sites: after a site is republished, the side panel says so plainly and keeps the one-click Allow (D201).
 - Settings → Appearance: choose the theme, System (the default), Light or Dark (D200, #88).
@@ -16,6 +18,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ### Changed
 - The step number on a how-to screenshot sits beside the highlighted element, never over it (D158, #87).
 - A team library address that answers with a web page (a sign-in or sharing page) now says so plainly (D157).
+
+### For developers
+- CI on pull requests and `main` runs the fast checks only; the end-to-end suite runs by hand and in the Release workflow, which publishes only when it passes. Every change still runs it locally first (D161, #80).
 
 ## [0.6.0] - 2026-11-06
 
@@ -218,7 +223,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.1
 [0.6.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.5.0
 [0.4.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.1
