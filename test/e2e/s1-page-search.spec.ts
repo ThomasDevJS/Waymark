@@ -72,9 +72,9 @@ test('6+ guides for a page: search in the panel and in the ? menu (closed root),
   await expect(forPage.locator(':scope > li')).toHaveCount(2);
   await panel.getByTestId('page-tag-Billing').click();
 
-  // The ? button: on for this site (on by default once D150 lands; checking it is harmless).
+  // The ? button is on by default (D150).
   await panel.getByTestId('site-options').click();
-  await panel.getByTestId('launcher-toggle').check();
+  await expect(panel.getByTestId('launcher-toggle')).toBeChecked();
 
   // ---- the ? menu, in the production closed shadow root ----
   await app.bringToFront();
