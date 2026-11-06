@@ -135,7 +135,9 @@ describe('export review formats (D104)', () => {
     await userEvent.click(q('remove-G1|S1|note')!);
     expect(q('data-like-warning')).toBeNull();
     await userEvent.click(q('format-html')!);
-    expect(root.textContent).toContain('Saved as guides.html');
-    expect(q('download-howto')!.textContent).toContain('Download how-to');
+    // The printable how-to goes through the preview page (D195).
+    expect(root.textContent).toContain('Saved from the preview as guides.html');
+    expect(q('open-preview')!.textContent).toContain('Preview how-to');
+    expect(q('export-preview-hint')).not.toBeNull();
   });
 });

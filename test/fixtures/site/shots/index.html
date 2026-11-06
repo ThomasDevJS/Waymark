@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Shots in frames</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #fff; color: #111; }
+  /* The heading sits beside the button, not above it: its anti-aliased edges never share the button's column. */
+  header { padding: 16px 24px; display: flex; align-items: center; gap: 32px; }
+  h1 { font-size: 24px; margin: 0; color: #333; }
+  #start { font: inherit; padding: 8px 16px; background: #2d6a4f; color: #fff; border: 0; border-radius: 6px; }
+  /* Border and padding both move the frame's content: the geometry must add them (D191). */
+  #inner { margin-left: 40px; width: 900px; height: 560px; border: 4px solid #345; padding: 6px; display: block; background: #fff; }
+</style></head>
+<body>
+  <!-- Issue #78: a step in the top page, one in a same-origin frame, one in a cross-origin frame inside it. -->
+  <header><button type="button" id="start">Start review</button><h1>Carrier portal</h1></header>
+  <iframe id="inner" title="Review" src="inner.html"></iframe>
+</body>
+</html>

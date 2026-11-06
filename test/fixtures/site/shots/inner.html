@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Review</title>
+<style>
+  body { margin: 0; padding: 16px 30px; font: 15px system-ui, sans-serif; background: #fff; color: #111; }
+  label { display: block; margin: 0 0 4px; }
+  #secret { font: 22px/1.2 monospace; color: #000; width: 360px; padding: 6px; border: 1px solid #999; background: #fff; }
+  #details { font: inherit; margin: 12px 0; padding: 8px 16px; background: #1d4ed8; color: #fff; border: 0; border-radius: 6px; }
+  #partner { display: block; width: 520px; height: 220px; border: 2px solid #777; padding: 3px; }
+</style></head>
+<body>
+  <label for="secret">Customer</label>
+  <input id="secret" name="customer" autocomplete="off" />
+  <div><button type="button" id="details">Open details</button></div>
+  <iframe id="partner" title="Partner"></iframe>
+  <script>
+    // The partner frame is on the other test origin (localhost vs 127.0.0.1): cross-origin.
+    const other = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+    document.getElementById('partner').src = `${location.protocol}//${other}:${location.port}/shots/partner.html`;
+  </script>
+</body>
+</html>

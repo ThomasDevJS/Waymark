@@ -27,8 +27,8 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
           send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
         },
         isOwnEvent: isOverlayPath,
-        // Its screenshot measures the element itself at capture time (D183); top frame only.
-        ...(window === window.top ? { onTarget: rememberShotTarget } : {}),
+        // Its screenshot measures the element itself at capture time (D183), in frames too (D191).
+        onTarget: rememberShotTarget,
         framePath,
         debug: (ev, data) => dlog('rec', ev, data),
         onSkip: () => {

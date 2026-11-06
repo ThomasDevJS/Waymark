@@ -1497,3 +1497,108 @@ A privacy, storage-lifecycle and recording-performance review of the first versi
 - **Blur too weak, and not fail-safe** (medium): pixelation first, and fail closed (D188).
 - **Turned off, but a queued capture stored after the delete** (low): captures check again after storing, and the export offers only fitting images of guides that are on (D185).
 - **Small**: the IndexedDB connection reopens after the browser closes it; the page's 2.5 s self-restore restarts when the capture starts; README and `docs/STORE.md` (activeTab, alarms, website content) now mention step screenshots.
+
+## 2026-11-06 — Export rework: full-page screenshots, frames, preview (issue #78)
+
+Thomas tested 0.5.0 on a real frame-based app: a 3-step guide had one image (a small crop, blurred unreadable), the steps inside frames had none, and frame masking greyed most of the app. These decisions rework D182, D183 (masking), D187 (frames), D188 (blur and review) and the frames note of D181. Unchanged: off by default per guide with the notice (D180), activeTab only with no new permission (D181), IndexedDB only (D184), the lifecycle (D185), the refusal hint (D186).
+
+### D190. What is stored: the whole visible tab, with the element's box
+*6 Nov 2026 · SPEC: Data model ("Storage"); amends D182*
+
+- **Image**: the whole captured tab, scaled down to at most 1600 px wide (and 2400 px tall), never up. WebP at quality 0.7. Over **250 KB** it is encoded again at 0.8× the size, up to six tries (`fitUnderCap`, `src/core/shots/place.ts`); still too big, nothing is stored.
+- **Record**: `{ v: 2, blob, w, h, box, px, t, at }`. `box` is the element in image pixels (the visible part of it); `px` is image pixels per CSS pixel (the light blur is sized from it, D193). The highlight, blur and zoom are drawn at export time (D193, D194): the stored image stays clean. Embedded documents that could not hide their own field text are painted over (`#d5d9e0`) in the stored image itself (D192), as before.
+- **Placement**: CSS pixels to image pixels with the top frame's `devicePixelRatio` (not image width ÷ `innerWidth`, D183); an element outside the captured area (narrower than the viewport while the side panel opens) gives no image.
+- **Storage size**: up to 250 KB per step instead of 60 KB. Waymark already has `unlimitedStorage`; a 500-step guide is at most 125 MB, typically a fraction of that. A write the browser refuses (quota) is a skipped image, never an error in recording.
+
+### D191. Steps in frames: placed through the frame registry
+*6 Nov 2026 · SPEC: Recorder ("Frames and shadow DOM"); amends D181 ("Frames"), D187*
+
+- **Measured in its own frame**: the recorder's `onTarget` hook and Test step remember the step's element in **every** frame (not only the top one), and the step's frame measures it at capture time.
+- **Placed in the top viewport**: every frame that answers `shot.hide` (D192) reports the embedded documents in its view: its border box, its content box (border and padding added, `childFrame` in `src/content/shots.ts`), its CSS scale (drawn width ÷ layout width) and, for an iframe whose frame runs Waymark, the **token** that frame posted for this capture. The service worker gives each frame it asks a random token; the frame posts it to `window.parent`, and the parent's content script stores it for the iframe whose `contentWindow` sent it. `resolveChildren` names a child only when exactly one reported iframe carries the token, the frame with that token answered, the frame registry (D45, D152) lists it as a child of this parent, and its viewport is the size of the iframe's content box. Anything else is unnamed, so masked. A rebuilt iframe's old frame does not answer, so it never wins. Then `layoutFrames` places each named frame from the top down (offsets added, scales multiplied, each clipped to its parent's visible content box) and `placeElement` places the element, clipped to every frame it is in. An element scrolled out of its frame, or a frame that cannot be placed, gives no image (no outline on the wrong spot).
+- **Why not `chrome.runtime.getFrameId(iframe)`**: it is documented for content scripts since Chrome 106, but in the e2e Chromium it is `undefined` in content scripts (probed with a test marker). **Why not the registry's selectors** (the first version): a selector recorded when the frame claimed its nonce can later match another iframe (an iframe inserted before it, a positional XPath, the same selector in another shadow root), which would have named a foreign iframe as a Waymark frame and left it unmasked (review finding, below).
+- **Messages**: `rec.step`'s hook passes `ctx.frameId`; `step.test` passes the frame that answered (newest first, D152). `TestResult.shot` no longer has `'frame'`. The editor offers Capture for frame steps too.
+- **Limits**: an iframe with a rotation, skew or uneven scale reports no token, so it is masked (and a step inside it gets no image); a rotated ancestor element is not detected, but the size check usually catches it. Clipping by an ancestor's `overflow` (a scrolling container around the iframe) is not applied: a step element scrolled out of such a container can still get a ring; masks only grow in that case. Frames inside closed shadow roots are not in the registry (frames.ts looks in open roots), so they are painted over.
+
+### D192. Field text is hidden in every frame Waymark runs in; only the others are masked
+*6 Nov 2026 · SPEC: Permissions, privacy and security ("never store typed field values"); amends D183*
+
+- **Who is asked**: the top frame, the step's frame and every frame of the tab in the frame registry, all at once (`hideFrames`, `src/background/shots.ts`), each with its own `frameId`. Only the step's frame gets the step id.
+- **Each frame** hides Waymark's overlay host and adopts the field sheet in the document and every shadow root (open and closed), as in D183, then answers **after two animation frames** (or 250 ms when the frame is throttled, which only happens off screen), measuring its embedded documents after painting. A shadow root made meanwhile gets the sheet too.
+- **Waiting**: the capture waits for every answer, 800 ms at most. A frame that answers late, or with anything malformed (`FrameReportSchema`, `src/core/shots/report.ts`), counts as not hidden. No answer from the top frame, or no element from the step's frame: no picture.
+- **Masked**: an embedded document is painted over unless its own frame answered and is named (D191): a frame of a site the user has not allowed, a late frame, an `object`, `embed`, fenced frame or portal, an iframe in a closed shadow root. A masked frame hides everything inside it. A frame with more than 100 embedded documents in view: no picture (fail closed). The page cannot exempt anything: it never names frame ids (the schema allows only `-1`), the service worker does.
+- **Before answering**, a frame waits (up to 150 ms) until every iframe in its view has posted a token; an iframe without Waymark never does and is masked.
+- **A `designMode` document** (a rich-text editor without fields) cannot hide its text: it does not answer, so it is painted over.
+- **After the capture** (`shot.check`, `stillHidden`): every frame that answered must confirm, within 400 ms, that the same capture is still in force (not restored by its 2.5 s timer, same document), that every shadow root it has now holds the sheet, and that the embedded documents in view are the ones it reported. Any other answer, or none: the image is dropped.
+- **Show again**: `shot.show` goes to every frame of the tab (also the late ones); each frame also restores itself after 2.5 s.
+- E2E (`s3-screenshot-frames`): text set in fields of a same-origin and a cross-origin frame is absent from every image (dark pixels in the field), present in a control capture; an ungranted cross-origin frame is the mask colour; the granted frame around it is not masked.
+
+### D193. Blur: optional, light, per image, off by default
+*6 Nov 2026 · SPEC: Sharing; amends D188*
+
+- **Off by default**. The preview (D195) has **Blur** per screenshot and **Blur every screenshot** for all. The issue asked for it per guide too; per image plus "all" covers that without a stored setting.
+- **Light**: a Gaussian blur of about 3.5 CSS pixels (`blurPx`, from the record's `px`; old records from their width), no pixelation. Boxes, menus, headings and the layout stay recognisable; body text cannot be read. D188 pixelated at 1/12 and blurred about 1/80 of the image, about three times stronger, which made the whole page unreadable.
+- The element (inside the highlight) stays sharp. The blur is baked into the exported pixels; a canvas that ignores the filter makes the image fail (it is left out, and the preview says so). The stored image is never blurred.
+- Blur is not a guarantee: large text can stay partly legible. The notice and the preview say to check each image.
+
+### D194. The highlight, the step number and Zoom, drawn at export time
+*6 Nov 2026 · SPEC: Sharing*
+
+- **Highlight** (`renderShot`, `src/core/shots/render.ts`): a rounded orange ring (white edge inside it) around the element with a few pixels of room, a soft dim (`rgba(15,23,42,.28)`, like the player's lighter scrim) over the rest, and the step number in an orange disc at the ring's top-left corner. Strokes and the badge keep their size up to 1000 image pixels of width and grow with wider images.
+- **Zoom to the element**: a part of the stored image around the element, computed when drawing (`zoomRect`): the image's shape, at least 40% of its width, the element with room around it, moved inside the image at the edges. Nothing is cropped in storage.
+
+### D195. The preview page
+*6 Nov 2026 · SPEC: Sharing ("Before export, show a review…"); amends D188 ("Review"); model: D128*
+
+- **Where**: `howto.html`, an unlisted extension page (`src/entrypoints/howto/`), not web accessible. **Preview how-to** in the export review (printable format) opens it in a new tab, with only the guide ids, the review's text removals and the file name in its address (`previewPath`). The page reads the guides through `guide.get` and the images from the extension's IndexedDB after `shots.get` (only guides with screenshots on, only images that fit their step). Nothing leaves the device.
+- **The side panel review** keeps the text review (titles, descriptions, notes, data-like warnings and removals) for every format; its screenshot rows and blur switch moved to the preview. The printable how-to is now always saved from the preview.
+- **What it shows**: the how-to exactly as it will be saved (the exported page's own CSS), each image drawn as it will be. Per step with an image: **Leave out / Keep**, **Blur**, **Zoom to the element**. Steps without an image, in a guide with screenshots on, say how to get one (open the page, the Waymark icon or Alt+W, then Capture in the editor). Old close-ups are marked (D196). An image that cannot be drawn is left out, with a note. Controls are `no-print`.
+- **Save as PDF**: `window.print()` once every image is decoded (no half-loaded or broken image on paper). **Download HTML**: the same drawings as `data:image/webp` URLs in `howtoHtml` (CSP `default-src 'none'; img-src data:`, every string escaped, no script or remote resource), saved as `<file name>.html`.
+- **Print layout** (`PRINT_CSS`): light only (the dark screen style is gone), a header with the step count and the date, a step never split across pages (`break-inside: avoid`), images at most 105 mm tall so two steps fit on an A4 or Letter page. **Not done**: a separate title page; the header on the first page gives the same information without an extra sheet for a 3-step guide.
+- Text in the preview is rendered as Preact text nodes from the same parsed tokens as the HTML file (`howtoInline`), never as HTML.
+
+### D196. Migration: 0.5.0 close-ups
+*6 Nov 2026 · SPEC: Data model*
+
+- Records from 0.5.0 have no `v`: a crop around the element (D182). They still render, whole, with the new highlight and the optional blur; Zoom is disabled for them (they already are one).
+- They are marked: the preview says "A close-up from an older version of Waymark. For the whole page, use Capture again on this step in the editor", and the editor shows "Close-up from an older version" with **Capture again** (Test step). `shots.get` returns their step ids as `old`.
+- Nothing is converted or deleted; no guide changes.
+
+### D197. Storage lifecycle and privacy rules stay
+*6 Nov 2026 · SPEC: Sharing and storage; D180, D184, D185*
+
+- Unchanged: off by default per guide with the notice; deleted with the step on Save, the guide after its Undo (alarm sweep), when turned off, and when an import or library refresh replaces the guide; never in guide files, packs, the library or Markdown; activeTab only.
+- The notice now says the picture is of the whole visible page and that frames from sites Waymark isn't allowed on are greyed out.
+
+### D198. Messages
+*6 Nov 2026 · SPEC: Security (content scripts are untrusted)*
+
+- No new runtime message type and no new permission. `shot.hide` carries a per-frame token and, for the step's frame only, the step id; `shot.check` (a push to content scripts, answered with a boolean) is new. Each frame's answer is parsed with Zod in the service worker (`FrameReportSchema`); the content script imports only types (no Zod in the page bundle). `ShotsStatus` gains `old` (step ids only).
+- The manifest still has no `content_scripts` and no `host_permissions`; `howto.html` is a page of the extension like `practice.html`.
+
+### D199. Tests
+*6 Nov 2026*
+
+- Unit (`test/unit/shots.test.ts`): offset summing with borders, padding and nested frames; scale; clipping; masks for frames that did not answer, objects and duplicates; registry naming (`resolveChildren`, a rebuilt frame, two claimants); `hideFrames` (who is asked, late and malformed answers); the stored image's plan and the 250 KB cap; zoom; blur strength; old records; the preview's address; the print CSS.
+- Browser: `test/browser/howto-preview.test.ts` (Keep / Leave out / Blur / Blur all / Zoom, an old close-up, missing hints, print waits for images, escaping in the saved file); `test/browser/shots.test.ts` (iframe content box with border and padding; ring, dim, number, zoom).
+- E2E `test/e2e/s3-screenshot-frames.spec.ts`: 3 steps (top page, same-origin frame, cross-origin frame inside it; both granted), one whole-page image each with the box where the button's own colour is in the image; field text absent; preview with one image per step and the ring at the box; Save as PDF checked with Chrome's `Page.printToPDF` on the preview page (what `page.pdf()` calls; Playwright allows `page.pdf()` only headless); Download HTML. A second test: an ungranted frame is masked, and Capture from the editor works for a step in a frame. Note: Playwright's `boundingBox()` for an element inside an out-of-process (cross-origin) iframe leaves out that iframe's border and padding; the test compares with the image's pixels there.
+- `s2-screenshots` and `q2-sharing-playback` go through the preview now.
+
+### Fixes from the independent review (D190–D199)
+A privacy, frame-geometry, storage-size and print-layout review of the first version. Regression tests: `test/unit/shots.test.ts` ("review fix" cases) and `test/browser/shots.test.ts` ("review fix" cases). The first version matched children by selector, so the token and check tests could not run against it unchanged; each one builds the failing scenario (a foreign iframe at a registered frame's old selector, a relayed token, a shadow root or iframe added after the answer, a restore before the check, designMode).
+- **A stale selector could un-mask a foreign iframe** (high): children are now named by a per-capture token posted from the child's own window, checked against the registry's parent link and the child's viewport size; a token carried by two iframes names neither (D191, D192).
+- **designMode documents** (medium): their text cannot be hidden; they do not answer, so they are masked (D192).
+- **Nothing checked the frames after the capture** (medium): the `shot.check` round drops the image when a frame restored, navigated, or gained a shadow root or iframe meanwhile (D192).
+- **A second wave of `hideFrames` that never ran** (low): removed.
+- **Rotated or skewed iframes** (low): no token, so masked (D191). Ancestor `overflow` clipping is documented as a limit.
+- **Fenced frames and portals** (low, speculative): treated as embedded documents, so masked.
+
+### Fix from CI: the picture and the measurement must show the same layout (D192)
+CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Reproduced locally (`s3-screenshot-frames`, "quick steps on a slow CPU…": 20× CPU throttling, a short window, no pause between steps), where it failed 2 runs of 10. The test clicks in the frame; Playwright scrolls the top page to do so. When that scroll lands just before a frame answers `shot.hide`, `getBoundingClientRect` already has the new positions, but the screen still shows the old ones for a frame or two, so the capture does not match the box.
+- **Settled before answering**: each frame measures its scroll, viewport, the step's element and its embedded documents, waits two rendered frames, and measures again (`settled`, up to 4 tries). It answers only when both agree within 1 px. If the layout keeps moving, the top frame and the step's frame refuse the picture; any other frame does not answer, so it is painted over.
+- **Checked after the capture**: `shot.check` compares the same measurements (scroll, viewport, the step's element, embedded documents), not only the embedded documents.
+- **One retry**: when a frame changed during the capture, the service worker captures once more (the call spacer keeps Chrome's rate). If it changes again, that step has no image, and Capture in the editor can take it later.
+- **Tests**:
+  - browser `shots.test.ts` ("CI fix"): a scroll or a moved element after the answer fails the check; a page that keeps moving is refused. Both fail on the previous version;
+  - e2e: the throttled test passed 12 runs in a row with the fix, with all 3 images stored in most runs;
+  - every s3 run attaches `screenshot-boxes.json` (viewport, scroll, stored and seen boxes), so a CI failure explains itself.
+- **Test fix, second CI run**: on CI's Chrome, the black heading right above step 1's button had coloured subpixel fringes close to the button's green. The test's plain bounding box of matching pixels then reached the heading: 39–47 px too tall, while the stored box was right, as `screenshot-boxes.json` showed. The test now takes the largest connected group of matching pixels and compares each edge of the stored box with it (within 2 px), not the width, because a button at a fractional position has an anti-aliased column on each side (`test/e2e/helpers/pixels.ts`, unit test `test/unit/e2e-pixels.test.ts`), and the fixture's heading sits beside the button rather than above it. The product code is unchanged.

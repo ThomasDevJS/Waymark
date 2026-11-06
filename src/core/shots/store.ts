@@ -5,23 +5,34 @@
  * extension's origin, not the page's). The service worker writes; the side panel reads it for
  * the export.
  */
-import type { Box } from './crop';
+import type { Box } from './place';
 import type { ShotRef } from './lifecycle';
 
 export const DB_NAME = 'waymark-shots';
 export const STORE = 'shots';
+
+/**
+ * Records from 0.5.0 have no `v`: a close-up crop around the element (D182). Since D190 (`v: 2`)
+ * a record is the whole visible tab. Both render; an old one is marked in the preview and the
+ * editor, with Capture again (D196).
+ */
+export const SHOT_VERSION = 2;
 
 export interface ShotRecord {
   /** `${guideId}/${stepId}` (ids never contain a slash). */
   key: string;
   guideId: string;
   stepId: string;
+  /** 2: the whole visible tab (D190); missing: a 0.5.0 crop around the element. */
+  v?: number;
   /** WebP, without any highlight drawn on it. */
   blob: Blob;
   w: number;
   h: number;
   /** The element within the image, for the highlight drawn at export time. */
   box: Box;
+  /** Image pixels per CSS pixel (D190; sets the light blur's strength, D193). */
+  px?: number;
   /** Which element it shows: targetHash of the step's target when it was taken (D185). */
   t: string;
   at: number;
@@ -95,9 +106,12 @@ export async function shotsOf(guideId: string): Promise<ShotRecord[]> {
   return req(tx.objectStore(STORE).index('guideId').getAll(guideId) as IDBRequest<ShotRecord[]>);
 }
 
+/** A 0.5.0 close-up (D196). */
+export const isOldShot = (r: Pick<Partial<ShotRecord>, 'v'>) => r.v !== SHOT_VERSION;
+
 const refOf = (r: Partial<ShotRecord>): ShotRef | null => {
   const k = parseShotKey(r.key);
-  return k ? { ...k, ...(typeof r.t === 'string' ? { t: r.t } : {}) } : null;
+  return k ? { ...k, ...(typeof r.t === 'string' ? { t: r.t } : {}), ...(isOldShot(r) ? { old: true } : {}) } : null;
 };
 
 /** A guide's images as references (the image data itself is never read). */

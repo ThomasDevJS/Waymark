@@ -269,8 +269,10 @@ export const recordingHandlers: Handlers = {
       await broadcast(st, st?.tabIds ?? []);
       // A screenshot of the step, if asked for (D180). Queued, never awaited: recording and the
       // page's click never wait for it.
+      // Steps in frames too: the element is placed through its frames (D191).
       if (st?.shots && tabId !== undefined && ctx.sender.origin && shotStep(clean, ctx.frameId)) {
         const origin = ctx.sender.origin;
+        const frameId = ctx.frameId;
         const guideId = st.guideId;
         const stepId = op.op === 'add' ? clean.id : op.stepId;
         void queueShot({
@@ -278,6 +280,7 @@ export const recordingHandlers: Handlers = {
           origin,
           guideId,
           step: { id: stepId, target: clean.target },
+          frameId,
           ...(top ? { page: top } : {}),
           // Still wanted: the step is in the recording, or in the guide it was saved as.
           stillWanted: async () => {

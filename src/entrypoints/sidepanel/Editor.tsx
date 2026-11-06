@@ -364,8 +364,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
-          // Screenshots exist for elements in the top page only (D181).
-          const noShot = !!shots.value?.on && canTarget && !!s.target && !s.target.framePath.length && !shots.value.stepIds.includes(s.id);
+          // Any step with an element can have one, in frames too (D191).
+          const noShot = !!shots.value?.on && canTarget && !!s.target && !shots.value.stepIds.includes(s.id);
+          // A 0.5.0 close-up: it still prints, and Capture again takes the whole page (D196).
+          const oldShot = !!shots.value?.on && canTarget && !!s.target && !!shots.value.old?.includes(s.id);
           const runTest = () => {
             tests.value = { ...tests.value, [s.id]: 'running' };
             void attempt(async () => {
@@ -564,6 +566,16 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   </button>
                 </div>
               )}
+              {open && oldShot && (
+                <div class="row small" data-testid={`step-${i}-oldshot`}>
+                  <span class="muted">
+                    <Icon name="image" /> Close-up from an older version
+                  </span>
+                  <button type="button" class="ghost sm" data-testid={`step-${i}-capture`} disabled={tabId === null || t === 'running'} title="Find the element on the page and take a screenshot of the whole page" onClick={runTest}>
+                    Capture again
+                  </button>
+                </div>
+              )}
               <div role="status" class="test-result" data-testid={t ? `step-${i}-test-result` : undefined}>
                 {t && <TestResultView t={t} />}
               </div>
@@ -644,7 +656,6 @@ const SHOT_RESULT: Record<NonNullable<TestResult['shot']>, string> = {
   saved: 'Screenshot saved.',
   refused: SHOT_HINT_PANEL,
   skipped: 'No screenshot this time: the element was not on screen, or the page changed. Try again.',
-  frame: 'Screenshots are taken only for elements on the main page, not inside a frame.',
 };
 
 /** Test step feedback: found (with the clues that matched), fragile, or not found. */
