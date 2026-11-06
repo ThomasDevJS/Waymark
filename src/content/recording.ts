@@ -7,6 +7,7 @@ import { isOverlayPath } from './overlay/host';
 import { flashPill, hidePill, showPill } from './overlay/pill';
 import { testMark } from './test-hooks';
 import { dlog } from './debug';
+import { createRecHover } from './rec-hover';
 
 /** Pill notice for a click the recorder left out (issue #6). */
 export const SKIP_NOTICE = 'Not recorded: Waymark could not find this again. Click a button, link or field.';
@@ -14,6 +15,8 @@ export const SKIP_NOTICE = 'Not recorded: Waymark could not find this again. Cli
 export function startRecordingClient(framePath: () => string[]): { apply(view: RecordingView): void; dispose(): void } {
   let recorder: Recorder | null = null;
   let skipped = 0;
+  const hover = createRecHover(framePath);
+  let hoverAsk = 0;
 
   const apply = (view: RecordingView) => {
     const on = view.active && !view.paused;
@@ -35,6 +38,21 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
       recorder.stop();
       recorder = null;
     }
+    // The outline of what a click will record (D153), unless turned off in Settings. Asked on every
+    // view, so a change in Settings applies at the next step or page; a late reply never revives it.
+    if (on) {
+      const ask = ++hoverAsk;
+      send('recorder.settings.get', {})
+        .then((s) => {
+          if (ask !== hoverAsk || !recorder) return;
+          if (s.hover) hover.start();
+          else hover.stop();
+        })
+        .catch(() => undefined);
+    } else {
+      hoverAsk++;
+      hover.stop();
+    }
     showPill(view);
     testMark('recording', view.active ? (view.paused ? 'paused' : 'on') : 'off');
   };
@@ -52,6 +70,8 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
     dispose() {
       recorder?.stop();
       recorder = null;
+      hoverAsk++;
+      hover.stop();
       hidePill();
       try {
         chrome.runtime.onMessage.removeListener(onMessage);

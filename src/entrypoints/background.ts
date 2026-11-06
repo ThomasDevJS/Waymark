@@ -24,6 +24,7 @@ import { tutorialHandlers } from '../background/tutorials';
 import { debugHandlers, debugReady, debugTextForTab, dlog, onDebugTabRemoved } from '../background/debug';
 import { redactUrl } from '../core/debug/log';
 import { getPlayerSettings, setPlayerSettings } from '../background/player-settings';
+import { getRecorderSettings, setRecorderSettings } from '../background/recorder-settings';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -73,6 +74,8 @@ const handlers: Handlers = {
     await broadcastAllRuns();
     return next;
   },
+  'recorder.settings.get': () => getRecorderSettings(),
+  'recorder.settings.set': ({ patch }) => setRecorderSettings(patch),
   'hd.status': () => hdStatusForSettings(),
   'hd.enable': ({ added }) => hdEnable(added),
   'hd.remove': () => hdRemove(),
