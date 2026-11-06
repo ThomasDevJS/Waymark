@@ -28,12 +28,12 @@ describe('precedence (D145)', () => {
   it('“Follow each guide” uses the guide’s shade, else the default', () => {
     expect(resolveShade('guide', 'darker')).toBe('darker');
     expect(resolveShade('guide', undefined)).toBe(DEFAULT_SHADE);
-    expect(DEFAULT_SHADE).toBe('medium');
+    expect(DEFAULT_SHADE).toBe('lighter'); // D151
   });
   it('anything outside the closed set counts as not set: never a free number', () => {
     for (const bad of [0.9, '0.9', 'black', '', null, {}, 'GUIDE']) {
       expect(isShade(bad)).toBe(false);
-      expect(resolveShade(bad, bad)).toBe('medium');
+      expect(resolveShade(bad, bad)).toBe('lighter');
     }
   });
 });
@@ -68,10 +68,10 @@ describe('compatibility and copies (D146, review)', () => {
     expect('extra' in p).toBe(false);
     expect('futureKey' in p.guides[0]!).toBe(false);
   });
-  it('the editor’s Default removes the field; a level sets it; Medium is the default, so it is not stored', () => {
+  it('the editor’s Default removes the field; a level sets it; Lighter is the default, so it is not stored', () => {
     expect(withGuideShade(guide({ shade: 'darker' }), '')).not.toHaveProperty('shade');
-    expect(withGuideShade(guide(), 'lighter').shade).toBe('lighter');
-    expect(withGuideShade(guide({ shade: 'darker' }), 'medium')).not.toHaveProperty('shade');
+    expect(withGuideShade(guide(), 'medium').shade).toBe('medium');
+    expect(withGuideShade(guide({ shade: 'darker' }), 'lighter')).not.toHaveProperty('shade');
     expect(withGuideShade(guide(), 'black')).not.toHaveProperty('shade');
   });
   it('Duplicate keeps the guide’s shade', () => {
@@ -118,10 +118,10 @@ describe('what content scripts get (D145)', () => {
     const mine = await view({ playerSettings: { shade: 'lighter' } }, guide({ shade: 'darker' }), 'https://app.test/');
     expect(mine.shade).toBe('lighter');
   });
-  it('on another site the view says Medium, whatever the guide or the learner picked', async () => {
+  it('on another site the view says the default (Lighter), whatever the guide or the learner picked', async () => {
     const v = await view({}, guide({ shade: 'darker' }), 'https://other.test/');
-    expect(v.shade).toBe('medium');
+    expect(v.shade).toBe('lighter');
     const mine = await view({ playerSettings: { shade: 'darker' } }, guide({ shade: 'lighter' }), 'https://other.test/');
-    expect(mine.shade).toBe('medium');
+    expect(mine.shade).toBe('lighter');
   });
 });

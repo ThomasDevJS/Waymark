@@ -1254,3 +1254,28 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Practice page race**: a Settings change that arrives while a tutorial's start reads the setting is no longer overwritten by the older read (a change counter). This one has no deterministic test: the window is one message round trip.
 - **Tests that passed on broken code**: the run view is now checked to have exactly its own fields plus `muted` and `shade`; off-site stays Medium even when the learner picked Darker; unknown guide and pack keys are dropped (what D146's compatibility rests on); the editor's Default removes the field on save (`withGuideShade`); team guides show the select read-only; Duplicate keeps the shade.
 - Not changed: the reviewer noted that the content script already bundles some Zod internals on `main`, before this change (this change adds about 0.7 KB and no Zod). Worth its own issue.
+
+### D150. The on-page "?" launcher is on by default where a page has guides
+*6 Nov 2026 · SPEC: Discovery (on-page launcher); issue #66*
+
+- **Change**: SPEC said the launcher is "off by default; turned on per site". Thomas found that learners never saw it unless someone turned it on for each site first. It is now on unless turned off for the site: `site.settings.get` and `guide.forPage` read a missing per-site value as on. An explicit Off is stored as before and wins. The button still shows only on allowed sites, in the top frame, when the page has at least one matching guide, so a site with no guides is unchanged.
+- **Why it is safe**: nothing new runs on a page. The content script was already on every allowed page (route watching for the badge), and the button lists only guides for that origin.
+- **Tests**: `test/e2e/m5-discovery-sharing.spec.ts` checks that a page with no guides has no button. After a guide is recorded, the button shows with no setting changed. Turning it off for the site hides it and the switch stays off after reopening the panel; turning it on brings it back. The first two checks fail on the old code.
+
+### D151. The default shade is Lighter
+*6 Nov 2026 · SPEC: Player (shade, D144–D147); issue #58*
+
+- **Change**: Thomas asked for the Lighter level as the default. `DEFAULT_SHADE` is now `lighter`, so it applies to guides with no shade of their own, to "Follow each guide", to unknown values and to runs on another site. The levels themselves don't change, and Medium keeps the `--wm-scrim` token from D89.
+- **Effect on saved guides**: a guide whose editor choice was "Default" has no `shade` field, so it now plays Lighter. A guide that picked a level keeps it. The editor stores Medium explicitly now and drops Lighter (the new default).
+- **Copy**: the editor's option reads "Default (Lighter)", built from the constant; the Settings hints were updated to match.
+- **Tests**: `test/unit/shade.test.ts` and `test/browser/shade.test.ts` (the default is Lighter and lighter than the Medium token).
+
+### D152. Test step tries every frame at the step's frame path, newest first
+*6 Nov 2026 · SPEC: Editor (Test step), Element targeting (frames); issue #67 (found with the debug log, D110)*
+
+- **Finding**: on an app that shows each screen in brand-new iframes, the frame map keeps the old frames at the same frame path. Test step took the first match in key order, which is the oldest frame, already gone. Its message failed, and the editor said "Waymark is not running on this page. Allow it on this site first." That happened while the guide was playing the same step in the live frame.
+- **Change**: `framesAtPath` (in `src/core/frames/registry.ts`) lists every mapped frame at the path, newest first. `step.test` asks each in turn and uses the first answer. When none answers in a subframe, it says the frame did not answer and suggests a reload; the "Allow it on this site" text is only for the top frame.
+- **Tests**:
+  - unit: `framesAtPath` order;
+  - e2e (`m6-nested-frames.spec.ts`): record a step in the nested frame, let the app rebuild its frames, then Test step finds it. Before the fix it failed with the message above.
+

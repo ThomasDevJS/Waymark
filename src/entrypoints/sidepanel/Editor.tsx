@@ -17,7 +17,7 @@ import { parseTags } from '../../core/discovery/tags';
 import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
-import { withGuideShade } from '../../core/player/shade';
+import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
 
 const draft = signal<Guide | null>(null);
@@ -303,7 +303,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
             dirty.value = true;
           }}
         >
-          <option value="">Default (Medium)</option>
+          <option value="">Default ({SHADE_LABEL[DEFAULT_SHADE]})</option>
           <option value="lighter">{SHADE_LABEL.lighter}</option>
           <option value="darker">{SHADE_LABEL.darker}</option>
         </select>

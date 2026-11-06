@@ -95,3 +95,17 @@ export function framePathFor(map: FrameMap, frameId: number): string[] | null {
   }
   return path;
 }
+
+/**
+ * Every mapped frame at `framePath`, newest first (D152). Apps that rebuild their iframes leave the
+ * old frames in the map, at the same path: the newest is the live one, but a caller should try the
+ * others when it does not answer. Never [] for the top frame: that is frame 0.
+ */
+export function framesAtPath(map: FrameMap, framePath: string[]): number[] {
+  if (!framePath.length) return [0];
+  const want = JSON.stringify(framePath);
+  return Object.keys(map)
+    .map(Number)
+    .filter((id) => JSON.stringify(framePathFor(map, id)) === want)
+    .sort((a, b) => b - a);
+}

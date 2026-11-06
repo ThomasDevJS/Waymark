@@ -83,10 +83,12 @@ for (const closed of [false, true]) {
 
     it('no shade, or one it doesn’t know, is the default', () => {
       ui.showStep(view(), target);
-      expect(spot().dataset.shade).toBe('medium');
+      expect(spot().dataset.shade).toBe('lighter'); // the default (D151)
+      const lighter = alpha(dim());
       ui.showStep(view('pitch-black'), target);
-      expect(spot().dataset.shade).toBe('medium');
-      expect(alpha(dim())).toBe(alpha(token('--wm-scrim')));
+      expect(spot().dataset.shade).toBe('lighter');
+      expect(alpha(dim())).toBe(lighter);
+      expect(alpha(dim())).toBeLessThan(alpha(token('--wm-scrim'))); // lighter than Medium
     });
 
     it('a new level (Settings changed) applies to the drawn step without a redraw', () => {
@@ -97,7 +99,7 @@ for (const closed of [false, true]) {
       expect(spot()).toBe(before);
       expect(alpha(dim())).toBeGreaterThan(light);
       ui.setShade(0.99);
-      expect(spot().dataset.shade).toBe('medium');
+      expect(spot().dataset.shade).toBe('lighter');
     });
 
     it('forced colours still drop the dim at every level', async () => {
