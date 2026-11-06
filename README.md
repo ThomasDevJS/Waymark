@@ -68,7 +68,7 @@ pnpm fixture         # the fixture app at http://127.0.0.1:4173
 
 The e2e tests that grant site access need a display, because Chrome's permission dialog is native UI (DECISIONS D10). Without one (`pnpm test:e2e`), they are skipped.
 
-**CI** (`.github/workflows/ci.yml`) runs on pull requests, on pushes to `main` and by hand. It skips docs-only changes, and its single summary check is **CI result** (D54).
+**CI** (`.github/workflows/ci.yml`) runs on pull requests, on pushes to `main` and by hand. It skips docs-only changes, and its single summary check is **CI result** (D54). The e2e suite runs only by hand and in the Release workflow; every change runs it locally before it is pushed (D161).
 
 **Releases** (`.github/workflows/release.yml`):
 1. `pnpm release X.Y.Z` bumps the version in `package.json`, `CHANGELOG.md`, `docs/STATUS.md` and this README.
