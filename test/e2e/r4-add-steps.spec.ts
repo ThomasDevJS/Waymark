@@ -43,12 +43,14 @@ test('Add a step: pick it on the page, at the end and after a step; Save keeps t
 
   await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-more').click();
-  await panel.getByTestId('step-0-add-pick').click();
+  await panel.getByTestId('step-0-add-pick').click(); // after "Export"
+  // Steps move while the pick waits: the new step still goes after "Export" (review of D202).
+  await panel.getByTestId('step-1-up').click(); // CSV, Export
   await pickOn(app, 'Orders', 'link');
   await panel.bringToFront();
   await panel.getByTestId('save-guide').click();
   await expect(panel.getByTestId('editor-status')).toHaveText('Saved (version 2).');
-  expect(await titles(ext, guideId)).toEqual(['Click **Export**', 'Click **Orders**', 'Click **CSV**']);
+  expect(await titles(ext, guideId)).toEqual(['Click **CSV**', 'Click **Export**', 'Click **Orders**']);
 });
 
 test('Record steps here: Stop puts them into the guide at that place; not while there are unsaved edits', async ({ context, ext, site, extensionId }) => {

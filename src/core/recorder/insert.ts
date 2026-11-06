@@ -25,3 +25,26 @@ export function insertRecorded(guide: Guide, steps: Step[], at: number, origins:
   for (const o of origins) if (!appOrigins.includes(o) && appOrigins.length < MAX_ORIGINS) appOrigins.push(o);
   return { ...guide, steps: next, appOrigins, version: guide.version + 1, revisionId: newId(), updatedAt: new Date(now).toISOString() };
 }
+
+/** What Stop does with a recording into a guide (D202), decided without touching storage. */
+export type InsertStop =
+  | { kind: 'insert'; guide: Guide; count: number; at: number }
+  | { kind: 'aside'; title: string }
+  | { kind: 'nothing' };
+
+const ASIDE = ' (added steps)';
+
+/**
+ * Into the guide when it is still the version the recording started from and the steps fit;
+ * otherwise the steps become a guide of their own (never lost, never overwriting another edit),
+ * titled within the 500-character limit; with no steps recorded, nothing is written.
+ * (A recorded step whose id clashed gets a new id in insertRecorded; its screenshot, keyed by the
+ * old id, is then lost. Ids are random, so this is not expected to happen.)
+ */
+export function planInsertStop(cur: Guide | undefined, rec: { title: string; steps: Step[]; appOrigins: string[]; insert: { at: number; baseRevisionId: string } }, now = Date.now()): InsertStop {
+  if (!rec.steps.length) return { kind: 'nothing' };
+  const fits = !!cur && cur.steps.length + rec.steps.length <= MAX_STEPS_PER_GUIDE;
+  if (cur && cur.source === 'local' && cur.revisionId === rec.insert.baseRevisionId && fits)
+    return { kind: 'insert', guide: insertRecorded(cur, rec.steps, rec.insert.at, rec.appOrigins, now), count: rec.steps.length, at: rec.insert.at };
+  return { kind: 'aside', title: `${rec.title.slice(0, 500 - ASIDE.length).trimEnd()}${ASIDE}` };
+}

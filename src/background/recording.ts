@@ -24,7 +24,7 @@ import { withoutLinks } from '../core/text/markdown';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
 import { addShotsFlagInQueue, probeShot, queueShot, shotStep, shotsOn, sweepShots, type ShotOutcome } from './shots';
-import { insertRecorded } from '../core/recorder/insert';
+import { planInsertStop } from '../core/recorder/insert';
 import { newId } from '../core/model/ids';
 
 const KEY = 'recording';
@@ -222,18 +222,23 @@ export const recordingHandlers: Handlers = {
       const st = await getRecording();
       if (!st) return null;
       if (st.insert) {
-        // Into the guide it was started from, if that is still the version the editor showed
-        // (D202). Otherwise nothing is lost: the steps become a guide of their own.
+        // Into the guide it was started from, if that is still the version the editor showed and
+        // the steps fit (D202). Otherwise nothing is lost: the steps become a guide of their own.
         const cur = (await getGuides([st.guideId]))[0];
-        if (cur && cur.source === 'local' && cur.revisionId === st.insert.baseRevisionId) {
-          const guide = st.steps.length ? insertRecorded(cur, st.steps, st.insert.at, st.appOrigins) : cur;
-          if (st.steps.length) await writeGuide(guide);
+        const plan = planInsertStop(cur, { title: st.title, steps: st.steps, appOrigins: st.appOrigins, insert: st.insert });
+        if (plan.kind === 'insert') {
+          await writeGuide(plan.guide);
           await setRecording(null);
-          return { state: st, guide, added: { count: st.steps.length, at: st.insert.at } };
+          return { state: st, guide: plan.guide, added: { count: plan.count, at: plan.at } };
         }
+        if (plan.kind === 'nothing') {
+          await setRecording(null);
+          return { state: st, guide: cur ?? toGuide(st), added: { count: 0, at: st.insert.at } };
+        }
+        // Images taken meanwhile are keyed to the first guide: the sweep after Stop removes them
+        // (review of D202); the new guide has no screenshots.
         st.guideId = newId();
-        st.title = `${st.title} (added steps)`;
-        st.shots = false;
+        st.title = plan.title;
         const aside = toGuide(st);
         await writeGuide(aside);
         await setRecording(null);

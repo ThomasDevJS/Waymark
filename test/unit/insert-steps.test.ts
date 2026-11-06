@@ -1,6 +1,6 @@
 /** D202: steps recorded into an existing guide go in at the chosen place, as a new version. */
 import { describe, expect, it } from 'vitest';
-import { insertRecorded } from '../../src/core/recorder/insert';
+import { insertRecorded, planInsertStop } from '../../src/core/recorder/insert';
 import { MAX_STEPS_PER_GUIDE, type Guide, type Step } from '../../src/core/model/schema';
 
 const step = (id: string): Step => ({ id, kind: 'note', title: id, url: { kind: 'prefix', value: '/' }, advance: 'next' });
@@ -30,3 +30,27 @@ describe('insertRecorded (D202)', () => {
     expect(() => insertRecorded(guide(Array.from({ length: MAX_STEPS_PER_GUIDE }, (_, i) => `s${i}`)), [step('x')], 0, [])).toThrow(/at most/);
   });
 });
+
+describe('planInsertStop: what Stop does with a recording into a guide (review of D202)', () => {
+  const rec = (n: number, title = 'G', base = 'r1') => ({ title, steps: Array.from({ length: n }, (_, i) => step(`n${i}`)), appOrigins: ['https://a.test'], insert: { at: 1, baseRevisionId: base } });
+  it('into the guide when it is unchanged and the steps fit', () => {
+    const p = planInsertStop(guide(['a', 'b']), rec(2));
+    expect(p.kind).toBe('insert');
+    if (p.kind === 'insert') expect(p.guide.steps.map((s) => s.id)).toEqual(['a', 'n0', 'n1', 'b']);
+  });
+  it('their own guide when the guide changed, went, is a team guide, or the steps would not fit', () => {
+    expect(planInsertStop(guide(['a']), rec(1, 'G', 'older')).kind).toBe('aside');
+    expect(planInsertStop(undefined, rec(1)).kind).toBe('aside');
+    expect(planInsertStop({ ...guide(['a']), source: 'library' }, rec(1)).kind).toBe('aside');
+    const full = guide(Array.from({ length: MAX_STEPS_PER_GUIDE - 5 }, (_, i) => `s${i}`));
+    expect(planInsertStop(full, rec(5)).kind).toBe('insert');
+    expect(planInsertStop(full, rec(6)).kind).toBe('aside'); // Stop must never fail (it did: an error, every time)
+  });
+  it('the title of that guide stays within 500 characters; nothing is written for no steps', () => {
+    const p = planInsertStop(guide(['a']), rec(1, 'x'.repeat(500), 'older'));
+    expect(p.kind === 'aside' && p.title.length <= 500 && p.title.endsWith(' (added steps)')).toBe(true);
+    expect(planInsertStop(guide(['a']), rec(0, 'G', 'older')).kind).toBe('nothing');
+    expect(planInsertStop(guide(['a']), rec(0)).kind).toBe('nothing');
+  });
+});
+

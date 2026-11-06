@@ -82,7 +82,7 @@ export function showStopped(o: Extract<ShortcutOutcome, { kind: 'stopped' }>, ta
     stoppedAside.value = { guideId: o.guideId, title: o.title, count: o.count };
     return;
   }
-  saved.value = { title: o.title, count: o.count, ...(o.added ? { added: true } : {}) };
+  saved.value = { title: o.title, count: o.count, ...(o.added ? { added: true } : {}), ...(o.aside ? { aside: true } : {}) };
   openEditor(o.guideId, tabId);
 }
 
