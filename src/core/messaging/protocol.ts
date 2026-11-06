@@ -101,6 +101,8 @@ export const RequestSchemas = {
   'shots.set': z.object({ guideId: z.string().max(64), on: z.boolean() }),
   'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
   'pick.cancel': z.object({ tabId: z.number().int() }),
+  // The panel's Undo after the player fixed a step (D210): that tab's last fix only.
+  'run.fix.undo': z.object({ tabId: z.number().int() }),
   'voice.list': z.object({}),
   'voice.test': z.object({ lang: z.string().max(35).optional() }),
   'voice.settings.get': z.object({}),
@@ -176,6 +178,8 @@ export const RequestSchemas = {
   'run.mute': z.object({ muted: z.boolean() }),
   // The tooltip's Replay voice and Repeat step (D106): reads the current step again.
   'run.replay': z.object({ stepId: z.string().max(64) }),
+  // Pick the right element from the player (D210): the sender tab's run, its current step only.
+  'run.fix.start': z.object({ stepId: z.string().max(64) }),
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
   // Debug log entries from a content script, for its own tab and frame (D110).
   'debug.log': z.object({ entries: z.array(ContentEntrySchema).min(1).max(MAX_BATCH) }),
@@ -252,6 +256,8 @@ export interface ResponseMap {
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
   'pick.abort': { ok: boolean };
+  'run.fix.start': { ok: boolean };
+  'run.fix.undo': { ok: boolean };
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
@@ -324,6 +330,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.replay', // the tooltip's Replay voice and Repeat step: the sender tab's current step only (D106)
   'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
   'pick.abort', // Esc in the page cancels the pick everywhere (D41)
+  'run.fix.start', // Pick the right element: the sender tab's current step, the author's own guide (D210)
   'launcher.start', // on-page launcher and deep link: only guides of the sender's origin (D42)
   'deeplink.check',
   'route.report',
@@ -382,6 +389,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'shots.set',
   'pick.start',
   'pick.cancel',
+  'run.fix.undo',
   'voice.list',
   'voice.test',
   'voice.settings.get',

@@ -326,7 +326,7 @@ Optional steps also show Skip. After any action, wait 300 ms before searching fo
 - Run state is stored per tab in `chrome.storage.session`, with a snapshot of the guide. On every page load, the content script asks the service worker whether this tab has an active run and resumes at the saved step.
 - A link that opens a new tab carries the run to that tab (`openerTabId`); the old tab's run pauses.
 - Off track: if the current page does not match the step's URL rule and the target is missing for 3 s, show Go back, Skip, or Exit.
-- Guide updated mid-run: the run continues on its snapshot.
+- Guide updated mid-run: the run continues on its snapshot. Exception (D210): when the author fixes a step from the player (Pick the right element, own guides only), the snapshot takes that fixed step.
 - Runs in two tabs are allowed, but there is one voice channel: only the focused tab speaks.
 
 **Accessibility and performance**

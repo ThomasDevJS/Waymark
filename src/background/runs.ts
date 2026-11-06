@@ -35,7 +35,7 @@ function stepFacts(run: Run): Record<string, unknown> {
   return { step: run.stepIndex + 1, of: run.guideSnapshot.steps.length, kind: step?.kind ?? null, title: step ? step.title.replace(/\*\*/g, '') : null, status: run.status };
 }
 
-const runKey = (tabId: number) => `run:${tabId}`;
+export const runKey = (tabId: number) => `run:${tabId}`;
 const REPLAY_KEY = 'replayAt';
 export const REPLAY_MIN_MS = 400;
 const boardKey = (tabId: number) => `match:${tabId}`;
@@ -149,7 +149,7 @@ export async function viewFor(tabId: number | undefined, topUrl?: string): Promi
  * Sends the tab its current view. The read happens inside the write queue, so views go out in
  * the same order as the changes they describe (an older view can never overtake a newer one).
  */
-function broadcast(tabId: number): Promise<void> {
+export function broadcast(tabId: number): Promise<void> {
   return enqueue(async () => {
     const msg: ContentPush = { type: 'run.changed', payload: await viewFor(tabId) };
     chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
@@ -180,12 +180,24 @@ async function loadGuide(id: string): Promise<Guide> {
 }
 
 async function endRun(tabId: number, why = 'ended'): Promise<void> {
-  if (await getRun(tabId)) {
+  const ending = await getRun(tabId);
+  if (ending) {
     stopSpeech(why);
     dlog('run', 'run.end', { tab: tabId }, { why });
   }
+  // The player's pick ends with its run (D210).
+  if (ending?.fix) void stopPicker(tabId);
   await enqueue(() => chrome.storage.session.remove([runKey(tabId), boardKey(tabId)]));
   await broadcast(tabId);
+}
+
+/** Every frame of the tab leaves pick mode. */
+export function stopPicker(tabId: number): Promise<void> {
+  const msg: ContentPush = { type: 'pick.stop' };
+  return chrome.tabs.sendMessage(tabId, msg).then(
+    () => undefined,
+    () => undefined,
+  );
 }
 
 /**
@@ -222,10 +234,16 @@ export async function runOp(tabId: number, op: RunOp, stepId: string): Promise<b
     return true;
   }
   let from = -1;
+  let hadFix = false;
   const { run, out } = await mutateRun(tabId, (r) => {
     from = r ? r.stepIndex : -1;
-    return r ? applyRunOp(r, op, stepId) : false;
+    if (!r || !applyRunOp(r, op, stepId)) return false;
+    // The step changed during the player's pick (a shortcut, another frame): the pick ends (D210).
+    hadFix = !!r.fix;
+    delete r.fix;
+    return true;
   });
+  if (hadFix) void stopPicker(tabId);
   if (!out || !run) {
     dlog('run', 'step.refused', { tab: tabId }, () => ({ op, why: !run ? 'no run' : 'not the current step (stale or repeated)', current: run ? run.stepIndex + 1 : null }));
     return false;
@@ -517,6 +535,13 @@ export async function onTopFrameLoad(tabId: number, url: string): Promise<void> 
   await enqueue(async () => {
     await chrome.storage.session.remove(boardKey(tabId));
     const run = await getRun(tabId);
+    // A new page has no picker running: the player's pick ends and the step shows again (D210).
+    if (run?.fix) {
+      delete run.fix;
+      run.rev += 1;
+      await chrome.storage.session.set({ [runKey(tabId)]: run });
+      dlog('run', 'fix.end', { tab: tabId }, { why: 'a new page loaded' });
+    }
     const step = run ? currentStep(run) : undefined;
     if (run && step && shouldCatchUp(run, url) && applyRunOp(run, 'done', step.id)) {
       await chrome.storage.session.set({ [runKey(tabId)]: run });

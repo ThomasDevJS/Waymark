@@ -13,6 +13,8 @@ import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
 import { updateAllBadges } from './discovery';
+import { endPick, PICK_TTL_MS, pickKey, pickResultKey } from './pick';
+import { endFix, fixPicked } from './fix';
 import { pruneAfterSave, queueShot, setShotsOn, shotsOn, shotsStatus, type ShotOutcome } from './shots';
 
 /** The tab must show a page of the guide's site: steps are only sent to their own origin (D41). */
@@ -32,19 +34,6 @@ async function tabOnOrigins(tabId: number, origins: string[]): Promise<string> {
   if (!url || !origins.includes(origin)) throw new Error("Open a page of this guide's site in this tab first.");
   return url;
 }
-
-/** Ends a pending pick on a tab and lets the panel know (cancelled, timed out, page left). */
-export async function endPick(tabId: number, cancelled: boolean): Promise<void> {
-  const pending = (await chrome.storage.session.get(pickKey(tabId)))[pickKey(tabId)];
-  await chrome.storage.session.remove(pickKey(tabId));
-  if (cancelled && pending) await chrome.storage.session.set({ [pickResultKey(tabId)]: { cancelled: true, at: Date.now() } });
-  const msg: ContentPush = { type: 'pick.stop' };
-  await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);
-}
-
-export const PICK_TTL_MS = 120_000;
-const pickKey = (tabId: number) => `pick:${tabId}`;
-export const pickResultKey = (tabId: number) => `pickResult:${tabId}`;
 
 async function loadGuide(id: string): Promise<Guide> {
   const parsed = GuideSchema.safeParse((await chrome.storage.local.get(guideKey(id)))[guideKey(id)]);
@@ -136,6 +125,8 @@ export const editorHandlers: Handlers = {
   },
   'pick.start': async ({ tabId, origins }) => {
     await tabOnOrigins(tabId, origins);
+    // The editor's pick replaces one the player started in this tab (D210).
+    await endFix(tabId, 'the editor started a pick');
     await chrome.storage.session.set({ [pickKey(tabId)]: Date.now() });
     await chrome.storage.session.remove(pickResultKey(tabId));
     const msg: ContentPush = { type: 'pick.start' };
@@ -152,14 +143,19 @@ export const editorHandlers: Handlers = {
     return { ok: true };
   },
   'pick.abort': async (_p, ctx: HandlerContext) => {
-    if (ctx.tabId !== undefined) await endPick(ctx.tabId, true);
+    if (ctx.tabId !== undefined) {
+      await endPick(ctx.tabId, true);
+      // Esc during the player's pick: the card (or the step) comes back (D210).
+      await endFix(ctx.tabId, 'Esc');
+    }
     return { ok: true };
   },
-  // From a content script: only while the panel asked this tab for a pick.
+  // From a content script: only while the panel asked this tab for a pick, or the player did (D210).
   'pick.result': async ({ target, title }, ctx: HandlerContext) => {
     const tabId = ctx.tabId;
     if (tabId === undefined) return { ok: false };
     const started = (await chrome.storage.session.get(pickKey(tabId)))[pickKey(tabId)] as number | undefined;
+    if (!started) return fixPicked(tabId, target, ctx);
     if (!started || Date.now() - started > PICK_TTL_MS) return { ok: false };
     const fp = ElementFingerprintSchema.parse(target);
     await chrome.storage.session.remove(pickKey(tabId));

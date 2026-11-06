@@ -4,7 +4,7 @@
  * is built with DOM APIs (user strings never reach innerHTML).
  */
 import { arrow, autoUpdate, computePosition, flip, offset, shift, size, type Placement } from '@floating-ui/dom';
-import { ChevronLeft, ChevronRight, CircleCheck, Copy, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
+import { ChevronLeft, ChevronRight, CircleCheck, Copy, Crosshair, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
 import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
@@ -155,6 +155,8 @@ export interface UiHandlers {
   /** True while the debug log is on: the not-found card offers Copy log (D111). */
   debugOn?(): boolean;
   copyLog?(): void;
+  /** Pick the right element (D210): only in a real run of the author's own guide (`view.fixable`). */
+  fix?(): void;
 }
 
 export type Card = 'not-found' | 'off-track' | 'done';
@@ -306,6 +308,11 @@ export class PlayerUI {
     if (!step) return;
 
     const tip = this.tooltipShell(view);
+    // A wrong element highlighted on the author's own guide: Pick the right element (D210).
+    const fix = this.h.fix;
+    if (target && fix && view.fixable && view.status === 'running') {
+      tip.querySelector('.head [data-action="mute"]')?.before(this.iconButton(Crosshair, 'fix', 'Pick the right element', fix));
+    }
     const title = el('div', 'title');
     title.dir = 'auto';
     title.append(...renderInline(step.title));
@@ -446,6 +453,8 @@ export class PlayerUI {
       note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
       // Items in a menu are hidden until it opens, often by pointing at it (D204).
       note.append(el('span', 'menu-hint', ' If it’s in a menu, open the menu first (point at it or click it), then press Retry.'));
+      // The author's own guide: fix the step here, by clicking the right element (D210).
+      if (this.h.fix && view.fixable) buttons.append(this.button('Pick the right element', 'fix', this.h.fix, undefined, Crosshair));
       buttons.append(this.button('Report broken step', 'report', this.h.report));
       // A compact icon button, so the card's row still fits on one line (D111).
       if (this.h.copyLog && this.h.debugOn?.()) buttons.append(this.iconButton(Copy, 'copy-log', 'Copy debug log', this.h.copyLog));

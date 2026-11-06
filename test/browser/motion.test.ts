@@ -26,7 +26,10 @@ const guide: Guide = {
 
 let root: HTMLElement;
 let completions: Record<string, string> = {};
-let onChanged: ((changes: Record<string, unknown>, area: string) => void) | null = null;
+type ChangeListener = (changes: Record<string, unknown>, area: string) => void;
+let onChanged: ChangeListener | null = null;
+// Every panel listener hears a change (the library has more than one, D210).
+const changeListeners: ChangeListener[] = [];
 const entry = (id: string, title: string, stepTitles: string) => ({
   id, revisionId: `R${id}`, title, tags: [], startUrl: 'https://app.test/start', updatedAt: '', appOrigins: ['https://app.test'], matchUrls: [], source: 'local', steps: 2, stepTitles,
 });
@@ -61,7 +64,7 @@ beforeEach(async () => {
       sendMessage: async (m: { type: string }) => ({ ok: true, data: answer(m.type) }),
       getURL: (p: string) => `chrome-extension://x/${p}`,
     },
-    storage: { onChanged: { addListener: (f: typeof onChanged) => (onChanged = f), removeListener() {} }, session: { get: async () => ({}), remove: async () => undefined }, local: { get: async () => ({}), set: async () => undefined } },
+    storage: { onChanged: { addListener: (f: ChangeListener) => { changeListeners.push(f); onChanged = (c, a) => changeListeners.forEach((l) => l(c, a)); }, removeListener: (f: ChangeListener) => void changeListeners.splice(changeListeners.indexOf(f) >>> 0, 1) }, session: { get: async () => ({}), remove: async () => undefined }, local: { get: async () => ({}), set: async () => undefined } },
   };
   root = document.createElement('div');
   document.body.append(root);
