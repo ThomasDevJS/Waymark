@@ -56,10 +56,17 @@ const launcherOn = signal<boolean | null>(null);
 const siteOptionsOpen = signal<string | null>(null); // the origin whose options are open
 
 
-/** The on-page "?" launcher is off by default and turned on per site (SPEC: Discovery). */
+/** The on-page "?" launcher is on by default where a page has guides, and can be turned off per site (D150). */
 function LauncherToggle({ origin }: { origin: string }) {
   useEffect(() => {
-    void send('site.settings.get', { origin }).then((r) => (launcherOn.value = r.launcher));
+    launcherOn.value = null; // another site's value must not show, or be pressed, meanwhile
+    let live = true;
+    void send('site.settings.get', { origin }).then((r) => {
+      if (live) launcherOn.value = r.launcher;
+    });
+    return () => {
+      live = false;
+    };
   }, [origin]);
   return (
     <label class="check small">
@@ -69,6 +76,8 @@ function LauncherToggle({ origin }: { origin: string }) {
         class="switch"
         data-testid="launcher-toggle"
         checked={!!launcherOn.value}
+        // Until this site's value is read, a press could be undone by the late reply (D150).
+        disabled={launcherOn.value === null}
         onChange={(e) => void send('site.settings.set', { origin, launcher: (e.target as HTMLInputElement).checked }).then((r) => (launcherOn.value = r.launcher))}
       />
       <span>

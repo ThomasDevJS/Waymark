@@ -8,7 +8,7 @@ import { ElementFingerprintSchema, GuideSchema, type Guide } from '../core/model
 import { newId } from '../core/model/ids';
 import { enqueue } from '../core/storage/queue';
 import { guideKey, writeGuide } from '../core/storage/guides';
-import { framesKey, type FrameMap } from '../core/frames/registry';
+import { framesAtPath, framesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
@@ -51,25 +51,9 @@ async function loadGuide(id: string): Promise<Guide> {
   return parsed.data;
 }
 
-/** The frameId whose framePath equals the step's recorded one (0 for the top frame). */
-async function frameFor(tabId: number, framePath: string[]): Promise<number | null> {
-  if (!framePath.length) return 0;
-  const map = (await sessionKV.get<FrameMap>(framesKey(tabId))) ?? {};
-  const want = JSON.stringify(framePath);
-  for (const id of Object.keys(map)) {
-    const path: string[] = [];
-    let cur: number = Number(id);
-    const seen = new Set<number>();
-    while (cur !== 0 && !seen.has(cur)) {
-      seen.add(cur);
-      const link = map[String(cur)];
-      if (!link) break;
-      path.unshift(link.selector);
-      cur = link.parentFrameId;
-    }
-    if (cur === 0 && JSON.stringify(path) === want) return Number(id);
-  }
-  return null;
+/** The frameIds at the step's recorded frame path, newest first ([0] for the top frame, D152). */
+async function framesFor(tabId: number, framePath: string[]): Promise<number[]> {
+  return framesAtPath((await sessionKV.get<FrameMap>(framesKey(tabId))) ?? {}, framePath);
 }
 
 export interface TestResult {
@@ -110,15 +94,21 @@ export const editorHandlers: Handlers = {
   'step.test': async ({ tabId, step, origins }): Promise<TestResult> => {
     await tabOnOrigins(tabId, origins);
     if (!step.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element.' };
-    const frameId = await frameFor(tabId, step.target.framePath);
-    if (frameId === null) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step is not on the page.' };
+    const frameIds = await framesFor(tabId, step.target.framePath);
+    if (!frameIds.length) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step is not on the page.' };
     const msg: ContentPush = { type: 'test.step', payload: { step } };
-    try {
-      const r = (await chrome.tabs.sendMessage(tabId, msg, { frameId })) as TestResult | undefined;
-      return r ?? { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'Waymark is not running on this page.' };
-    } catch {
-      return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'Waymark is not running on this page. Allow it on this site first.' };
+    // A rebuilt iframe leaves its old frame in the map: try the newest first, then the others (D152).
+    for (const frameId of frameIds) {
+      try {
+        const r = (await chrome.tabs.sendMessage(tabId, msg, { frameId })) as TestResult | undefined;
+        if (r) return r;
+      } catch {
+        // gone, or no content script there: try the next
+      }
     }
+    return frameIds[0] === 0
+      ? { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'Waymark is not running on this page. Allow it on this site first.' }
+      : { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step did not answer. Reload the page and try again.' };
   },
   'pick.start': async ({ tabId, origins }) => {
     await tabOnOrigins(tabId, origins);

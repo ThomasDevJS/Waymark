@@ -295,7 +295,7 @@ The player draws on top of the real app without touching its styles, and the lea
 - Only the frame that contains the target draws the overlay (see Element targeting, step 8).
 - `pointer-events: none` except on the tooltip. The host stops pointer, mouse and click events from reaching the app, so the app's "click outside" handlers do not close its menus. The tooltip calls `preventDefault` on `mousedown`, so the app's field keeps focus.
 - Spotlight: four dimmed panels around the target's box plus 6 px padding. The target stays clickable through the gap.
-- Shade (D144–D147): how dark the dimmed area is comes from a closed set, Lighter / Medium (default) / Darker. A guide may set its own (`shade`, optional, carried in guide files); a learner's choice in Settings → Highlight wins over the guide's for every guide and tutorial. Content scripts get only the resolved level in the run view. The ring, the hole and forced colours never change with it.
+- Shade (D144–D147): how dark the dimmed area is comes from a closed set, Lighter (default, D151) / Medium / Darker. A guide may set its own (`shade`, optional, carried in guide files); a learner's choice in Settings → Highlight wins over the guide's for every guide and tutorial. Content scripts get only the resolved level in the run view. The ring, the hole and forced colours never change with it.
 - Default is relaxed mode: the dimmed area does not block clicks, so scrolling and side actions still work. A strict mode that blocks clicks outside the target is a later option.
 
 **Tooltip**
@@ -380,7 +380,7 @@ In v1, a learner discovers guides by the page they are on and by search; automat
 
 - **Toolbar badge**: the service worker matches the tab URL against every guide's URL rules and sets that tab's badge count. It learns the URL from `tabs.onUpdated` and from route reports sent by the content script. The REC badge takes precedence.
 - **Side panel**: "For this page" first, then all guides with search over title, description, tags and step titles. Search is client-side (MiniSearch).
-- **On-page launcher**: a small "?" button in the overlay, bottom right, listing matching guides. Off by default; turned on per site.
+- **On-page launcher**: a small "?" button in the overlay, bottom right, listing matching guides. On by default where a page has guides; can be turned off per site (D150).
 - **First-run access**: a new learner has no sites granted, so nothing would show. When a pack is imported or a library is subscribed, the panel offers one Allow request covering every site in its `appOrigins`.
 - **Deep link**: `waymark=<guideId>` in the URL hash or query string offers to start that guide. The content script reads it at `document_start`, passes it to the service worker, and removes it with `history.replaceState`, so hash-routed apps are not disturbed.
 - **Later**: rage clicks, repeated form errors or long idle time on a form suggest a matching guide. Off by default, and never more than once per page visit.

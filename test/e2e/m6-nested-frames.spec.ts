@@ -153,3 +153,32 @@ test('each frame reports its search once per step (#36)', async ({ context, ext,
   expect([...perFrame.entries()].filter(([, n]) => n !== 1)).toEqual([]);
 });
 
+
+test('Test step finds a step in a rebuilt nested frame, not the old frame left in the map (D152)', async ({ context, ext, site }) => {
+  test.setTimeout(90_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/nested/index.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await ext.message('rec.start', { tabId, title: 'Rebuilt frame' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await app.bringToFront();
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null), { timeout: 10_000 }).toBe('ready');
+  await expect.poll(async () => marker(activity(app)!, 'recording')).toBe('on');
+  await activity(app)!.locator('.cards .title', { hasText: 'Unsafe Driving' }).click();
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string }>('rec.stop', {});
+  const guide = await ext.message<{ appOrigins: string[]; steps: unknown[] }>('guide.get', { id: rec.guideId });
+
+  // The app shows the screen again in brand-new frames: the old ones stay in the frame map.
+  await app.getByRole('link', { name: 'Home' }).click();
+  await expect.poll(() => activity(app)).toBeUndefined();
+  await app.getByRole('link', { name: 'Safety' }).click();
+  await expect.poll(async () => (activity(app) ? marker(activity(app)!, 'activity') : null), { timeout: 10_000 }).toBe('ready');
+
+  const r = await ext.message<{ found: boolean; reason?: string }>('step.test', { tabId, step: guide.steps[1], origins: guide.appOrigins });
+  expect(r.reason).toBeUndefined();
+  expect(r.found).toBe(true);
+});

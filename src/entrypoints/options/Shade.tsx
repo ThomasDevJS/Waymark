@@ -2,7 +2,7 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
-import type { LearnerShade } from '../../core/player/shade';
+import { DEFAULT_SHADE, type LearnerShade } from '../../core/player/shade';
 import { LEARNER_SHADE_CHOICES, SHADE_NAME } from '../../ui/shadeCopy';
 
 const shade = signal<LearnerShade | null>(null);
@@ -30,7 +30,7 @@ export function ShadeSetting() {
   }, []);
   const v = shade.value;
   // The preview follows the choice; "Follow each guide" shows the usual shade.
-  const preview = v === 'lighter' || v === 'darker' ? v : 'medium';
+  const preview = v === 'lighter' || v === 'medium' || v === 'darker' ? v : DEFAULT_SHADE;
   return (
     <div class="shade-setting">
       <fieldset class="formats" data-testid="shade" aria-describedby="shade-hint">

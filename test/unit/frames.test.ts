@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claimNonce, framePathFor, issueNonce, MAX_MAPPED_FRAMES, MAX_PENDING_NONCES, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
+import { claimNonce, framePathFor, framesAtPath, issueNonce, MAX_MAPPED_FRAMES, MAX_PENDING_NONCES, NONCE_TTL_MS, type KV } from '../../src/core/frames/registry';
 import { pickWinnerFrame } from '../../src/core/matcher/frames';
 
 function memKV(m = new Map<string, unknown>()): KV {
@@ -77,3 +77,21 @@ describe('pickWinnerFrame', () => {
     expect(pickWinnerFrame([r(0, 95), r(3, 90, { pathMatches: true })])).toBe(3);
   });
 });
+
+describe('framesAtPath (D152)', () => {
+  it('lists every frame at a path, newest first; the top frame is 0', () => {
+    // 324 → 353 was the screen's first frame pair; the app rebuilt it as 390 → 398.
+    const map = {
+      '324': { parentFrameId: 0, selector: '#action_frame' },
+      '353': { parentFrameId: 324, selector: 'iframe.activity' },
+      '390': { parentFrameId: 0, selector: '#action_frame' },
+      '398': { parentFrameId: 390, selector: 'iframe.activity' },
+      '400': { parentFrameId: 0, selector: '#other' },
+    };
+    expect(framesAtPath(map, ['#action_frame', 'iframe.activity'])).toEqual([398, 353]);
+    expect(framesAtPath(map, ['#action_frame'])).toEqual([390, 324]);
+    expect(framesAtPath(map, [])).toEqual([0]);
+    expect(framesAtPath(map, ['#missing'])).toEqual([]);
+  });
+});
+

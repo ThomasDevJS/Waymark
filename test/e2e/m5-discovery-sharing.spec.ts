@@ -145,16 +145,27 @@ test('a pack exported after review and imported into a second browser profile pl
   }
 });
 
-test('on-page launcher (off by default, on per site) and deep links start a guide', async ({ context, ext, site, extensionId }) => {
+test('on-page launcher (on by default where a page has guides, off per site) and deep links start a guide', async ({ context, ext, site, extensionId }) => {
   await ext.grant('http://127.0.0.1/*');
   const app = await openApp(context, `${site.main}/app/orders?static`);
+  // No guides for this page yet: no button, even though the launcher is on by default.
+  await expect.poll(() => marker(app, 'launcher')).toBe('off');
   const { guideId } = await recordOrdersGuide(ext, app, 'Launcher guide');
   await app.reload();
-  await expect.poll(() => marker(app, 'launcher')).toBe('off'); // off by default
+  await expect.poll(() => marker(app, 'launcher')).toBe('1'); // on by default (D150)
   const tabId = await tabIdFor(ext, app);
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId('site-options').click(); // folded away (D120)
+  await expect(panel.getByTestId('launcher-toggle')).toBeChecked();
+  // Turned off for the site, it stays off.
+  await panel.getByTestId('launcher-toggle').uncheck();
+  await app.bringToFront();
+  await app.reload();
+  await expect.poll(() => marker(app, 'launcher')).toBe('off');
+  await panel.reload();
+  await panel.getByTestId('site-options').click();
+  await expect(panel.getByTestId('launcher-toggle')).not.toBeChecked();
   await panel.getByTestId('launcher-toggle').check();
   await app.bringToFront();
   await app.reload();
@@ -189,7 +200,7 @@ test(`on-page launcher with the production closed shadow root: a guide in the me
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
   await panel.getByTestId('site-options').click();
-  await panel.getByTestId('launcher-toggle').check();
+  await expect(panel.getByTestId('launcher-toggle')).toBeChecked(); // on by default (D150)
   await app.bringToFront();
   await app.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
   await app.goto(`${site.main}/app/orders?static&waymark-test-closed`);

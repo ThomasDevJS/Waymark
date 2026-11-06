@@ -356,7 +356,8 @@ export const discoveryHandlers: Handlers = {
     });
     return { ok: true };
   },
-  'site.settings.get': async ({ origin }) => ({ launcher: isSiteOrigin(origin) && !!ownSetting(await siteSettings(), origin)?.launcher }),
+  // The launcher is on unless turned off for this site (D150); it shows only where the page has guides.
+  'site.settings.get': async ({ origin }) => ({ launcher: isSiteOrigin(origin) && (ownSetting(await siteSettings(), origin)?.launcher ?? true) }),
   'site.settings.set': async ({ origin, launcher }) => {
     // Settings are keyed by origin: only real site origins, never "__proto__" or other junk (D48).
     if (!isSiteOrigin(origin)) throw new Error('Waymark works only on http and https sites.');
@@ -403,7 +404,7 @@ export const discoveryHandlers: Handlers = {
     const origin = ctx.sender.origin;
     if (!url || !origin || ctx.frameId !== 0) return { guides: [], launcher: false };
     const guides = (await listGuides()).filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url)).map((g) => ({ id: g.id, title: g.title }));
-    const launcher = !!ownSetting(await siteSettings(), origin)?.launcher;
+    const launcher = ownSetting(await siteSettings(), origin)?.launcher ?? true; // on unless turned off (D150)
     return { guides, launcher };
   },
   'launcher.start': async ({ guideId, openStart }, ctx: HandlerContext) => {

@@ -9,7 +9,8 @@ export type Shade = (typeof SHADES)[number];
 export const LEARNER_SHADES = ['guide', ...SHADES] as const;
 export type LearnerShade = (typeof LEARNER_SHADES)[number];
 
-export const DEFAULT_SHADE: Shade = 'medium';
+/** Lighter by default (D151): Thomas found Medium heavy on busy app pages. */
+export const DEFAULT_SHADE: Shade = 'lighter';
 
 export function isShade(v: unknown): v is Shade {
   return typeof v === 'string' && (SHADES as readonly string[]).includes(v);

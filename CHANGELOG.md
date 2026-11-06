@@ -6,6 +6,13 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- The on-page **?** button is on by default on sites where a page has guides; turn it off per site in the side panel (D150, #66).
+- The shade around a highlighted step is **Lighter** by default; Medium and Darker stay in Settings and the editor (D151).
+
+### Fixed
+- **Test step** works on apps that rebuild their frames: it no longer says "Waymark is not running on this page" for a step in a frame the app replaced (D152).
+
 ## [0.4.1] - 2026-11-05
 
 ### Added
