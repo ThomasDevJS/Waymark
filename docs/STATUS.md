@@ -101,7 +101,7 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - `pnpm motion:bench`: frame times of the panel and player animations with the CPU slowed 4× (D132). Not part of `pnpm check`; run it when touching motion.
 - `pnpm bench`: the performance harness (`test/perf/`, 500 guides of 50 steps through the service worker paths). Not part of `pnpm check`; run it when touching storage, the index, badges or search (D49).
 - **Demo app for manual testing:** `pnpm demo` serves `demo/` at http://localhost:8080 (see `demo/README.md`).
-- `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (31 tests, about 3 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).
+- `pnpm test:e2e:xvfb`: builds `.output-test` and runs Playwright headed under Xvfb (69 tests, about 8 minutes). Grant tests accept Chrome's native permission dialog with `test/e2e/helpers/x11-keys.py` (Tab, Enter).
   - One file: `xvfb-run -a npx playwright test m3`. One test: `-g "name"`.
   - After changing `src/`, rebuild first with `pnpm build:test`; e2e tests use the built extension.
   - Failure traces are in `test-results/*/error-context.md`.
