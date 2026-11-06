@@ -1417,6 +1417,16 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - `test/unit/theme.test.ts`: the two dark blocks are identical; System leaves the attribute off.
   - `test/e2e/r3-theme.spec.ts`: Dark on a light system and Light on a dark system, in Settings and live in the overlay of a recording page; System again; a reopened page starts in the stored choice.
 
+### D201. Google Sites: plain wording when its embed wrapper changed
+*6 Nov 2026 · SPEC: Recorder ("Frames"); follow-up to D155; Thomas's decision D-2*
+
+- **Decision (Thomas)**: no wildcard grant for `*.googleusercontent.com`. Chrome's patterns can't express `*-atari-embeds.googleusercontent.com`, so a narrower permission is impossible. After a republish, the new wrapper address is still allowed with one click.
+- **Change**: on a `https://sites.google.com` page, when the Allow offer includes a Google Sites wrapper (`^https://[^./]+-atari-embeds\.googleusercontent\.com$`, `isGoogleSitesWrapper`), the offer says:
+  - "Your Google Site was updated. Click Allow to keep using Waymark in it." when an earlier wrapper was allowed before (`googleSitesNotice` → `updated`);
+  - "This Google Site shows an embedded app through Google's own frame…" for the first one.
+  It is the same single click, with no automatic grant and no new permission. Granted origins come from `permissions.getAll()`, plain `scheme://host/*` patterns only.
+- **Tests**: `test/unit/embeds.test.ts`: the matcher (look-alike hosts, http, subdomains, other googleusercontent hosts) and the wording for each case.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

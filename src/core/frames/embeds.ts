@@ -79,3 +79,17 @@ export function reportsSince(map: EmbedMap, since: number): EmbedMap | null {
   const next = Object.fromEntries(Object.entries(map).filter(([, e]) => e.at >= since));
   return Object.keys(next).length === Object.keys(map).length ? null : next;
 }
+
+/** Google Sites shows an embed through a frame on `<number>-atari-embeds.googleusercontent.com` (D201). */
+const GOOGLE_SITES_WRAPPER = /^https:\/\/[^./]+-atari-embeds\.googleusercontent\.com$/;
+export const isGoogleSitesWrapper = (origin: string): boolean => GOOGLE_SITES_WRAPPER.test(origin);
+
+/**
+ * How the panel words its Allow offer on a Google Sites page (D201): `updated` when the page asks
+ * for a new wrapper and an older wrapper was allowed before (the site was republished, so its
+ * wrapper got a new address), `first` for the first wrapper, null anywhere else.
+ */
+export function googleSitesNotice(pageOrigin: string | null, pending: readonly string[], granted: readonly string[]): 'updated' | 'first' | null {
+  if (pageOrigin !== 'https://sites.google.com' || !pending.some(isGoogleSitesWrapper)) return null;
+  return granted.some(isGoogleSitesWrapper) ? 'updated' : 'first';
+}

@@ -4,6 +4,7 @@ import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { siteLabel } from '../../core/text/names';
+import { googleSitesNotice } from '../../core/frames/embeds';
 import { Recorder, recorderBusy, showStopped } from './Recorder';
 import { loadTutorialsHidden, openPractice, setTutorialsHidden, Tutorials, tutorialsHidden } from './Tutorials';
 import { Library } from './Library';
@@ -80,7 +81,17 @@ async function allowEmbeds(tabId: number, origins: string[]) {
   }
 }
 
-function EmbedsOffer({ tabId }: { tabId: number }) {
+/** Granted origins, for the Google Sites wording (D201): from the match patterns of plain sites. */
+const grantedOrigins = signal<string[]>([]);
+async function refreshGranted() {
+  const all = await chrome.permissions.getAll().catch(() => ({ origins: [] as string[] }));
+  grantedOrigins.value = (all.origins ?? []).flatMap((p) => {
+    const m = /^(https?):\/\/([^/*]+)\/\*$/.exec(p);
+    return m ? [`${m[1]}://${m[2]}`] : [];
+  });
+}
+
+function EmbedsOffer({ tabId, pageOrigin }: { tabId: number; pageOrigin: string | null }) {
   useEffect(() => {
     embeds.value = null;
     embedsUnticked.value = new Set();
@@ -90,7 +101,11 @@ function EmbedsOffer({ tabId }: { tabId: number }) {
     const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'session' && key in changes) void refreshEmbeds(tabId);
     };
-    const onPerms = () => void refreshEmbeds(tabId);
+    const onPerms = () => {
+      void refreshEmbeds(tabId);
+      void refreshGranted();
+    };
+    void refreshGranted();
     chrome.storage.onChanged.addListener(onStorage);
     chrome.permissions.onAdded.addListener(onPerms);
     chrome.permissions.onRemoved.addListener(onPerms);
@@ -104,12 +119,17 @@ function EmbedsOffer({ tabId }: { tabId: number }) {
   const e = embeds.value;
   if (!e || e.tabId !== tabId || !e.origins.length) return null;
   const chosen = e.origins.filter((o) => !embedsUnticked.value.has(o));
+  const sites = googleSitesNotice(pageOrigin, e.origins, grantedOrigins.value);
   return (
     <div class="banner" role="status" data-testid="embeds-offer">
       <Icon name="globe" />
       <div class="stack-sm grow">
-        <span>
-          This page shows content from {e.origins.length === 1 ? 'another site' : 'other sites'}. Allow Waymark there too, so you can record and play guides inside it.
+        <span data-testid="embeds-text">
+          {sites === 'updated'
+            ? 'Your Google Site was updated. Click Allow to keep using Waymark in it.'
+            : sites === 'first'
+              ? 'This Google Site shows an embedded app through Google’s own frame. Allow Waymark there too, so you can record and play guides inside it.'
+              : `This page shows content from ${e.origins.length === 1 ? 'another site' : 'other sites'}. Allow Waymark there too, so you can record and play guides inside it.`}
         </span>
         <ul class="sites" data-testid="embeds-sites">
           {e.origins.map((o) => (
@@ -258,7 +278,7 @@ function SiteCard({ t }: { t: TabInfo | null }) {
           <Icon name="chevron-down" class="chev" />
         </button>
       </div>
-      {t.tabId !== null && <EmbedsOffer tabId={t.tabId} />}
+      {t.tabId !== null && <EmbedsOffer tabId={t.tabId} pageOrigin={t.origin} />}
       {open && (
         <div class="site-options stack-sm unfold" id="site-options">
           <LauncherToggle origin={t.origin} />
