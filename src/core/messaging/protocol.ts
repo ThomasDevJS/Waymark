@@ -53,7 +53,13 @@ export const RequestSchemas = {
   'site.list': z.object({}),
   'site.sync': z.object({}),
   // shots: capture screenshots for the printable how-to while recording (D180), off unless asked.
-  'rec.start': z.object({ tabId: z.number().int(), title: z.string().max(500), shots: z.boolean().optional() }),
+  'rec.start': z.object({
+    tabId: z.number().int(),
+    title: z.string().max(500),
+    shots: z.boolean().optional(),
+    // Record steps into an existing guide, before step `at` (D202).
+    insertInto: z.object({ guideId: z.string().max(64), at: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE) }).optional(),
+  }),
   'rec.pause': z.object({}),
   'rec.resume': z.object({}),
   'rec.undo': z.object({}),
@@ -204,7 +210,8 @@ export interface ResponseMap {
   'rec.resume': RecordingState | null;
   'rec.undo': RecordingState | null;
   'rec.note': RecordingState | null;
-  'rec.stop': { guideId: string; title: string; steps: Step[] } | null;
+  /** `added`: steps recorded into an existing guide (D202); `aside`: it changed meanwhile, so they were saved as a new guide. */
+  'rec.stop': { guideId: string; title: string; steps: Step[]; added?: { count: number; at: number }; aside?: boolean } | null;
   'rec.state': RecordingState | null;
   'guide.list': { guides: GuideIndexEntry[] };
   'route.report': { ok: true; recording: RecordingView; run: RunView; debug: boolean };

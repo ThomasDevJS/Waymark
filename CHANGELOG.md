@@ -7,6 +7,7 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ## [Unreleased]
 
 ### Added
+- Add a forgotten step to a guide: **Add a step** picks it on the page, **Record steps** records more steps into the guide at that place (D202, #89).
 - Google Sites: after a site is republished, the side panel says so plainly and keeps the one-click Allow (D201).
 - Settings → Appearance: choose the theme, System (the default), Light or Dark (D200, #88).
 - The printable how-to has links: the start page, “Open this page” where a step’s page changes, and links in notes to the guide’s own sites (D159, #85).

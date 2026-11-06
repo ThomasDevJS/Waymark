@@ -146,6 +146,41 @@ function deleteStep(index: number) {
   });
 }
 
+/** The picker for a new step before index `at` (D202): `picking` holds `new:<at>` meanwhile. */
+const newMark = (at: number) => `new:${at}`;
+function addByPick(tabId: number, at: number, origins: string[]) {
+  const mark = newMark(at);
+  if (picking.value === mark) {
+    void attempt(() => send('pick.cancel', { tabId }));
+    endPicking();
+    return;
+  }
+  picking.value = mark;
+  clearTimeout(pickTimer);
+  pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
+  void attempt(() => send('pick.start', { tabId, origins })).then((r) => {
+    if (!r) endPicking();
+  });
+}
+
+/** A picked element as a new click step before index `at` (D202). */
+function insertPicked(at: number, r: { target: ElementFingerprint; title?: string; url?: Step['url'] }) {
+  setSteps((steps) => {
+    const ref = steps[Math.min(at, steps.length) - 1] ?? steps[0];
+    const step: Step = { id: newId(), kind: 'click', title: r.title || 'Click the element', url: r.url ?? ref?.url ?? { kind: 'prefix', value: '/' }, target: r.target, advance: 'action' };
+    toggleIn(openSteps, step.id, true);
+    tests.value = { ...tests.value, [step.id]: { found: true, score: 100, margin: 100, matched: ['picked'], fragile: false } };
+    const copy = steps.slice();
+    copy.splice(Math.min(at, copy.length), 0, step);
+    return copy;
+  });
+}
+
+/** Record steps into the saved guide before index `at` (D202): Stop puts them there. */
+function recordInto(tabId: number, guideId: string, at: number) {
+  void attempt(() => send('rec.start', { tabId, title: '', insertInto: { guideId, at } }));
+}
+
 function insertNote(after: number) {
   setSteps((steps) => {
     const ref = steps[after] ?? steps[steps.length - 1];
@@ -170,6 +205,41 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
 /** True while the editor holds edits that are not saved (the recording shortcut must not drop them, D105). */
 export function editorHasUnsavedEdits(): boolean {
   return dirty.value && !!draft.value;
+}
+
+/**
+ * Add a real step (D202, #89): pick it on the page (a click step, into the draft), or record steps
+ * there (any kind; Stop saves them into the guide, so unsaved edits must be saved first).
+ */
+function AddStepButtons({ at, testid, label, g, tabId, readOnly }: { at: number; testid: string; label: string; g: Guide; tabId: number | null; readOnly: boolean }) {
+  const onSite = tabId !== null;
+  const picking_ = picking.value === newMark(at);
+  return (
+    <>
+      <button
+        type="button"
+        class="ghost sm"
+        data-testid={`${testid}-pick`}
+        disabled={readOnly || !onSite || (!!picking.value && !picking_)}
+        title="Click the element on the page; it becomes a new click step here"
+        onClick={() => addByPick(tabId!, at, g.appOrigins)}
+      >
+        <Icon name={picking_ ? 'close' : 'crosshair'} />
+        {picking_ ? 'Cancel picking' : `Add a step ${label}`}
+      </button>
+      <button
+        type="button"
+        class="ghost sm"
+        data-testid={`${testid}-record`}
+        disabled={readOnly || !onSite || dirty.value || !!picking.value}
+        title={dirty.value ? 'Save your changes first: the recorded steps are saved into the guide' : 'Record clicks, fields and choices on the page; Stop puts them here'}
+        onClick={() => recordInto(tabId!, g.id, at)}
+      >
+        <Icon name="play" />
+        Record steps {label}
+      </button>
+    </>
+  );
 }
 
 export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: number | null; onClose: () => void }) {
@@ -218,6 +288,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       if (!stepId) return;
       endPicking();
       if (r.cancelled || !r.target) return;
+      if (stepId.startsWith('new:')) {
+        insertPicked(Number(stepId.slice(4)), { target: r.target, ...(r.title ? { title: r.title } : {}), ...(r.url ? { url: r.url } : {}) });
+        return;
+      }
       // The explicitly chosen element replaces the target; recorder warnings no longer apply.
       patchStep(stepId, { target: r.target, flags: undefined, ...(r.url ? { url: r.url } : {}) });
       if (r.title) suggested.value = { ...suggested.value, [stepId]: r.title };
@@ -535,6 +609,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                         </label>
                       </div>
                       <div class="toolbar">
+                        <AddStepButtons at={i + 1} testid={`step-${i}-add`} label="after" g={g} tabId={tabId} readOnly={readOnly} />
                         <button type="button" class="ghost sm" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
                           <Icon name="plus" />
                           Add a note after
@@ -590,12 +665,14 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           );
         })}
       </ol>
-      <div>
-        <button type="button" class="ghost" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
+      <div class="toolbar">
+        <AddStepButtons at={g.steps.length} testid="end-add" label="at the end" g={g} tabId={tabId} readOnly={readOnly} />
+        <button type="button" class="ghost sm" disabled={readOnly} data-testid="add-note-end" onClick={() => insertNote(g.steps.length - 1)}>
           <Icon name="plus" />
           Add a note at the end
         </button>
       </div>
+      {tabId === null && !readOnly && <p class="hint">To add steps, open a page of this guide’s site in this tab.</p>}
       <div class="editor-bar">
         <ToastSlot scope="editor" />
         {error.value && (
