@@ -565,6 +565,16 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - The concurrency group is the tag, so a pushed tag and a manual run for the same version can't publish at once.
   - Docs say to give the release merge commit: `main`'s latest commit may be docs-only, with no CI run to wait for.
 
+### D161. CI runs e2e only by hand and before a release
+*6 Nov 2026 · D52, D54, D160*
+
+- **Finding**: 90% of the Free plan's 2,000 monthly Actions minutes were used by 6 November (Thomas). A merged PR cost about 30 runner minutes: on the PR, `check` (about 3 minutes) plus two e2e shards (about 6 each, billed per job), then the same again on `main` after the merge. Every PR's full e2e suite also runs locally before it is pushed and again before it is merged (coordinating session), so the CI e2e runs duplicated a gate that already exists.
+- **Change**:
+  - `ci.yml`: the e2e job runs only on `workflow_dispatch` (Actions → CI → Run workflow). Pull requests and `main` pushes run `changes` and `check`: type check, lint, both builds, the manifest guard, and unit and browser tests.
+  - `release.yml`: the CI gate on the release commit waits for `check` only. A new read-only `e2e` job runs the whole suite on that commit, and `publish` needs it, so nothing is published without a green e2e run on GitHub.
+  - CLAUDE.md: the local `pnpm test:e2e:xvfb` is the e2e gate for every change.
+- **Cost**: about 8 minutes per merged PR instead of about 30, plus about 10 per release. A change that breaks e2e only on GitHub's runners (not locally) shows up at release time, not at merge. Run CI by hand on a branch when a change is risky for that.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).

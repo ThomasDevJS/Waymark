@@ -111,21 +111,22 @@ jobs:
         run: |
           mkdir -p dist-release
           node scripts/changelog-notes.mjs "$VERSION" > dist-release/notes.md
-      - name: The commit passed the full CI on main
-        # The jobs of .github/workflows/ci.yml; the e2e shards and browser tests don't run again
-        # here. Waits up to 12 minutes for a run that is still going (a tag pushed right after the
-        # merge). A docs-only commit has no CI run, so tag the version bump's merge commit.
+      - name: The commit passed CI on main
+        # The `check` job of .github/workflows/ci.yml (type check, lint, builds, unit and browser
+        # tests); the e2e suite runs below, in this workflow (D161). Waits up to 12 minutes for a
+        # run that is still going. A docs-only commit has no CI run, so tag the version bump's
+        # merge commit.
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ steps.version.outputs.commit }}
         run: |
-          filter='[.check_runs[] | select(.name == "check" or .name == "e2e (1)" or .name == "e2e (2)")]
+          filter='[.check_runs[] | select(.name == "check")]
             | group_by(.name) | map(max_by(.started_at)) | map("\(.name)=\(.conclusion // .status)") | .[]'
           for attempt in $(seq 1 36); do
             states=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/check-runs?per_page=100" --jq "$filter")
             echo "attempt $attempt: ${states//$'\n'/, }"
-            if [ "$(grep -c '=success$' <<< "$states")" = 3 ]; then exit 0; fi
+            if [ "$(grep -c '=success$' <<< "$states")" = 1 ]; then exit 0; fi
             if [ -n "$states" ] && grep -vqE '=(success|queued|in_progress|waiting|pending|requested)$' <<< "$states"; then
               echo "::error::CI did not pass for $COMMIT: ${states//$'\n'/, }"
               exit 1
@@ -160,9 +161,51 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  e2e:
+    # The full end-to-end suite on the release commit (D161): CI runs it only by hand, so a release
+    # is where it runs on GitHub. Read-only; publish waits for it.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test build
+        run: pnpm build:test
+      - uses: ./.github/actions/playwright-browser
+        timeout-minutes: 6
+      - name: Install Xvfb and XTest (accepting the native permission dialog)
+        timeout-minutes: 4
+        run: |
+          if command -v xvfb-run >/dev/null && dpkg -s libxtst6 >/dev/null 2>&1; then
+            echo "xvfb and libxtst6 are installed."
+          else
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libxtst6
+          fi
+      - name: End-to-end tests (headed under Xvfb)
+        run: xvfb-run -a pnpm exec playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
   publish:
     # The only job with write access: no checkout, no install, no project code.
-    needs: build
+    needs: [build, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
