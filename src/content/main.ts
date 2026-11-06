@@ -66,8 +66,8 @@ export function startContent(): void {
           setDebug(r.debug === true);
           recording.apply(r.recording);
           player.apply(r.run);
-          // The tab's list of embedded sites is cleared when its page changes: report again (D155).
-          embeds.refresh(true);
+          // An in-app route may show other frames: check again (D155).
+          embeds.refresh();
           if (window === window.top) {
             launcher.refresh(); // guides for this page change with in-app routes too
             if (firstReport && deepLink) launcher.offerDeepLink(deepLink);

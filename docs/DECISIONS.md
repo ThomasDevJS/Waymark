@@ -1326,16 +1326,24 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Store** (`src/background/embeds.ts`):
   - session storage `embeds:<tab>`, per frame, through `enqueue`;
   - cleaned with `isSiteOrigin` (no wildcards), deduplicated and capped at 20 per frame and 50 frames per tab, written only when it changes;
-  - cleared when the tab starts loading a page (`tabs.onUpdated` status `loading`) and when it closes.
+  - each frame's entry is replaced only by that frame. It sends an empty report on `pagehide` and reports again on a back/forward-cache `pageshow`. When the top frame loads a new page, reports older than that page's start are dropped (`reportsSince` with the page's `timeOrigin`), and the tab's list goes when the tab closes.
 - **Panel** (`App.tsx`, `EmbedsOffer`):
   - under an allowed site: "This page shows content from other sites. Allow Waymark there too…", listing each site with `siteLabel`, and one **Allow** button;
   - only that click calls `permissions.request`, for exactly the listed origins; content can never trigger a request, and nothing is granted automatically;
   - origins that are granted only to fetch the library count as not allowed and become guide sites through `site.allowed` (D80);
   - nested embeds unlock one level at a time: once the wrapper is allowed, its content script reports the app inside it.
-- **Injection after a grant** (`injectIntoFrames`): `permissions.onAdded` and `site.allowed` used to inject into tabs whose top page was on the new site. An embedded frame inside a page on another site never got the script until a reload. Now each tab's frames are asked for their origin (only frames Waymark may access answer), and the script goes only into frames on the newly granted sites. Frames where it already runs are not restarted. Install and update still use `injectIntoOpenTabs`.
+- **Injection after a grant** (`injectIntoFrames`): `permissions.onAdded` and `site.allowed` used to inject into tabs whose top page was on the new site. An embedded frame inside a page on another site never got the script until a reload. Now the frames of every tab Waymark can access are asked for their origin (only frames it may access answer), and the script goes only into frames on the newly granted sites. Frames where it already runs are normally not restarted; a frame that navigates during the grant may get a second instance, and the newest takes over. Install and update still use `injectIntoOpenTabs`. Patterns match like Chrome's: scheme `*`, host `*` and `*.domain`, any port (`originMatchesPattern`).
 - **Google Sites' wrapper changes address on every publish** (community reports; no Google documentation): after a republish the panel offers Allow for the new wrapper. A wildcard grant for `*.googleusercontent.com` is not part of this: it would also cover Drive and Docs previews, Apps Script apps and more, so it needs Thomas's explicit choice and its own switch. Guides keep playing after a republish: framePath is made of selectors, and the step is in the app frame, whose origin is stable. The wrapper frame is not a guide site, so it gets only the "run exists" view (D48), never guide data.
+- **Fixes from the independent review** (each test fails on the reviewed version where it can be reached):
+  - the list was cleared on every `tabs.onUpdated` "loading", which also fires when a frame inside the page navigates. Most frames never reported again, so the offer vanished. It is now pruned per frame, as above;
+  - frame injection matched only `http(s)://host/*`. Grants made through Chrome's own site access (`https://*/*`, `*://host/*`, `*.domain`) stopped reaching open tabs. It now matches real match patterns;
+  - a page could list hidden frames of any site (mail, bank) and have them all granted in one click. Only visible frames count (`frameShown`: a size, not hidden, not transparent), each site has its own tick box with "Allow only sites you recognise as part of this page", and Allow asks only for the ticked ones;
+  - a removed embed left its entry: frames now clear theirs on `pagehide`;
+  - a slower answer for a tab the panel had left could overwrite the current tab's list: answers for an older ask or another tab are dropped.
 - **Tests**:
-  - `test/unit/embeds.test.ts`: origin extraction, shadow roots, cleaning, per-frame store, frame/pattern matching;
+  - `test/unit/embeds.test.ts`: origin extraction, cleaning, per-frame store, pruning by page start, frame/pattern matching (Chrome's wildcard forms too);
+  - `test/browser/embeds.test.ts`: visible child frames only, shadow roots;
+  - `test/e2e/r2-embeds.spec.ts`, second test: a hidden frame is never offered, the offer survives a frame navigating inside the page, and removing the embed drops it;
   - `test/e2e/r2-embeds.spec.ts`, a three-origin fixture (top → wrapper → app, `test/fixtures/site/embed/`) with the closed overlay root:
     - Allow the wrapper from the panel, then the app;
     - record a click in the innermost frame (framePath of 2);

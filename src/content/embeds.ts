@@ -1,7 +1,8 @@
 /**
  * Reports this frame's direct child frames' sites to the service worker (D155), so the side panel
- * can offer Allow for embedded apps. Origins only. Sent at start, when frames are added or change
- * address (debounced), and again after an in-app route change; never when nothing changed.
+ * can offer Allow for embedded apps. Origins only, of visible frames. Sent at start, when frames
+ * are added, removed or change address (debounced), and after an in-app route change; never when
+ * nothing changed. Empty when the page goes away, so a frame that is gone leaves nothing behind.
  */
 import { send } from '../core/messaging/client';
 import { childFrameOrigins } from '../core/frames/embeds';
@@ -30,14 +31,26 @@ export function startEmbedReports(): { refresh(force?: boolean): void; dispose()
       }
     }
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class', 'hidden'] });
+  // Leaving (or into the back/forward cache): this frame's entry goes; coming back reports again.
+  const onHide = () => {
+    clearTimeout(timer);
+    last = '';
+    send('frame.embeds', { origins: [] }).catch(() => undefined);
+  };
+  const onShow = (e: PageTransitionEvent) => {
+    if (e.persisted) report(true);
+  };
+  addEventListener('pagehide', onHide);
+  addEventListener('pageshow', onShow);
   later();
   return {
-    // After a route change the service worker may have cleared the tab's list: send it again.
     refresh: (force = false) => (force ? report(true) : later()),
     dispose() {
       clearTimeout(timer);
       observer.disconnect();
+      removeEventListener('pagehide', onHide);
+      removeEventListener('pageshow', onShow);
     },
   };
 }

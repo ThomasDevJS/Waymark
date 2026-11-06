@@ -1,6 +1,6 @@
 /** D155: embedded sites a frame reports, cleaned and stored per tab; frame injection matching. */
 import { describe, expect, it } from 'vitest';
-import { childFrameOrigins, cleanEmbedOrigins, embedOrigins, frameOrigin, MAX_EMBED_FRAMES, MAX_EMBED_ORIGINS, withReport, type EmbedMap } from '../../src/core/frames/embeds';
+import { cleanEmbedOrigins, embedOrigins, frameOrigin, MAX_EMBED_FRAMES, MAX_EMBED_ORIGINS, reportsSince, withReport, type EmbedMap } from '../../src/core/frames/embeds';
 import { isSiteOrigin } from '../../src/core/model/schema';
 import { originMatchesPattern } from '../../src/core/permissions/registration';
 
@@ -9,29 +9,6 @@ describe('embedded sites (D155)', () => {
     expect(frameOrigin('https://1504077899-atari-embeds.googleusercontent.com/embeds/x/inner.html?secret=1#t', 'https://sites.google.com/view/a')).toBe('https://1504077899-atari-embeds.googleusercontent.com');
     expect(frameOrigin('/same/page.html', 'https://sites.google.com/view/a')).toBe('https://sites.google.com');
     for (const src of ['about:blank', 'javascript:alert(1)', 'data:text/html,hi', 'blob:https://a.test/x', 'chrome-extension://abc/x.html']) expect(frameOrigin(src, 'https://a.test/'), src).toBeNull();
-  });
-
-  it('lists direct child frames of other sites, in open shadow roots too, not srcdoc or the own site', () => {
-    const host = document.createElement('div');
-    const sr = host.attachShadow({ mode: 'open' });
-    const inShadow = document.createElement('iframe');
-    inShadow.setAttribute('src', 'https://app.example/x');
-    sr.append(inShadow);
-    const own = document.createElement('iframe');
-    own.setAttribute('src', `${location.origin}/frame.html`);
-    const other = document.createElement('iframe');
-    other.setAttribute('src', 'https://embed.example/inner?q=1');
-    const srcdoc = document.createElement('iframe');
-    srcdoc.setAttribute('srcdoc', '<p>x</p>');
-    document.body.append(host, own, other, srcdoc);
-    try {
-      expect(childFrameOrigins(document)).toEqual(['https://app.example', 'https://embed.example']);
-    } finally {
-      host.remove();
-      own.remove();
-      other.remove();
-      srcdoc.remove();
-    }
   });
 
   it('a report is cleaned: real site origins only, no wildcards, deduplicated, capped', () => {
@@ -59,6 +36,23 @@ describe('embedded sites (D155)', () => {
     expect(originMatchesPattern('https://a.test', 'http://a.test/*')).toBe(false);
     expect(originMatchesPattern('https://b.a.test', 'https://a.test/*')).toBe(false);
     expect(originMatchesPattern('null', 'https://a.test/*')).toBe(false);
-    expect(originMatchesPattern('https://a.test', 'https://*/*')).toBe(false);
+    expect(originMatchesPattern('chrome-extension://abc', '*://*/*')).toBe(false);
+  });
+
+  it('also matches the patterns Chrome’s own site access grants (review of D155)', () => {
+    expect(originMatchesPattern('https://a.test', 'https://*/*')).toBe(true); // "On all sites"
+    expect(originMatchesPattern('http://a.test', 'https://*/*')).toBe(false);
+    expect(originMatchesPattern('http://a.test:8080', '*://a.test/*')).toBe(true);
+    expect(originMatchesPattern('https://a.test', '*://a.test/*')).toBe(true);
+    expect(originMatchesPattern('https://x.y.a.test', 'https://*.a.test/*')).toBe(true);
+    expect(originMatchesPattern('https://a.test', 'https://*.a.test/*')).toBe(true);
+    expect(originMatchesPattern('https://evil-a.test', 'https://*.a.test/*')).toBe(false);
+    expect(originMatchesPattern('https://a.test', '<all_urls>')).toBe(false);
+  });
+
+  it('a new top page drops the reports of the pages before it, not its own frames’ (review of D155)', () => {
+    const map: EmbedMap = { '0': { origins: ['https://w.test'], at: 100 }, '5': { origins: ['https://app.test'], at: 205 }, '9': { origins: ['https://old.test'], at: 150 } };
+    expect(Object.keys(reportsSince(map, 200)!)).toEqual(['5']);
+    expect(reportsSince(map, 50)).toBeNull();
   });
 });

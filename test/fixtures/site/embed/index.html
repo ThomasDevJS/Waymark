@@ -14,6 +14,21 @@
     f.title = 'Embedded app';
     f.className = 'embed-wrapper';
     document.querySelector('main').append(f);
+    const q = new URLSearchParams(location.search);
+    // &inner=1: a visible same-site frame the test navigates; &hidden=1: a hidden frame of a fourth site.
+    if (q.has('inner')) {
+      const i = document.createElement('iframe');
+      i.src = '/frame.html?name=inner';
+      i.className = 'inner-frame';
+      i.style.height = '80px';
+      document.querySelector('main').append(i);
+    }
+    if (q.has('hidden')) {
+      const h = document.createElement('iframe');
+      h.src = `${location.protocol}//127.0.0.4:${location.port}/frame.html?name=hidden`;
+      h.style.display = 'none';
+      document.querySelector('main').append(h);
+    }
     document.documentElement.setAttribute('data-waymark-test-loaded', 'yes');
   </script>
 </body>

@@ -81,16 +81,30 @@ export async function injectIntoOpenTabs(patterns: string[]): Promise<number> {
   return n;
 }
 
-/** Does an http(s) origin fall under a match pattern like `https://host/*` (any port)? */
+/**
+ * Does an http(s) origin fall under a host match pattern? Covers what Chrome's own site access
+ * grants too (review of D155): scheme `*` (http and https), host `*`, `*.domain` (the domain and
+ * its subdomains), and any port. The path part does not matter for an origin.
+ */
 export function originMatchesPattern(origin: string, pattern: string): boolean {
-  const m = /^(https?):\/\/([^/]+)\/\*$/.exec(pattern);
+  const m = /^(\*|https?):\/\/([^/]+)\/.*$/.exec(pattern);
   if (!m) return false;
+  let u: URL;
   try {
-    const u = new URL(origin);
-    return u.protocol === `${m[1]}:` && u.hostname === m[2];
+    u = new URL(origin);
   } catch {
     return false;
   }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const [, scheme, host] = m as unknown as [string, string, string];
+  if (scheme !== '*' && u.protocol !== `${scheme}:`) return false;
+  const h = host.replace(/:\d+$/, '').toLowerCase();
+  if (h === '*') return true;
+  if (h.startsWith('*.')) {
+    const base = h.slice(2);
+    return u.hostname === base || u.hostname.endsWith(`.${base}`);
+  }
+  return u.hostname === h;
 }
 
 /**

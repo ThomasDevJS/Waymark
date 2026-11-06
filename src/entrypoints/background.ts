@@ -27,7 +27,7 @@ import { getPlayerSettings, setPlayerSettings } from '../background/player-setti
 import { getRecorderSettings, setRecorderSettings } from '../background/recorder-settings';
 import { SHOTS_ALARM, sweepShots } from '../background/shots';
 import { recorderSettingsFor } from '../core/recorder/settings';
-import { clearEmbeds, onEmbedsReport, pendingEmbeds } from '../background/embeds';
+import { clearEmbeds, onEmbedsReport, pendingEmbeds, pruneEmbedsBefore } from '../background/embeds';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -121,6 +121,8 @@ const handlers: Handlers = {
     // In-app route changes update the badge count (SPEC: Discovery, toolbar badge).
     if (ctx.frameId === 0 && ctx.tabId !== undefined && payload.via !== 'leaving') await updateBadge(ctx.tabId, ctx.sender.tab?.url ?? payload.url);
     if (payload.via === 'load' && ctx.frameId === 0 && ctx.tabId !== undefined) {
+      // Embedded-site reports from the pages before this one go (D155); the new page's frames stay.
+      await pruneEmbedsBefore(ctx.tabId, payload.timeOrigin ?? Date.now());
       await onTopFrameLoad(ctx.tabId, payload.url);
       // A new page has no picker running: end a pending pick so the panel stops waiting.
       if ((await chrome.storage.session.get(`pick:${ctx.tabId}`))[`pick:${ctx.tabId}`]) await endPick(ctx.tabId, true);
@@ -192,8 +194,6 @@ export default defineBackground(() => {
   // The badge learns the URL from tabs.onUpdated (readable on granted sites) and route reports.
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     if (info.url || info.status === 'complete') void updateBadge(tabId, tab.url);
-    // A new page: its frames report their embedded sites again as they load (D155).
-    if (info.status === 'loading') void clearEmbeds(tabId);
   });
 
   chrome.permissions.onAdded.addListener(async (added) => {

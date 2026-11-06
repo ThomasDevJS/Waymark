@@ -52,17 +52,25 @@ async function revoke(origin: string) {
 
 /** Embedded sites in this tab that Waymark can't run in yet (D155). */
 const embeds = signal<{ tabId: number; origins: string[] } | null>(null);
+/** Sites the user unticked in the offer: asked for only when ticked (review of D155). */
+const embedsUnticked = signal<Set<string>>(new Set());
+let embedsTab: number | null = null;
+let embedsAsk = 0;
 async function refreshEmbeds(tabId: number) {
+  const ask = ++embedsAsk;
+  let origins: string[] = [];
   try {
-    const { origins } = await send('embeds.pending', { tabId });
-    embeds.value = { tabId, origins };
+    origins = (await send('embeds.pending', { tabId })).origins;
   } catch {
-    embeds.value = { tabId, origins: [] };
+    // nothing to offer
   }
+  // A slower answer for a tab the panel has left, or an older ask, never overwrites (review of D155).
+  if (ask === embedsAsk && tabId === embedsTab) embeds.value = { tabId, origins };
 }
 
 /** One Allow for exactly the listed sites; only the user's click asks (D155). */
 async function allowEmbeds(tabId: number, origins: string[]) {
+  if (!origins.length) return;
   try {
     const ok = await chrome.permissions.request({ origins: origins.map(originToMatchPattern) }).catch(() => false);
     // A site held only for fetching the library becomes a guide site now (D80).
@@ -75,6 +83,8 @@ async function allowEmbeds(tabId: number, origins: string[]) {
 function EmbedsOffer({ tabId }: { tabId: number }) {
   useEffect(() => {
     embeds.value = null;
+    embedsUnticked.value = new Set();
+    embedsTab = tabId;
     void refreshEmbeds(tabId);
     const key = `embeds:${tabId}`;
     const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
@@ -85,6 +95,7 @@ function EmbedsOffer({ tabId }: { tabId: number }) {
     chrome.permissions.onAdded.addListener(onPerms);
     chrome.permissions.onRemoved.addListener(onPerms);
     return () => {
+      if (embedsTab === tabId) embedsTab = null;
       chrome.storage.onChanged.removeListener(onStorage);
       chrome.permissions.onAdded.removeListener(onPerms);
       chrome.permissions.onRemoved.removeListener(onPerms);
@@ -92,6 +103,7 @@ function EmbedsOffer({ tabId }: { tabId: number }) {
   }, [tabId]);
   const e = embeds.value;
   if (!e || e.tabId !== tabId || !e.origins.length) return null;
+  const chosen = e.origins.filter((o) => !embedsUnticked.value.has(o));
   return (
     <div class="banner" role="status" data-testid="embeds-offer">
       <Icon name="globe" />
@@ -101,15 +113,31 @@ function EmbedsOffer({ tabId }: { tabId: number }) {
         </span>
         <ul class="sites" data-testid="embeds-sites">
           {e.origins.map((o) => (
-            <li key={o} class="mono small" title={o}>
-              {siteLabel(o)}
+            <li key={o}>
+              <label class="check small">
+                <input
+                  type="checkbox"
+                  checked={!embedsUnticked.value.has(o)}
+                  data-testid={`embed-${o}`}
+                  onChange={(ev) => {
+                    const next = new Set(embedsUnticked.value);
+                    if ((ev.target as HTMLInputElement).checked) next.delete(o);
+                    else next.add(o);
+                    embedsUnticked.value = next;
+                  }}
+                />
+                <span class="mono" title={o}>
+                  {siteLabel(o)}
+                </span>
+              </label>
             </li>
           ))}
         </ul>
+        <p class="hint">Allow only sites you recognise as part of this page.</p>
         <div>
-          <button type="button" class="primary sm" data-testid="allow-embeds" onClick={() => void allowEmbeds(tabId, e.origins)}>
+          <button type="button" class="primary sm" data-testid="allow-embeds" disabled={!chosen.length} onClick={() => void allowEmbeds(tabId, chosen)}>
             <Icon name="shield" />
-            Allow {e.origins.length === 1 ? 'this site' : `these ${e.origins.length} sites`}
+            Allow {chosen.length === 1 ? 'this site' : `these ${chosen.length} sites`}
           </button>
         </div>
       </div>

@@ -76,3 +76,32 @@ test('embedded sites: Allow one level at a time; record and play a click in the 
   await expect.poll(() => marker(appFrame(app)!, 'approved')).toBe('1');
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
 });
+
+test('the offer survives a frame navigating inside the page, drops a removed embed, and never lists hidden frames (review of D155)', async ({ context, ext, site, extensionId }) => {
+  test.setTimeout(90_000);
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/embed/index.html?wrap=127.0.0.2&inner=1&hidden=1`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html?tab=${tabId}`);
+  // The hidden frame's site (127.0.0.4) is never offered.
+  await expect(panel.getByTestId('embeds-sites')).toHaveText(`127.0.0.2:${site.port}`);
+
+  // A frame inside the page goes to another address: the offer stays.
+  const inner = app.frames().find((f) => f.url().includes('name=inner'))!;
+  await inner.evaluate(() => (location.href = '/frame.html?name=inner&moved=1'));
+  await expect.poll(() => app.frames().some((f) => f.url().includes('moved=1'))).toBe(true);
+  await app.waitForTimeout(1500);
+  await expect(panel.getByTestId('embeds-sites')).toHaveText(`127.0.0.2:${site.port}`);
+
+  // Allowing the wrapper offers the app inside it; removing the embed drops both.
+  await panel.bringToFront();
+  await panel.getByTestId('allow-embeds').click();
+  await acceptDialog(panel);
+  await expect(panel.getByTestId('embeds-sites')).toHaveText(`localhost:${site.port}`, { timeout: 10_000 });
+  await app.evaluate(() => document.querySelector('.embed-wrapper')!.remove());
+  await expect(panel.getByTestId('embeds-offer')).toHaveCount(0, { timeout: 10_000 });
+});
+
