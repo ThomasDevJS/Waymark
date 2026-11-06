@@ -1302,4 +1302,10 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
     - the click is recorded as usual;
     - session storage has no trace of the outline;
     - Off in Settings removes it.
+- **Fixes from the independent review** (each test fails on the reviewed version):
+  - the outline promised a step where the recorder ignores the click: the page itself (`html`/`body`) and plain content inside a control deeper than the target search reaches. `previewClick` now follows the recorder's rules in its order, and a closed component is "hard to find" as the panel flags it. A browser test clicks the same elements through the real recorder and checks they agree;
+  - every element the pointer crossed built fingerprints, which scan the page for look-alikes. The choice is now made only once the pointer rests on a new element (`REST_MS`, 60 ms);
+  - a press hides the outline and decides again, since a click can rebuild the page;
+  - the outline re-attaches when the page drops Waymark's overlay host.
+- **Frames**: each granted frame's content script draws its own outline, so recording now mounts an overlay host in subframes too (the pill stays top-frame only).
 

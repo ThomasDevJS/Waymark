@@ -3,12 +3,16 @@
  * of D82 it would be promoted to. Orange and dashed when it would be "hard to find" (D82), red when
  * it would not be recorded at all (D47). Drawn in the overlay with pointer-events off, so it is
  * never part of a click, never over Waymark's own UI, and never in recorded data. One measure per
- * animation frame; the choice is memoized on the hovered element (it builds a fingerprint).
+ * animation frame; the choice is memoized on the hovered element and made only once the pointer
+ * rests on a new element (it builds fingerprints, which scan the page for look-alikes).
  */
 import { buildFingerprint } from '../core/fingerprint';
 import { previewClick, type ClickPreview } from '../core/recorder/preview';
 import { eventPath, isOverlayPath, overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
+
+/** How long the pointer rests on a new element before its choice is made (review of D153). */
+export const REST_MS = 60;
 
 export const REC_HOVER_LABEL: Record<'warn' | 'skip', string> = {
   warn: 'Hard to find',
@@ -32,9 +36,12 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   let box: HTMLElement | null = null;
   let label: HTMLElement | null = null;
   let frame = 0;
+  let rest: ReturnType<typeof setTimeout> | undefined;
   let path: EventTarget[] | null = null;
+  let lastPath: EventTarget[] | null = null;
   let memo: { from: Element; preview: ClickPreview | null } | null = null;
   let shown: ClickPreview | null = null;
+  let style: HTMLStyleElement | null = null;
 
   const fpOf = (el: Element) => buildFingerprint(el, { framePath: framePath() });
 
@@ -44,15 +51,46 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
     testMark('rec-hover', 'none');
   };
 
+  // The page may drop or rebuild Waymark's overlay host: put the outline back in the current one.
+  const attach = () => {
+    if (!box) return;
+    const root = overlayRoot();
+    if (!style || !style.isConnected) {
+      style = root.querySelector<HTMLStyleElement>('style[data-rec-hover]');
+      if (!style) {
+        style = document.createElement('style');
+        style.dataset.recHover = '';
+        style.textContent = CSS;
+        root.append(style);
+      }
+    }
+    if (!box.isConnected) overlayLayer().append(box);
+  };
+
   const draw = () => {
     frame = 0;
     if (!on || !box || !label) return;
+    attach();
     if (path) {
       const p = path;
       path = null;
       const first = p.find((t): t is Element => t instanceof Element) ?? null;
-      if (!first || isOverlayPath(p)) return hide();
-      if (memo?.from !== first) memo = { from: first, preview: previewClick(p, fpOf) };
+      if (!first || isOverlayPath(p)) {
+        clearTimeout(rest);
+        return hide();
+      }
+      if (memo?.from !== first) {
+        // A new element: decide once the pointer rests on it, not for every element it crosses.
+        hide();
+        clearTimeout(rest);
+        rest = setTimeout(() => {
+          if (!on) return;
+          memo = { from: first, preview: previewClick(p, fpOf) };
+          shown = memo.preview;
+          schedule();
+        }, REST_MS);
+        return;
+      }
       shown = memo.preview;
     }
     if (!shown || !shown.element.isConnected) return hide();
@@ -68,7 +106,7 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   };
 
   const onMove = (e: Event) => {
-    path = eventPath(e);
+    path = lastPath = eventPath(e);
     schedule();
   };
   // The page scrolled or changed size under a still pointer: follow the element.
@@ -78,28 +116,26 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   const onOut = (e: PointerEvent) => {
     if (!e.relatedTarget) hide(); // left the window
   };
-  // A click can rebuild the page: measure again next time the pointer moves.
+  // A click can rebuild the page or change what is alike on it: decide again where the pointer is.
   const onDown = () => {
     memo = null;
+    hide();
+    if (lastPath) {
+      path = lastPath;
+      schedule();
+    }
   };
 
   return {
     start() {
       if (on) return;
       on = true;
-      const root = overlayRoot();
-      if (!root.querySelector('style[data-rec-hover]')) {
-        const style = document.createElement('style');
-        style.dataset.recHover = '';
-        style.textContent = CSS;
-        root.append(style);
-      }
       box = document.createElement('div');
       box.className = 'rec-box';
       box.setAttribute('aria-hidden', 'true');
       label = document.createElement('span');
       box.append(label);
-      overlayLayer().append(box);
+      attach();
       window.addEventListener('pointermove', onMove, { capture: true, passive: true });
       window.addEventListener('pointerdown', onDown, { capture: true, passive: true });
       window.addEventListener('scroll', onScroll, { capture: true, passive: true });
@@ -112,6 +148,7 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
       on = false;
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
+      clearTimeout(rest);
       window.removeEventListener('pointermove', onMove, true);
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('scroll', onScroll, true);
@@ -119,7 +156,7 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
       document.removeEventListener('pointerout', onOut, true);
       box?.remove();
       box = label = null;
-      path = memo = shown = null;
+      path = lastPath = memo = shown = null;
       testMark('rec-hover', 'off');
     },
   };
