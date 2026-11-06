@@ -162,6 +162,7 @@ async function pendingAllow(): Promise<string[]> {
 
 export { libraryUrlAllowed } from '../core/sharing/library';
 import { fetchLibraryText, libraryUrlAllowed } from '../core/sharing/library';
+import { libraryAddress } from '../core/sharing/drive';
 
 /** Fetches the library pack and replaces the library guides (SPEC: Sharing, "v1: library URL"). */
 export async function refreshLibrary(): Promise<LibraryState> {
@@ -379,7 +380,9 @@ export const discoveryHandlers: Handlers = {
     return { launcher };
   },
   'library.get': () => libraryState(),
-  'library.set': async ({ url }) => {
+  'library.set': async ({ url: input }) => {
+    // A Google Drive share link is read through Drive's direct download (D157).
+    const url = input === null ? null : libraryAddress(input);
     if (url !== null && !libraryUrlAllowed(url)) throw new Error('The pack address must start with https://');
     const before = (await libraryState()).url;
     await setLibraryState({ url, lastError: null, ...(url === null ? { count: 0, lastFetchAt: null } : {}) });

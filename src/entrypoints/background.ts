@@ -28,6 +28,7 @@ import { getRecorderSettings, setRecorderSettings } from '../background/recorder
 import { SHOTS_ALARM, sweepShots } from '../background/shots';
 import { recorderSettingsFor } from '../core/recorder/settings';
 import { clearEmbeds, onEmbedsReport, pendingEmbeds, pruneEmbedsBefore } from '../background/embeds';
+import { getTheme, setTheme } from '../background/theme';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -77,6 +78,8 @@ const handlers: Handlers = {
     await broadcastAllRuns();
     return next;
   },
+  'ui.theme.get': async () => ({ theme: await getTheme() }),
+  'ui.theme.set': async ({ theme }) => ({ theme: await setTheme(theme) }),
   'recorder.settings.get': async (_p, ctx) => recorderSettingsFor(await getRecorderSettings(), ctx.kind),
   'recorder.settings.set': ({ patch }) => setRecorderSettings(patch),
   'hd.status': () => hdStatusForSettings(),

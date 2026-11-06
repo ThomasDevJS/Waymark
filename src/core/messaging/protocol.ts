@@ -22,6 +22,7 @@ import type { PlayerSettings } from '../player/settings';
 import { MAX_FOR_PAGE, MAX_FOR_PAGE_TAG, MAX_FOR_PAGE_TAGS, MAX_FOR_PAGE_TITLE } from '../discovery/page-search';
 import type { ContentRecorderSettings, RecorderSettings } from '../recorder/settings';
 import { MAX_EMBED_ORIGINS } from '../frames/embeds';
+import { THEMES, type ThemeChoice } from '../theme';
 
 const url = z.string().max(4096);
 
@@ -110,6 +111,9 @@ export const RequestSchemas = {
   }),
   // Player settings (D144): the shade around the highlight, for every guide or per guide.
   'player.settings.get': z.object({}),
+  // The theme (D200): any page may read it; only extension pages set it.
+  'ui.theme.get': z.object({}),
+  'ui.theme.set': z.object({ theme: z.enum(THEMES) }),
   'player.settings.set': z.object({ patch: z.object({ shade: z.enum(LEARNER_SHADES) }).partial() }),
   // Recording settings (D153). Content scripts may read them (the hover outline), never set them.
   'recorder.settings.get': z.object({}),
@@ -217,6 +221,8 @@ export interface ResponseMap {
   'voice.settings.get': VoiceSettings;
   'voice.settings.set': VoiceSettings;
   'player.settings.get': PlayerSettings;
+  'ui.theme.get': { theme: ThemeChoice };
+  'ui.theme.set': { theme: ThemeChoice };
   'player.settings.set': PlayerSettings;
   'frame.embeds': { ok: true };
   'embeds.pending': { origins: string[] };
@@ -324,6 +330,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'debug.copy', // the sender tab's entries since its run started, on that guide's site only (D111)
   'recorder.settings.get', // the hover outline's on/off while recording (D153); read only
   'frame.embeds', // the sender frame's direct child frame origins, for the panel's Allow (D155)
+  'ui.theme.get', // the overlay's theme (D200); read only
 ]);
 
 /** Extension pages may send everything except content-only reports. */
@@ -374,6 +381,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'voice.settings.set',
   'player.settings.get',
   'player.settings.set',
+  'ui.theme.get',
+  'ui.theme.set',
   'recorder.settings.get',
   'recorder.settings.set',
   'embeds.pending',
@@ -394,6 +403,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
 /** Messages the service worker pushes to content scripts (chrome.tabs.sendMessage). */
 export type ContentPush =
   | { type: 'rec.changed'; payload: RecordingView }
+  | { type: 'ui.theme'; payload: { theme: ThemeChoice } }
   | { type: 'run.changed'; payload: RunView }
   // speechSynthesis fallback where chrome.tts is missing (SPEC: Voiceover)
   | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }

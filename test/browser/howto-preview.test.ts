@@ -60,6 +60,17 @@ async function ready() {
   await expect.poll(() => q('howto-preview')?.dataset.ready, { timeout: 5000 }).toBe('yes');
 }
 
+/**
+ * Image n's size once it is decoded: the preview is "ready" when its drawings exist, but an
+ * <img> whose src just changed has no size until it decodes. Reading naturalWidth before that
+ * gave 0 now and then under load (flaky until D158).
+ */
+async function decodedWidth(n: number): Promise<number> {
+  const el = img(n)!;
+  await el.decode();
+  return el.naturalWidth;
+}
+
 /** Contrast between neighbouring pixels in the context (far from the element): high when sharp. */
 async function contextContrast(el: HTMLImageElement): Promise<number> {
   await el.decode();
@@ -109,7 +120,7 @@ describe('how-to preview (D195)', () => {
     expect(q('howto-blurstep-1')).not.toHaveProperty('checked', true);
     expect((q('howto-zoom-1') as HTMLInputElement).checked).toBe(false);
     await img(1)!.decode();
-    expect(img(1)!.naturalWidth).toBe(800);
+    expect(await decodedWidth(1)).toBe(800);
     expect(await contextContrast(img(1)!)).toBeGreaterThan(150);
     expect(q('howto-summary')!.textContent).toContain('2 screenshots');
     expect(root!.textContent).toContain('3 steps · 6 November 2026');
@@ -163,14 +174,29 @@ describe('how-to preview (D195)', () => {
     const { saved } = await mount();
     await userEvent.click(q('howto-zoom-1')!);
     await ready();
-    await expect.poll(() => img(1)!.naturalWidth, { timeout: 5000 }).toBeLessThan(800);
-    expect(img(1)!.naturalWidth).toBeGreaterThan(0);
-    expect(img(2)!.naturalWidth).toBe(800);
+    // The zoomed drawing replaces the first one: wait for it, decoded, not for a time.
+    await expect.poll(() => decodedWidth(1), { timeout: 10_000 }).toBeLessThan(800);
+    expect(await decodedWidth(1)).toBeGreaterThan(0);
+    expect(await decodedWidth(2)).toBe(800);
     await userEvent.click(q('howto-download')!);
     await expect.poll(() => saved.length).toBe(1);
     const widths = [...saved[0]!.html.matchAll(/width="(\d+)"/g)].map((m) => Number(m[1]));
     expect(widths[0]).toBeLessThan(800);
     expect(widths[1]).toBe(800);
+  });
+
+  it('links (D159): the start page, and a step whose page changes; the saved file can enlarge its images', async () => {
+    const { saved } = await mount({ steps: [{ ...step('a'), url: { kind: 'pattern', value: '/orders' } }, { ...step('b'), url: { kind: 'pattern', value: '/orders/new' } }, step('c')] });
+    await ready();
+    const start = root!.querySelector<HTMLAnchorElement>('.start a')!;
+    expect(start.href).toBe('https://app.example/');
+    expect(q('howto-page-1')).toBeNull(); // the start page itself
+    expect((q('howto-page-2') as HTMLAnchorElement).href).toBe('https://app.example/orders/new');
+    expect((q('howto-page-3') as HTMLAnchorElement).href).toBe('https://app.example/');
+    await userEvent.click(q('howto-download')!);
+    await expect.poll(() => saved.length).toBe(1);
+    expect(saved[0]!.html).toContain('<a class="page" href="https://app.example/orders/new">Open this page</a>');
+    expect(saved[0]!.html.match(/<label class="zoom"/g)).toHaveLength(2);
   });
 
   it('an old 0.5.0 close-up still renders, is marked, and cannot be zoomed', async () => {

@@ -6,6 +6,7 @@ import { startRecordingClient } from './recording';
 import { startPlayerClient } from './player/controller';
 import { startEditorClient } from './editor';
 import { startShotClient } from './shots';
+import { startThemeClient } from './theme-client';
 import { startEmbedReports } from './embeds';
 import { startLauncher, takeDeepLink } from './launcher';
 import { destroyOverlay } from './overlay/host';
@@ -41,6 +42,7 @@ export function startContent(): void {
   // Deep link: read at document_start and removed at once, so hash routers never see it.
   const deepLink = window === window.top ? takeDeepLink() : null;
   disposers.push(startDebugClient());
+  disposers.push(startThemeClient());
   const frames = startFrameMapping();
   disposers.push(frames.dispose);
   const recording = startRecordingClient(frames.framePath);

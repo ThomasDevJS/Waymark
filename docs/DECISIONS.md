@@ -1373,6 +1373,70 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - The light fingerprint is never stored or sent: its paths are empty and its count and rect are placeholders.
 - **Tests**: `test/browser/rec-hover-perf.test.ts` sets a 20 ms budget per check on a 1,500-row table; it fails on the old code at about 310 ms. The recorder parity test in `rec-hover.test.ts` still passes.
 
+### D157. A Google Drive file can be the team library
+*6 Nov 2026 · SPEC: Sharing ("v1: library URL"); issue #83*
+
+- **Why**: Thomas's team keeps files in Google Drive and wants the guide file there, at $0 and with no backend. "Anyone with the link" sharing is fine for him (asked and answered). Anyone who gets the link can read the guides.
+- **Change**:
+  - Settings → Team library accepts a Drive file's normal share link: `/file/d/<id>/view`, `/file/u/0/d/<id>/…`, `open?id=`, `uc?id=` on drive.google.com or docs.google.com, or a `drive.usercontent.google.com/download` link.
+  - `libraryAddress` turns it once, on subscribe (in Settings and again in `library.set`), into Google's direct download: `https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t`. `confirm=t` skips the "can't scan this file" page.
+  - From then on it is an ordinary https library. The access asked for is to that one host, fetch-only (D80); D48's limits apply (5 MB, 30 s, redirects must stay https); and the 6-hour refresh is unchanged.
+  - Folder links and anything not on these exact hosts stay as typed, so they fail as before.
+- **Clearer errors** (for every library, not only Drive): an answer that is a web page (`text/html`, or a body starting with `<`), such as a sign-in, sharing or scan page, now says so instead of failing to parse JSON. For Drive it says to share the file as "Anyone with the link"; elsewhere it asks for the file's own address. A Drive 403 or 404 says the file is not there or not shared.
+- **Settings**: the team library text mentions Drive. A Drive library shows how to update the file without changing its link (Manage versions → Upload new version).
+- **Risk**: Google does not document this address; it moved from `drive.google.com/uc` to `drive.usercontent.google.com` in 2024, and the old address now redirects to it (checked). If Google changes it again, only `driveDownloadUrl` changes. Verified here only up to Drive's answers for missing files (404, `text/html`). A real shared file is to be confirmed by Thomas.
+- **Not done**: private, domain-only Drive files. Using the user's Google sign-in ("A+" in #83) and OAuth ("B") are left for later, at Thomas's call.
+- **Tests**: `test/unit/drive-library.test.ts`: every link shape, links that must not match (http, look-alike hosts, folders, bad ids), the download address, and the web-page and 404 errors through `fetchLibraryText`.
+
+### D158. The step badge sits beside the element, never on it; a flaky preview test made deterministic
+*6 Nov 2026 · SPEC: Sharing (printable how-to); issue #87; follow-up to D193*
+
+- **Finding**: in Thomas's export the round step number was drawn at the highlight's top-left corner, kept inside the image. On a small tab at the top edge it moved onto the tab and hid the start of its label ("Safety" read "afety").
+- **Change** (`badgeSpot`, `src/core/shots/render.ts`, pure):
+  - the badge is placed outside the highlight and its ring. Spots are tried in order: the top-left corner as before, then the other corners, the sides, and off-centre along the sides (a long bar at the top of the image). The first spot that lies wholly in the image and clear of the ring wins;
+  - if none fits, a smaller badge (9 units) is tried, and only then the inside of the box, for an element that fills the image;
+  - the badge is sized to the target: about three quarters of a small element's height, 9 to 13 units (units scale with the image). Its number scales with it.
+- **Flaky test** (`howto-preview.test.ts`, "Zoom draws only the part around the element"): it read the second image's `naturalWidth` without waiting for it to decode, and once under full `pnpm check` load it read 0. It now waits for each image to decode, polls for the zoomed drawing instead of a time, and the other test that read a width directly does the same. It passed 20 of 20 runs of the whole file with every CPU busy.
+- **Tests**: `test/unit/badge-spot.test.ts`: Thomas's case (a small tab at the top edge), an element in each corner, a full-width bar at the top, the usual top-left spot, sizes, and an element filling the image.
+
+### D159. Links and zoom in the printable how-to
+*6 Nov 2026 · SPEC: Sharing (printable how-to); issues #85, #86; amends D104*
+
+- **Why**: Thomas wants readers of the exported PDF or HTML to click straight to the app, and to enlarge a screenshot in the HTML file.
+- **Links** (HTML and the preview that Save as PDF prints; Markdown is unchanged and has none):
+  - **The start page**: "Start at" is a link to the start site (origin only, as D104 already showed).
+  - **A step's page**: an "Open this page" link where the page changes from the step before (`stepPageLinks`). Only a plain path from the step's own address rule on the start site is linked, never a rule with `:param` stand-ins for ids or a query. Steps inside a frame have their frame's address, so they get none.
+  - **Links the author wrote** in a title or note (`[text](https://…)`) stay links when they point to one of the guide's own sites (`appOrigins`), path only (`ownLink`): the query and fragment can carry data. Links to other sites, and bare addresses, are removed as before (D104); the leak tests still pass. Kept links are found before `stripUrls` and put back after parsing, using private-use markers that are removed from the input first.
+- **Zoom (HTML file)**: each screenshot is a `label` holding a visually hidden checkbox and the image. With the box checked (a click, or Space when focused), CSS shows the image fixed, full size in the window, over a dark backdrop; a click closes it. The file still runs no script, and the CSP is unchanged. Printing ignores the zoom.
+- **Tests**:
+  - `test/unit/qol-sharing.test.ts`: start link, page links (start page, same page twice, ids, query, frame, hash route), own-site and other-site note links, `ownLink` against look-alike hosts and `javascript:`, the zoom markup, and the base page linking only to its own site;
+  - `test/browser/howto-preview.test.ts`: the preview's links and the saved file's links and zoom.
+
+### D200. A theme setting: System, Light or Dark
+*6 Nov 2026 · SPEC: UI (design system, D90); issue #88*
+
+- **Why**: Waymark follows the computer's light or dark setting. Thomas asked for a setting to pick one, with System as the default.
+- **Tokens** (`src/ui/tokens.css`): the dark values apply under `prefers-color-scheme: dark` unless Light was chosen (`:not([data-wm-theme='light'])`), and always when Dark was chosen (`[data-wm-theme='dark']`), on `:root` (extension pages) and `.wm-theme` (the overlay layer). The two blocks hold the same values; `test/unit/theme.test.ts` checks they stay identical. System sets no attribute.
+- **Setting**: `uiTheme` in storage.local (`system`, `light` or `dark`). Messages `ui.theme.get` (content and extension; it returns the choice only) and `ui.theme.set` (extension pages). Settings → Appearance has the three choices.
+- **Where it applies**:
+  - **Extension pages** (side panel, Settings, the practice page) call `watchPageTheme()` before they render. It reads a localStorage copy synchronously, so a page opens in its theme, then the stored value, and it follows changes.
+  - **The on-page overlay** asks once, and the service worker tells every tab when the choice changes, so an open page switches without a reload.
+  - **The practice chart** redraws on a change.
+  - **The how-to preview** stays a light, paper-like document.
+- **Tests**:
+  - `test/unit/theme.test.ts`: the two dark blocks are identical; System leaves the attribute off.
+  - `test/e2e/r3-theme.spec.ts`: Dark on a light system and Light on a dark system, in Settings and live in the overlay of a recording page; System again; a reopened page starts in the stored choice.
+
+### D201. Google Sites: plain wording when its embed wrapper changed
+*6 Nov 2026 · SPEC: Recorder ("Frames"); follow-up to D155; Thomas's decision D-2*
+
+- **Decision (Thomas)**: no wildcard grant for `*.googleusercontent.com`. Chrome's patterns can't express `*-atari-embeds.googleusercontent.com`, so a narrower permission is impossible. After a republish, the new wrapper address is still allowed with one click.
+- **Change**: on a `https://sites.google.com` page, when the Allow offer includes a Google Sites wrapper (`^https://[^./]+-atari-embeds\.googleusercontent\.com$`, `isGoogleSitesWrapper`), the offer says:
+  - "Your Google Site was updated. Click Allow to keep using Waymark in it." when an earlier wrapper was allowed before (`googleSitesNotice` → `updated`);
+  - "This Google Site shows an embedded app through Google's own frame…" for the first one.
+  It is the same single click, with no automatic grant and no new permission. Granted origins come from `permissions.getAll()`, plain `scheme://host/*` patterns only.
+- **Tests**: `test/unit/embeds.test.ts`: the matcher (look-alike hosts, http, subdomains, other googleusercontent hosts) and the wording for each case.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

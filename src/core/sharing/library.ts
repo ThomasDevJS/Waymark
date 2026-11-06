@@ -1,5 +1,6 @@
 /** Library URLs (SPEC: Sharing, "static HTTPS pack file"). */
 import { MAX_PACK_BYTES } from './pack';
+import { isDriveAddress } from './drive';
 
 /** https only; plain http only for local development hosts. */
 export function libraryUrlAllowed(url: string): boolean {
@@ -25,7 +26,12 @@ export async function fetchLibraryText(url: string, fetchImpl: typeof fetch = fe
   try {
     const res = await fetchImpl(url, { cache: 'no-store', credentials: 'omit', signal: ac.signal });
     if (res.url && !libraryUrlAllowed(res.url)) throw new Error('The library redirected to an address that is not https://.');
-    if (!res.ok) throw new Error(`The library answered ${res.status}.`);
+    if (!res.ok)
+      throw new Error(
+        isDriveAddress(url) && (res.status === 404 || res.status === 403)
+          ? `Google Drive answered ${res.status}: the file is not there, or not shared. Check the link, and share the file as “Anyone with the link”.`
+          : `The library answered ${res.status}.`,
+      );
     const declared = Number(res.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > MAX_PACK_BYTES) throw new Error('This pack is larger than 5 MB.');
     if (!res.body) return '';
@@ -48,7 +54,18 @@ export async function fetchLibraryText(url: string, fetchImpl: typeof fetch = fe
       all.set(c, at);
       at += c.byteLength;
     }
-    return new TextDecoder().decode(all);
+    const text = new TextDecoder().decode(all);
+    // A web page instead of the file: a sign-in page, Drive's sharing or virus-scan page, an error
+    // page that still answered 200 (D157). Said plainly instead of a JSON parse error.
+    const type = res.headers.get('content-type') ?? '';
+    if (type.includes('text/html') || text.trimStart().startsWith('<')) {
+      throw new Error(
+        isDriveAddress(url)
+          ? 'Google Drive answered with a web page, not the file. In Drive, share the file as “Anyone with the link”, then Refresh.'
+          : 'The address answered with a web page, not a Waymark guide file. Use the address of the .waymark.json file itself.',
+      );
+    }
+    return text;
   } catch (e) {
     if (ac.signal.aborted) throw new Error('The library did not answer in time.');
     throw e;

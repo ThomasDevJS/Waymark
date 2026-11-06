@@ -82,7 +82,9 @@ test('exports a guide as a Markdown and a printable HTML how-to after the review
   expect(page).toContain('ada@example.com'); // not removed this time: the author chose
   expect(page).not.toContain('wiki.example.com');
   expect(page).not.toContain('/app/orders');
-  expect(page).not.toMatch(/<script|href=|src=/);
+  expect(page).not.toMatch(/<script|src=/);
+  // Links only to the guide's own site (D159).
+  for (const m of page.matchAll(/href="([^"]*)"/g)) expect(m[1]!.startsWith(site.main), m[1]).toBe(true);
   // It renders as a page with the two numbered steps.
   const view = await context.newPage();
   await view.setContent(page);

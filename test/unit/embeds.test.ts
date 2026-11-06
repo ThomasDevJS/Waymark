@@ -1,6 +1,6 @@
 /** D155: embedded sites a frame reports, cleaned and stored per tab; frame injection matching. */
 import { describe, expect, it } from 'vitest';
-import { cleanEmbedOrigins, embedOrigins, frameOrigin, MAX_EMBED_FRAMES, MAX_EMBED_ORIGINS, reportsSince, withReport, type EmbedMap } from '../../src/core/frames/embeds';
+import { cleanEmbedOrigins, embedOrigins, frameOrigin, googleSitesNotice, isGoogleSitesWrapper, MAX_EMBED_FRAMES, MAX_EMBED_ORIGINS, reportsSince, withReport, type EmbedMap } from '../../src/core/frames/embeds';
 import { isSiteOrigin } from '../../src/core/model/schema';
 import { originMatchesPattern } from '../../src/core/permissions/registration';
 
@@ -56,3 +56,28 @@ describe('embedded sites (D155)', () => {
     expect(reportsSince(map, 50)).toBeNull();
   });
 });
+
+describe('Google Sites wording (D201)', () => {
+  const w1 = 'https://1504077899-atari-embeds.googleusercontent.com';
+  const w2 = 'https://2203344556-atari-embeds.googleusercontent.com';
+  it('recognises only Google Sites embed wrappers', () => {
+    expect(isGoogleSitesWrapper(w1)).toBe(true);
+    for (const o of [
+      'https://atari-embeds.googleusercontent.com',
+      'http://1504077899-atari-embeds.googleusercontent.com',
+      'https://1504077899-atari-embeds.googleusercontent.com.evil.test',
+      'https://x.1504077899-atari-embeds.googleusercontent.com',
+      'https://lh3.googleusercontent.com',
+      'https://1504077899-atari-embeds.evil.test',
+    ])
+      expect(isGoogleSitesWrapper(o), o).toBe(false);
+  });
+  it('“updated” on a Google Site whose earlier wrapper was allowed; “first” before that; nothing elsewhere', () => {
+    expect(googleSitesNotice('https://sites.google.com', [w2], [w1, 'https://app.test'])).toBe('updated');
+    expect(googleSitesNotice('https://sites.google.com', [w1], ['https://app.test'])).toBe('first');
+    expect(googleSitesNotice('https://sites.google.com', ['https://app.test'], [w1])).toBeNull();
+    expect(googleSitesNotice('https://example.com', [w2], [w1])).toBeNull();
+    expect(googleSitesNotice(null, [w2], [w1])).toBeNull();
+  });
+});
+

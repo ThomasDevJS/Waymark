@@ -33,7 +33,7 @@ export interface RenderOptions {
 }
 
 /** Size unit for strokes and the badge: about one CSS pixel on a typical capture. */
-const unitOf = (w: number) => Math.max(1, w / 1000);
+export const unitOf = (w: number) => Math.max(1, w / 1000);
 
 /**
  * The blur's standard deviation in image pixels: about 3.5 CSS pixels, which leaves boxes, menus
@@ -125,11 +125,58 @@ export async function renderShot(shot: StoredShot, opts: RenderOptions = {}): Pr
   }
 }
 
-/** The step's number in a circle at the highlight's top-left corner, kept inside the image. */
+/**
+ * Where the step-number badge goes (D158): outside the highlight, so it never covers the element
+ * (it hid the start of a small tab label, #87). Spots are tried in order, top-left first as before,
+ * then the other corners, then the sides; the first that lies wholly in the image and clear of the
+ * highlight and its ring wins. If none fits, a smaller badge is tried; only then inside the box.
+ */
+export function badgeSpot(hl: Box, w: number, h: number, u: number): { cx: number; cy: number; r: number } {
+  const edge = 2;
+  const ring = 5 * u; // the ring is drawn this far outside the highlight
+  const full = 13 * u;
+  // A badge about as tall as a small target, never under 9 (readable), never over 13.
+  const sized = Math.max(9 * u, Math.min(full, Math.min(hl.w, hl.h) * 0.75));
+  for (const r of [sized, 9 * u]) {
+    // Measured from the ring's outer edge, so a spot is clear of everything drawn for the element.
+    const o = { x: hl.x - ring, y: hl.y - ring, w: hl.w + 2 * ring, h: hl.h + 2 * ring };
+    const d = r + 2 * u; // centre this far from that edge
+    const diag = d / Math.SQRT2;
+    const left = o.x - d;
+    const right = o.x + o.w + d;
+    const top = o.y - d;
+    const bottom = o.y + o.h + d;
+    const midX = hl.x + hl.w / 2;
+    const midY = hl.y + hl.h / 2;
+    const spots: [number, number][] = [
+      [o.x - diag, o.y - diag],
+      [o.x + o.w + diag, o.y - diag],
+      [o.x - diag, o.y + o.h + diag],
+      [o.x + o.w + diag, o.y + o.h + diag],
+      [left, midY],
+      [right, midY],
+      [midX, top],
+      [midX, bottom],
+      // Along an edge, off-centre: a long, flat element at the top of the image (a nav bar).
+      [left, hl.y + r],
+      [right, hl.y + r],
+    ];
+    for (const [cx, cy] of spots) {
+      if (cx - r < edge || cy - r < edge || cx + r > w - edge || cy + r > h - edge) continue;
+      // Clear of the highlight plus the ring: the distance from the centre to that box.
+      const dx = Math.max(hl.x - ring - cx, 0, cx - (hl.x + hl.w + ring));
+      const dy = Math.max(hl.y - ring - cy, 0, cy - (hl.y + hl.h + ring));
+      if (Math.hypot(dx, dy) >= r + u) return { cx, cy, r };
+    }
+  }
+  // The element fills the image: inside its top-left corner, as before.
+  const r = 9 * u;
+  return { cx: Math.min(w - r - edge, Math.max(r + edge, hl.x + r + 2 * u)), cy: Math.min(h - r - edge, Math.max(r + edge, hl.y + r + 2 * u)), r };
+}
+
+/** The step's number in a circle beside the highlight (badgeSpot). */
 function drawBadge(ctx: OffscreenCanvasRenderingContext2D, label: string, hl: Box, w: number, h: number, u: number): void {
-  const r = 13 * u;
-  const cx = Math.min(w - r - 2, Math.max(r + 2, hl.x));
-  const cy = Math.min(h - r - 2, Math.max(r + 2, hl.y));
+  const { cx, cy, r } = badgeSpot(hl, w, h, u);
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = RING_COLOR;
@@ -138,10 +185,10 @@ function drawBadge(ctx: OffscreenCanvasRenderingContext2D, label: string, hl: Bo
   ctx.strokeStyle = '#fff';
   ctx.stroke();
   ctx.fillStyle = '#fff';
-  ctx.font = `600 ${Math.round(14 * u)}px system-ui, sans-serif`;
+  ctx.font = `600 ${Math.round(r * 1.05)}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, cx, cy + u);
+  ctx.fillText(label, cx, cy + r * 0.08);
 }
 
 export function blobToDataUrl(blob: Blob): Promise<string> {
