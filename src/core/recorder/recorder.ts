@@ -24,6 +24,11 @@ export type RecorderOp = { op: 'add'; step: Step; at?: number } | { op: 'replace
 export interface RecorderOptions {
   doc?: Document;
   emit: (op: RecorderOp) => void;
+  /**
+   * The element a step was emitted for, before the step goes out. The recording client keeps a
+   * weak reference, so a screenshot can measure the element itself at capture time (D183).
+   */
+  onTarget?: (stepId: string, el: Element) => void;
   /** True for events inside Waymark's own overlay. */
   isOwnEvent?: (path: EventTarget[]) => boolean;
   framePath?: () => string[];
@@ -164,6 +169,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const step = makeStep(kind, el, fp, title, flags, when);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
     dbg('emit', () => ({ op: 'add', kind, title: title.replace(/\*\*/g, ''), flags: flags ?? [], ...fpFacts(fp) }));
+    opts.onTarget?.(step.id, el);
     opts.emit({ op: 'add', step, at: when.at });
     return step;
   };
@@ -319,6 +325,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       step.id = last.id;
       last.time = now();
       dbg('merge', () => ({ why: 'the same select changed again: the step is updated', title: title.replace(/\*\*/g, '') }));
+      opts.onTarget?.(last.id, el);
       opts.emit({ op: 'replace', stepId: last.id, step });
     } else add('select', el, fp, title);
   };
@@ -371,6 +378,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       step.id = last.id;
       last.kind = 'submit';
       dbg('merge', () => ({ why: 'a click on the submit button, then submit: one submit step' }));
+      opts.onTarget?.(last.id, last.el);
       opts.emit({ op: 'replace', stepId: last.id, step });
       return;
     }

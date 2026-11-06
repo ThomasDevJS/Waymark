@@ -17,14 +17,18 @@ export const canGrant = process.platform === 'linux' && !!process.env.DISPLAY;
 // would pass green (D52).
 if (process.env.CI && !canGrant) throw new Error('CI must run the e2e tests under xvfb-run (no DISPLAY).');
 
-export async function launch(userDataDir: string): Promise<BrowserContext> {
+/**
+ * `viewport: null` uses the real window instead of Playwright's emulated viewport, for tests that
+ * compare what the page measures with what chrome.tabs.captureVisibleTab shows (D183).
+ */
+export async function launch(userDataDir: string, viewport: { width: number; height: number } | null = { width: 1280, height: 900 }): Promise<BrowserContext> {
   if (!existsSync(join(EXT_PATH, 'manifest.json'))) throw new Error('Run `pnpm build:test` first');
   const executablePath = process.env.WAYMARK_CHROMIUM ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
   return chromium.launchPersistentContext(userDataDir, {
     channel: executablePath ? undefined : 'chromium',
     executablePath,
     headless: !canGrant,
-    viewport: { width: 1280, height: 900 },
+    viewport,
     args: [`--disable-extensions-except=${EXT_PATH}`, `--load-extension=${EXT_PATH}`, '--no-first-run', '--no-default-browser-check'],
   });
 }

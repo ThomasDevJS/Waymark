@@ -3,7 +3,7 @@ import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { ContentPush } from '../core/messaging/protocol';
 import { enqueue } from '../core/storage/queue';
 import { siteAllowed } from './site-access';
-import { writeGuide } from '../core/storage/guides';
+import { getGuides, writeGuide } from '../core/storage/guides';
 import { updateAllBadges, updateBadge } from './discovery';
 import type { Step } from '../core/model/schema';
 import {
@@ -23,6 +23,7 @@ import { originToMatchPattern, stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
+import { addShotsFlagInQueue, probeShot, queueShot, shotStep, shotsOn, sweepShots, type ShotOutcome } from './shots';
 
 const KEY = 'recording';
 
@@ -113,19 +114,55 @@ export async function onSitesRevoked(): Promise<void> {
   await broadcast(null, revoked);
 }
 
+/** Hints remembered per recording: one per tab and site is enough (D186). */
+const MAX_HINTED = 50;
+
+/**
+ * What a screenshot's outcome changes in the recording (D186): a refusal shows the one-click
+ * hint in the panel, and once per tab and site in the page's REC pill; a stored image hides it.
+ */
+export async function onShotOutcome(tabId: number, origin: string, outcome: ShotOutcome): Promise<void> {
+  if (outcome === 'skipped') return;
+  const key = `${tabId}|${origin}`;
+  const out = await mutate(
+    (st) => {
+      if (!st?.shots) return { changed: false, first: false };
+      if (outcome === 'saved') {
+        if (!st.shotHint) return { changed: false, first: false };
+        st.shotHint = false;
+        return { changed: true, first: false };
+      }
+      const first = !(st.shotHinted ?? []).includes(key);
+      const changed = first || !st.shotHint;
+      st.shotHint = true;
+      if (first) st.shotHinted = [...(st.shotHinted ?? []), key].slice(-MAX_HINTED);
+      return { changed, first };
+    },
+    (r) => r.changed,
+  );
+  if (out.first) {
+    const msg: ContentPush = { type: 'shot.hint' };
+    chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }).catch(() => undefined);
+  }
+}
+
 export const recordingHandlers: Handlers = {
   'rec.state': () => getRecording(),
-  'rec.start': async ({ tabId, title }) => {
+  'rec.start': async ({ tabId, title, shots }) => {
     const url = await tabUrl(tabId);
     if (!url || !/^https?:/.test(url)) throw new Error('Open a web page to record on.');
     if (!(await siteAllowed(new URL(url).origin))) throw new Error('Allow Waymark on this site first.');
     const state = await enqueue(async () => {
       if (await getRecording()) throw new Error('A recording is already running.');
       const s = startRecording(title, tabId, url);
+      if (shots) s.shots = true;
       await setRecording(s);
       return s;
     });
     await broadcast(state, state.tabIds);
+    // Does Chrome allow screenshots on this tab? Only after a click on Waymark's icon or a
+    // shortcut there (D181). The probe's picture is dropped at once; recording doesn't wait.
+    if (state.shots) void probeShot(tabId).then((o) => onShotOutcome(tabId, new URL(url).origin, o));
     return state;
   },
   'rec.pause': async () => {
@@ -171,12 +208,17 @@ export const recordingHandlers: Handlers = {
       if (!st) return null;
       const guide = toGuide(st);
       await writeGuide(guide);
+      // The guide's screenshot setting is written in the same queued task, so no sweep can see
+      // its images without it (D185).
+      if (st.shots) await addShotsFlagInQueue(guide.id);
       await setRecording(null);
       return { state: st, guide };
     });
     if (!result) return null;
     await broadcast(null, result.state.tabIds);
     await updateAllBadges();
+    // Images of steps taken back with Undo go now.
+    if (result.state.shots) void sweepShots();
     return { guideId: result.guide.id, title: result.guide.title, steps: result.guide.steps };
   },
   'rec.step': async (op, ctx: HandlerContext) => {
@@ -225,6 +267,27 @@ export const recordingHandlers: Handlers = {
     if (result) {
       const st = await getRecording();
       await broadcast(st, st?.tabIds ?? []);
+      // A screenshot of the step, if asked for (D180). Queued, never awaited: recording and the
+      // page's click never wait for it.
+      if (st?.shots && tabId !== undefined && ctx.sender.origin && shotStep(clean, ctx.frameId)) {
+        const origin = ctx.sender.origin;
+        const guideId = st.guideId;
+        const stepId = op.op === 'add' ? clean.id : op.stepId;
+        void queueShot({
+          tabId,
+          origin,
+          guideId,
+          step: { id: stepId, target: clean.target },
+          ...(top ? { page: top } : {}),
+          // Still wanted: the step is in the recording, or in the guide it was saved as.
+          stillWanted: async () => {
+            const now = await getRecording();
+            if (now?.guideId === guideId) return !!now.shots && now.steps.some((x) => x.id === stepId);
+            const [g] = await getGuides([guideId]);
+            return !!g?.steps.some((x) => x.id === stepId) && (await shotsOn(guideId));
+          },
+        }).then((o) => onShotOutcome(tabId, origin, o));
+      }
     }
     return { ok: result };
   },

@@ -8,6 +8,7 @@ import { flashPill, hidePill, showPill } from './overlay/pill';
 import { testMark } from './test-hooks';
 import { dlog } from './debug';
 import { createRecHover } from './rec-hover';
+import { rememberShotTarget } from './shots';
 
 /** Pill notice for a click the recorder left out (issue #6). */
 export const SKIP_NOTICE = 'Not recorded: Waymark could not find this again. Click a button, link or field.';
@@ -26,6 +27,8 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
           send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
         },
         isOwnEvent: isOverlayPath,
+        // Its screenshot measures the element itself at capture time (D183); top frame only.
+        ...(window === window.top ? { onTarget: rememberShotTarget } : {}),
         framePath,
         debug: (ev, data) => dlog('rec', ev, data),
         onSkip: () => {

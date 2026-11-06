@@ -5,6 +5,7 @@ import { startFrameMapping } from './frames';
 import { startRecordingClient } from './recording';
 import { startPlayerClient } from './player/controller';
 import { startEditorClient } from './editor';
+import { startShotClient } from './shots';
 import { startLauncher, takeDeepLink } from './launcher';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
@@ -45,7 +46,8 @@ export function startContent(): void {
   const player = startPlayerClient({ frameToken: instanceId, framePath: frames.framePath });
   const editor = startEditorClient(frames.framePath);
   const launcher = startLauncher();
-  disposers.push(recording.dispose, player.dispose, editor.dispose, launcher.dispose, destroyOverlay);
+  const shots = startShotClient();
+  disposers.push(recording.dispose, player.dispose, editor.dispose, launcher.dispose, shots.dispose, destroyOverlay);
   let firstReport = true;
   disposers.push(
     watchRoutes((change) => {

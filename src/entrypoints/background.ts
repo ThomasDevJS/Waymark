@@ -25,6 +25,7 @@ import { debugHandlers, debugReady, debugTextForTab, dlog, onDebugTabRemoved } f
 import { redactUrl } from '../core/debug/log';
 import { getPlayerSettings, setPlayerSettings } from '../background/player-settings';
 import { getRecorderSettings, setRecorderSettings } from '../background/recorder-settings';
+import { SHOTS_ALARM, sweepShots } from '../background/shots';
 import { recorderSettingsFor } from '../core/recorder/settings';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
@@ -162,6 +163,7 @@ export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(async (details) => {
     await rebuildIndex();
     await purgeTrash();
+    await sweepShots();
     // Subscribed before fetch-only marks existed: mark the library site now (D80).
     if (details.reason === 'update') await migrateLibraryFetchOnly();
     await onBrowserStartLibrary();
@@ -171,12 +173,14 @@ export default defineBackground(() => {
   });
   chrome.runtime.onStartup.addListener(() => {
     void sync();
-    void purgeTrash();
+    void purgeTrash().then(sweepShots);
     void onBrowserStartLibrary();
   });
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === LIBRARY_ALARM) void refreshLibrary();
     if (alarm.name === HD_IDLE_ALARM) void onHdIdle();
+    // A deleted guide's screenshots go once its Undo window is over (D185).
+    if (alarm.name === SHOTS_ALARM) void purgeTrash().then(sweepShots);
   });
   // The badge learns the URL from tabs.onUpdated (readable on granted sites) and route reports.
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {

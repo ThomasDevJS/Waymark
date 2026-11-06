@@ -56,6 +56,11 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - From 6 guides for a page (`PAGE_SEARCH_FROM`): the `?` menu becomes a combobox with a box, up to 3 tag chips and a listbox (`searchList` in `src/content/launcher.ts`); the panel's "For this page" gets its own box and chips (`Library.tsx`). Pure matching, chips and caps: `src/core/discovery/page-search.ts`. `guide.forPage` sends `{ id, title, tags }`, capped and parsed with `ForPageResponseSchema`.
 - Tests: `test/unit/page-search.test.ts`, `test/browser/launcher-search.test.ts` (closed root, real keys), e2e `test/e2e/s1-page-search.spec.ts` (test hooks `launcher-menu`, `launcher-results`, `launcher-active`).
 
+## Step screenshots (D180–D188, issue #68)
+- Off by default, per guide (`shots:guides` in storage.local; the recording's `shots`). Capture: `src/background/shots.ts` (queue, `grab`, crop and WebP encode, sweep), hooked once in `rec.step` (`src/background/recording.ts`) and in `step.test` (`src/background/editor.ts`). Pure parts: `src/core/shots/{crop,rate,lifecycle}.ts`. Store: IndexedDB `waymark-shots` (`src/core/shots/store.ts`). Page side: `src/content/shots.ts` (hides the overlay host and field text, in shadow roots too; answers with the step's element measured now, the viewport, pixel ratio and iframe areas). Export: `src/core/shots/render.ts` (outline and blur, side panel), `howtoHtml(…, images)`, the review's screenshot rows (`ExportReview.tsx`). UI: `sidepanel/Shots.tsx`.
+- Needs activeTab (Alt+W, Alt+R or the toolbar icon on that tab): a site permission alone is refused (D181). Top-frame elements only.
+- Tests: `test/unit/shots.test.ts`, `test/browser/shots.test.ts`, e2e `test/e2e/s2-screenshots.spec.ts` (runs with `viewport: null`; test hook `data-waymark-test-shot-hidden`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

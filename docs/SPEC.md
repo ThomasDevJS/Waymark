@@ -4,7 +4,7 @@ Spec as of Nov 4, 2026. Source of truth: the Claude Doc "Waymark — In-App Guid
 
 ## Summary, goals and non-goals
 
-Waymark (working name) is a Chromium extension that records a click-by-click walkthrough of any web app and replays it on the live page. Each step spotlights the real button or field, shows a note, and can read it aloud. v1 stores no screenshots, needs no servers, and costs $0 to run.
+Waymark (working name) is a Chromium extension that records a click-by-click walkthrough of any web app and replays it on the live page. Each step spotlights the real button or field, shows a note, and can read it aloud. Guides store no screenshots (optional step screenshots exist only for the printable how-to, D180–D188), it needs no servers, and costs $0 to run.
 
 **Goals for v1**
 
@@ -38,7 +38,7 @@ v1 serves one team learning web apps they already have access to. The extension 
 
 - $0 running cost. The only possible spend is the one-time $5 Chrome Web Store registration.
 - Manifest V3, Chromium 120 or newer, desktop only.
-- No screenshots, no typed values, no secrets in the extension.
+- No screenshots in guides (optional, off-by-default step screenshots for the printable how-to only: D180–D188), no typed values, no secrets in the extension.
 
 **Assumptions to confirm**
 
@@ -426,7 +426,7 @@ HD voice (D51) requests `https://huggingface.co/*` and `https://raw.githubuserco
 
 **Privacy**
 
-- No screenshots, no typed values, and no page text beyond element labels and short own text. The data-like filter also covers accessible names, option labels, link paths, URL segments and page titles.
+- No screenshots in guides or packs (step screenshots, off by default, live apart in IndexedDB and go only into a reviewed printable how-to: D180–D188), no typed values, and no page text beyond element labels and short own text. The data-like filter also covers accessible names, option labels, link paths, URL segments and page titles.
 - An export review shows everything in a pack before it leaves the browser.
 - Online voices are off by default, because they send step text to the voice provider.
 - HD voice is off by default. Turning it on downloads the voice model from Hugging Face and the word list from GitHub; those hosts see an ordinary download request (IP address, browser), and no step text is sent. After that, speech is generated on the device and nothing leaves it.
