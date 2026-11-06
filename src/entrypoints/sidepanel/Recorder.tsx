@@ -10,10 +10,13 @@ import { Icon } from '../../ui/Icon';
 import { HdOffer } from '../../ui/HdOffer';
 import { FLAG_HELP, FlagNotes } from './steps';
 import type { ShortcutOutcome } from '../../core/storage/shortcut';
+import { SHOT_HINT_PANEL, ShotsSwitch } from './Shots';
 
 const recording = signal<RecordingState | null>(null);
 const saved = signal<{ title: string; count: number } | null>(null);
 const title = signal('');
+/** Screenshots for the printable how-to: off unless the author turns them on for this recording (D180). */
+const recShots = signal(false);
 const noteTitle = signal('');
 const noteOpen = signal(false);
 const error = signal<string | null>(null);
@@ -236,9 +239,10 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
               e.preventDefault();
               if (tabId === null) return;
               void attempt(async () => {
-                recording.value = await send('rec.start', { tabId, title: title.value });
+                recording.value = await send('rec.start', { tabId, title: title.value, ...(recShots.value ? { shots: true } : {}) });
                 saved.value = null;
                 title.value = '';
+                recShots.value = false;
               });
             }}
           >
@@ -252,6 +256,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             </button>
           </form>
           <p class="hint">Then do the task on the page. Each click becomes a step. What you type is never saved.</p>
+          <ShotsSwitch testid="record-shots" on={recShots.value} onChange={(on) => (recShots.value = on)} hint="Off by default. Only a small picture around each clicked element, kept on this computer." />
           {errorBox}
         </section>
         )}
@@ -273,6 +278,11 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             {recordingNow ? 'Recording' : 'Paused'}
           </span>
           <strong class="truncate">{r.title}</strong>
+          {r.shots && (
+            <span class="small muted" data-testid="rec-shots">
+              <Icon name="image" /> Screenshots on
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -331,6 +341,12 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           <input class="grow" aria-label="Note" placeholder="A tip for the learner, shown as its own step" value={noteTitle.value} onInput={(e) => (noteTitle.value = (e.target as HTMLInputElement).value)} />
           <button type="submit">Add</button>
         </form>
+      )}
+      {r.shots && r.shotHint && (
+        <p class="banner" role="status" data-testid="shot-hint">
+          <Icon name="info" />
+          <span>{SHOT_HINT_PANEL} Recording goes on; a step without a screenshot is text only in the printable how-to.</span>
+        </p>
       )}
       {errorBox}
       {r.steps.length ? (

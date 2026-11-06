@@ -10,6 +10,7 @@ import { ForPageResponseSchema } from '../core/messaging/protocol';
 import { duplicateGuide, findConflicts, packOrigins, parsePack, planImport, type Choice } from '../core/sharing/pack';
 import { getGuides, guideKey, listGuides, writeGuides, type GuideIndexEntry } from '../core/storage/guides';
 import { enqueue } from '../core/storage/queue';
+import { dropShotsOf, scheduleShotSweep, sweepShots } from './shots';
 import { addToTrash, liveTrash, TRASH_KEY, trashIsStale, trashItems, UNDO_MS } from '../core/storage/trash';
 import { lastCompletions } from '../core/storage/problems';
 import { originToMatchPattern } from '../core/url/url';
@@ -176,9 +177,11 @@ export async function refreshLibrary(): Promise<LibraryState> {
       if ((await libraryState()).url !== state.url) return false;
       const plan = planImport(await listGuides(), pack, {}, 'library');
       await writeGuides(plan.write, plan.remove);
-      return true;
+      return plan.write.map((g) => g.id);
     });
     if (!applied) return libraryState();
+    // Library guides replace what was there: no screenshots carry over (D185).
+    await dropShotsOf(applied);
     await addPendingAllow(packOrigins(pack.guides));
     await updateAllBadges();
     return setLibraryState({ lastFetchAt: new Date().toISOString(), lastError: null, count: pack.guides.length });
@@ -292,6 +295,8 @@ export const discoveryHandlers: Handlers = {
       return g ? now + UNDO_MS : null;
     });
     await updateAllBadges();
+    // Its screenshots stay while Undo is possible, then go (D185).
+    if (undoUntil) await scheduleShotSweep();
     return { ok: true, undoUntil };
   },
   'guide.restore': async ({ id }) => {
@@ -312,6 +317,7 @@ export const discoveryHandlers: Handlers = {
   'trash.list': async () => {
     const now = Date.now();
     const entries = await purgeTrash(now);
+    void sweepShots();
     return { items: trashItems(entries).filter((i) => i.undoUntil > now) };
   },
   'completions.list': async () => ({ completed: await lastCompletions() }),
@@ -344,6 +350,8 @@ export const discoveryHandlers: Handlers = {
     });
     await addPendingAllow(packOrigins(pack.guides));
     await updateAllBadges();
+    // A replaced guide's screenshots showed the old content (D185).
+    await dropShotsOf(plan.write.map((g) => g.id));
     return { imported: plan.write.length, skipped: plan.skipped };
   },
   'allow.pending': async () => ({ origins: await pendingAllow() }),

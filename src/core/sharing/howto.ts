@@ -1,7 +1,8 @@
 /**
  * A guide as a text how-to (D104): Markdown, or a printable HTML page. Numbered steps with their
- * titles and notes, the guide title and description, and the start page's origin. Nothing else:
- * no screenshots, selectors, element labels, voice text, tags or page paths. A link in a title or
+ * titles and notes, the guide title and description, and the start page's origin. The printable
+ * page may also show a step's screenshot, when the guide has them and the author kept it (D188).
+ * Nothing else: no selectors, element labels, voice text, tags or page paths. A link in a title or
  * note keeps its text; a bare address on the guide's start origin is cut to that origin, and any
  * other address is removed.
  *
@@ -165,13 +166,37 @@ ol { padding-left: 1.6rem; }
 li { margin: 0 0 .8rem; padding-left: .2rem; break-inside: avoid; }
 li .title { font-weight: 600; }
 li .note { margin: .2rem 0 0; color: #4a5160; }
+li .shot { margin: .5rem 0 0; }
+li .shot img { display: block; max-width: 100%; height: auto; border: 1px solid #d5d9e0; border-radius: 6px; }
 footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
 @media (prefers-color-scheme: dark) { @media screen { body { background: #15171c; color: #e5e7ec; } .desc, .start, li .note { color: #a9b0bd; } } }
 @media print { body { margin: 0; max-width: none; } footer { display: none; } }
 `;
 
-/** A standalone, printable HTML page: no scripts, no remote resources, every string escaped. */
-export function howtoHtml(guides: Guide[]): string {
+/** A step's screenshot for the printable page, already marked (and blurred) by the export (D188). */
+export interface HowtoImage {
+  /** A `data:image/webp` or `data:image/png` URL; anything else is left out. */
+  src: string;
+  w: number;
+  h: number;
+}
+
+export const howtoImageKey = (guideId: string, stepId: string) => `${guideId}|${stepId}`;
+
+const DATA_IMAGE = /^data:image\/(?:webp|png);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+function imageHtml(img: HowtoImage | undefined, n: number): string {
+  if (!img || !DATA_IMAGE.test(img.src)) return '';
+  const w = Math.max(1, Math.min(4000, Math.round(img.w)));
+  const h = Math.max(1, Math.min(4000, Math.round(img.h)));
+  return `<figure class="shot"><img src="${img.src}" width="${w}" height="${h}" alt="Screenshot of step ${n}, with the element to use outlined"></figure>`;
+}
+
+/**
+ * A standalone, printable HTML page: no scripts, no remote resources, every string escaped.
+ * Screenshots, if any, are embedded as data URLs (keyed by howtoImageKey).
+ */
+export function howtoHtml(guides: Guide[], images: ReadonlyMap<string, HowtoImage> = new Map()): string {
   const many = guides.length > 1;
   const first = guides[0];
   const docTitle = many || !first ? 'Guides' : stripUrls(first.title, startOrigin(first));
@@ -183,9 +208,10 @@ export function howtoHtml(guides: Guide[]): string {
     if (g.description) body.push(`<p class="desc">${plainHtml(g.description, origin)}</p>`);
     if (origin) body.push(`<p class="start">Start at ${escapeHtml(origin)}</p>`);
     body.push('<ol>');
-    for (const s of g.steps) {
-      body.push(`<li><div class="title">${inlineHtml(s.title, origin)}</div>${s.note ? `<p class="note">${inlineHtml(s.note, origin)}</p>` : ''}</li>`);
-    }
+    g.steps.forEach((s, i) => {
+      const img = imageHtml(images.get(howtoImageKey(g.id, s.id)), i + 1);
+      body.push(`<li><div class="title">${inlineHtml(s.title, origin)}</div>${s.note ? `<p class="note">${inlineHtml(s.note, origin)}</p>` : ''}${img}</li>`);
+    });
     body.push('</ol>', '</section>');
   }
   return [
@@ -195,7 +221,8 @@ export function howtoHtml(guides: Guide[]): string {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     // The page runs nothing and loads nothing (D104).
-    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`,
+    // Screenshots are embedded data URLs (D188); nothing is fetched.
+    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">`,
     `<title>${escapeHtml(docTitle)}</title>`,
     `<style>${PRINT_CSS}</style>`,
     '</head>',

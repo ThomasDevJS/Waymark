@@ -13,6 +13,7 @@ import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
 import { withoutLinks } from '../core/text/markdown';
 import { updateAllBadges } from './discovery';
+import { pruneAfterSave, queueShot, setShotsOn, shotsOn, shotsStatus, type ShotOutcome } from './shots';
 
 /** The tab must show a page of the guide's site: steps are only sent to their own origin (D41). */
 async function tabOnOrigins(tabId: number, origins: string[]): Promise<string> {
@@ -64,6 +65,8 @@ export interface TestResult {
   /** Matched on a single strong signal: likely to break when the app changes (SPEC: per-site profiles). */
   fragile: boolean;
   reason?: string;
+  /** In a guide with screenshots on: what happened to this step's screenshot (D187). */
+  shot?: ShotOutcome | 'frame';
 }
 
 export const editorHandlers: Handlers = {
@@ -86,29 +89,53 @@ export const editorHandlers: Handlers = {
       };
       await writeGuide(next);
       return next;
-    }).then(async (g) => {
+    }).then(async (next) => {
       await updateAllBadges();
-      return g;
+      // Deleted steps and re-picked elements lose their screenshots (D185).
+      await pruneAfterSave(next);
+      return next;
     });
   },
-  'step.test': async ({ tabId, step, origins }): Promise<TestResult> => {
-    await tabOnOrigins(tabId, origins);
+  'step.test': async ({ tabId, step, origins, guideId }): Promise<TestResult> => {
+    const url = await tabOnOrigins(tabId, origins);
     if (!step.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element.' };
     const frameIds = await framesFor(tabId, step.target.framePath);
     if (!frameIds.length) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step is not on the page.' };
-    const msg: ContentPush = { type: 'test.step', payload: { step } };
+    // A guide with screenshots on gets this step's screenshot again (D187).
+    const capture = !!guideId && (await shotsOn(guideId));
+    const msg: ContentPush = { type: 'test.step', payload: { step, ...(capture ? { shot: true } : {}) } };
     // A rebuilt iframe leaves its old frame in the map: try the newest first, then the others (D152).
     for (const frameId of frameIds) {
+      let r: TestResult | undefined;
       try {
-        const r = (await chrome.tabs.sendMessage(tabId, msg, { frameId })) as TestResult | undefined;
-        if (r) return r;
+        r = (await chrome.tabs.sendMessage(tabId, msg, { frameId })) as TestResult | undefined;
       } catch {
-        // gone, or no content script there: try the next
+        continue; // gone, or no content script there: try the next
       }
+      if (!r) continue;
+      // The page's answer is untrusted: only these fields go back to the panel.
+      const out: TestResult = { found: !!r.found, score: Number(r.score) || 0, margin: Number(r.margin) || 0, matched: Array.isArray(r.matched) ? r.matched.filter((x) => typeof x === 'string').slice(0, 30) : [], fragile: !!r.fragile, ...(typeof r.reason === 'string' ? { reason: r.reason.slice(0, 500) } : {}) };
+      if (capture && out.found) {
+        // Only the top page can be placed in the tab's picture (D181).
+        out.shot =
+          frameId !== 0
+            ? 'frame'
+            : await queueShot({ tabId, origin: new URL(url).origin, guideId: guideId!, step, page: url, stillWanted: () => shotsOn(guideId!) });
+      }
+      return out;
     }
     return frameIds[0] === 0
       ? { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'Waymark is not running on this page. Allow it on this site first.' }
       : { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step did not answer. Reload the page and try again.' };
+  },
+  'shots.get': ({ guideId }) => shotsStatus(guideId),
+  'shots.set': async ({ guideId, on }) => {
+    if (on) {
+      const g = await loadGuide(guideId);
+      if (g.source === 'library') throw new Error('Team guides are read-only. Use Duplicate in the list to edit your own copy.');
+    }
+    await setShotsOn([guideId], on);
+    return shotsStatus(guideId);
   },
   'pick.start': async ({ tabId, origins }) => {
     await tabOnOrigins(tabId, origins);

@@ -8,6 +8,20 @@ import { THEME_CSS } from './theme';
 const HOST_TAG = 'waymark-overlay';
 let host: HTMLElement | null = null;
 let root: ShadowRoot | null = null;
+/** Hidden while the service worker takes a screenshot (D183): no Waymark UI may be in an image. */
+let hiddenForShot = false;
+
+function applyShotHidden(): void {
+  if (!host) return;
+  if (hiddenForShot) host.style.setProperty('visibility', 'hidden', 'important');
+  else host.style.removeProperty('visibility');
+}
+
+/** Hides or shows the whole overlay (pill, spotlight, tooltip, outlines), now and for a host made meanwhile. */
+export function setOverlayHidden(on: boolean): void {
+  hiddenForShot = on;
+  applyShotHidden();
+}
 
 const ISOLATED_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'];
 
@@ -53,6 +67,7 @@ export function overlayRoot(): ShadowRoot {
   layer.className = 'layer wm-theme';
   root.append(style, layer);
   for (const type of ISOLATED_EVENTS) host.addEventListener(type, (e) => e.stopPropagation());
+  applyShotHidden();
   (document.documentElement ?? document).appendChild(host);
   try {
     host.showPopover();

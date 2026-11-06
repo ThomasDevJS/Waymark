@@ -35,7 +35,7 @@ A draft of everything the Chrome Web Store dashboard asks for, matching Waymark 
 > **Private by design.**
 > - Waymark works only on sites you allow, one at a time.
 > - Guides stay in your browser.
-> - No account, no servers, no analytics, no screenshots.
+> - No account, no servers, no analytics. Optional step screenshots for the printable how-to stay on your device.
 > - Online voices are off unless you turn them on.
 >
 > Waymark is for teams that train people on internal tools, CRMs, admin consoles and other web apps: onboarding, support and change rollouts.
@@ -64,9 +64,9 @@ The dashboard asks for one justification per permission. Waymark's manifest has 
 | `unlimitedStorage` | A team's guides can exceed the 10 MB default quota of `chrome.storage.local`; without it, saving or importing guides would start failing. It also lets the optional HD voice files (about 170 MB, Cache Storage) be kept. |
 | `sidePanel` | The guide list, recorder and step editor live in the side panel, so they stay open next to the web app being recorded or learned. |
 | `scripting` | Registers Waymark's content script (`chrome.scripting.registerContentScripts`) only on the sites the user has granted, injects the same bundled script into already-open tabs of a site right after it is granted (`executeScript`), and removes it when access is revoked. That script draws the spotlight and records steps. |
-| `activeTab` | When the user clicks the toolbar icon, Waymark reads that tab's URL to offer "Allow on this site" for it, and to show the guides for it, before the site has been granted. |
+| `activeTab` | When the user clicks the toolbar icon, Waymark reads that tab's URL to offer "Allow on this site" for it, and to show the guides for it, before the site has been granted. If the author turned on step screenshots for the printable how-to (off by default), it also lets Waymark call `chrome.tabs.captureVisibleTab` on that tab; the crops stay on the device. |
 | `tts` | Reads each step aloud with the browser's text-to-speech voices. Online (remote) voices are hidden unless the user opts in. |
-| `alarms` | Refreshes the optional team library URL every 6 hours, and closes the idle HD voice engine after 3 minutes to free memory. |
+| `alarms` | Refreshes the optional team library URL every 6 hours, closes the idle HD voice engine after 3 minutes to free memory, and deletes a deleted guide's step screenshots once its Undo time is over. |
 | `offscreen` | Runs the optional on-device HD voice model (WebAssembly) and plays its audio in an offscreen document, since a service worker can't play audio or run the model's worker threads. Reasons: `AUDIO_PLAYBACK`, `WORKERS`. |
 | Optional host permissions `https://*/*`, `http://*/*` | Requested at runtime for one site at a time, from a click on "Allow on this site" (or for the sites listed in a pack the user imports, each shown with a checkbox). Needed to record and play guides on that site. Also requested for the origin of a team library URL the user enters in Settings, when that server does not send CORS headers, so the pack file can be downloaded. Also used briefly for `https://huggingface.co/*` and `https://raw.githubusercontent.com/*` while the user downloads the optional HD voice model (the model file itself is served through Hugging Face's CDN, `*.cdn.hf.co`); those are released when the download ends. |
 
@@ -86,7 +86,7 @@ Tick **none** of the data types: Waymark does not collect or transmit user data.
 | Location | No | |
 | Web history | No | Page addresses of granted sites are saved only inside guides and the local Problems list, on the device. |
 | User activity | No | Clicks are recorded into guides only while the user records, and kept on the device. |
-| Website content | No | Only short element labels are stored, on the device, to find elements again. No screenshots, no typed values. |
+| Website content | No | Only short element labels are stored, on the device, to find elements again. No typed values. Optional step screenshots (off by default, for the printable how-to) are kept on the device only, never transmitted. |
 
 Then certify all three statements:
 - I do not sell or transfer user data to third parties, outside of the approved use cases.

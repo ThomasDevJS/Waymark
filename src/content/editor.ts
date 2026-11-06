@@ -8,6 +8,7 @@ import { buildFingerprint, resolveTargetFromPath, type ResolvedTarget } from '..
 import type { ElementFingerprint } from '../core/model/schema';
 import { promoteToRegion } from '../core/recorder/region';
 import { hasStrongSignal } from '../core/matcher/signals';
+import { rememberShotTarget } from './shots';
 import { waitForMatch, STRONG } from '../core/matcher';
 import { NO_RUN } from '../core/player/run';
 import { roleWord, stepTitle } from '../core/text/templates';
@@ -139,7 +140,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     testMark('picking', 'off');
   }
 
-  async function testStep(step: Parameters<PlayerUI['showStep']>[0]['step']): Promise<TestResult> {
+  async function testStep(step: Parameters<PlayerUI['showStep']>[0]['step'], wantShot = false): Promise<TestResult> {
     if (!step?.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element to find.' };
     const r = await waitForMatch(document, step.target, { timeoutMs: 3000 });
     clearTimeout(testTimer);
@@ -165,7 +166,10 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     testUi.flash(strong.length > 1 ? 'Found. The details are in the side panel.' : 'Found, but fragile. The details are in the side panel.');
     testTimer = setTimeout(() => testUi?.clear(), 4000);
     testMark('tested', 'found');
-    return { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: strong.length <= 1 };
+    const out: TestResult = { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: strong.length <= 1 };
+    // For the step's screenshot (D187): the service worker measures this element at capture time.
+    if (wantShot && isTop) rememberShotTarget(step.id, target);
+    return out;
   }
 
   const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender, sendResponse: (r: TestResult) => void) => {
@@ -174,7 +178,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     if (m?.type === 'pick.start') startPick();
     else if (m?.type === 'pick.stop') stopPick();
     else if (m?.type === 'test.step' && m.payload?.step) {
-      void testStep(m.payload.step).then(sendResponse);
+      void testStep(m.payload.step, m.payload.shot === true).then(sendResponse);
       return true; // async response
     }
     return false;

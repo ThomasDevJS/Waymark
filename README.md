@@ -1,6 +1,6 @@
 # Waymark
 
-Waymark is a Chromium (Manifest V3) extension that records click-by-click walkthroughs of a web app and replays them on the live page. It spotlights the real element, shows a note and can read it aloud. There are no screenshots, no servers and no account, and it costs $0 to run.
+Waymark is a Chromium (Manifest V3) extension that records click-by-click walkthroughs of a web app and replays them on the live page. It spotlights the real element, shows a note and can read it aloud. Guides hold no screenshots (an optional, off-by-default screenshot per step exists only for the printable how-to and stays on the device), there are no servers and no account, and it costs $0 to run.
 
 - **Record:** press Record and do the task. Waymark writes a step for each click, choice and field, and never stores what you type.
 - **Play:** a learner follows the spotlight on the real page, across pages, tabs, dialogs and iframes. When a step can't be found, Waymark says so instead of pointing at the wrong element.

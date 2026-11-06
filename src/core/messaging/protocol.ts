@@ -50,7 +50,8 @@ export const RequestSchemas = {
   'tab.current': z.object({ windowId: z.number().int().optional(), tabId: z.number().int().optional() }),
   'site.list': z.object({}),
   'site.sync': z.object({}),
-  'rec.start': z.object({ tabId: z.number().int(), title: z.string().max(500) }),
+  // shots: capture screenshots for the printable how-to while recording (D180), off unless asked.
+  'rec.start': z.object({ tabId: z.number().int(), title: z.string().max(500), shots: z.boolean().optional() }),
   'rec.pause': z.object({}),
   'rec.resume': z.object({}),
   'rec.undo': z.object({}),
@@ -85,7 +86,11 @@ export const RequestSchemas = {
   'site.fetchOnly': z.object({ origin: z.string().max(500), on: z.boolean() }),
   'site.allowed': z.object({ origins: z.array(z.string().max(500)).max(50) }),
   'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
-  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50) }),
+  // guideId: a guide with screenshots on gets this step's screenshot taken again (D187).
+  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50), guideId: z.string().max(64).optional() }),
+  // Step screenshots for the printable how-to (D180): on or off per guide, and which steps have one.
+  'shots.get': z.object({ guideId: z.string().max(64) }),
+  'shots.set': z.object({ guideId: z.string().max(64), on: z.boolean() }),
   'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
   'pick.cancel': z.object({ tabId: z.number().int() }),
   'voice.list': z.object({}),
@@ -222,6 +227,8 @@ export interface ResponseMap {
   'guide.get': Guide;
   'guide.save': Guide;
   'step.test': TestResult;
+  'shots.get': ShotsStatus;
+  'shots.set': ShotsStatus;
   'pick.start': { ok: boolean };
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
@@ -259,6 +266,12 @@ export interface ResponseMap {
   'tutorial.stop': { ok: boolean };
   'debug.log': { ok: boolean };
   'debug.copy': { text: string | null };
+}
+
+/** A guide's screenshot setting, and the steps that have one (ids only, never images). */
+export interface ShotsStatus {
+  on: boolean;
+  stepIds: string[];
 }
 
 export interface DebugStatus {
@@ -342,6 +355,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'guide.get',
   'guide.save',
   'step.test',
+  'shots.get',
+  'shots.set',
   'pick.start',
   'pick.cancel',
   'voice.list',
@@ -374,7 +389,12 @@ export type ContentPush =
   | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }
   | { type: 'tts.stop' }
   // editor: Test step (answered with a TestResult) and Re-pick element
-  | { type: 'test.step'; payload: { step: Step } }
+  | { type: 'test.step'; payload: { step: Step; shot?: boolean } }
+  // step screenshots (D183): hide Waymark's UI and field text for a capture, then show it again;
+  // the hint when Chrome refused one (D186). No image or setting ever goes to a page.
+  | { type: 'shot.hide'; payload: { stepId: string } }
+  | { type: 'shot.show' }
+  | { type: 'shot.hint' }
   | { type: 'pick.start' }
   | { type: 'pick.stop' }
   // the debug log switch changed (D110)

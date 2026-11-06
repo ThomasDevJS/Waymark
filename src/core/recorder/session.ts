@@ -45,6 +45,12 @@ export interface RecordingState {
    * up to 1.5 s before them, takes them back (D67).
    */
   pendingNav?: { stepId: string; at: number; tabId?: number }[];
+  /** Screenshots for the printable how-to are on for this recording (D180). */
+  shots?: boolean;
+  /** Chrome refused the last screenshot: the panel shows the one-click hint (D186). */
+  shotHint?: boolean;
+  /** Tabs and sites (`tabId|origin`) whose page was already shown the hint once. */
+  shotHinted?: string[];
 }
 
 /** What content scripts and the pill see. Never the steps themselves. */

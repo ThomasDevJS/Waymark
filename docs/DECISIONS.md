@@ -1350,3 +1350,96 @@ An accessibility, closed-root and data-scope review that did not see the design 
 - **A route report closed the menu while typing**: `refresh()` now keeps an open menu, and what was typed, when the page's guides are the same.
 - **Combobox state and notes**: `aria-expanded` is false while nothing matches. The note after a start that didn't happen is a `role=status`, replaces an earlier note, and goes once the list changes.
 - **Threshold**: one helper (`showsPageSearch`) for both places, tested at 5 and 6; the menu is tested with exactly 6.
+
+## 2026-11-06 — Step screenshots for the printable how-to (issue #68)
+
+The printable how-to (D104) can show a screenshot of each step with its element outlined, so it makes sense to someone who isn't using Waymark. Guides stay DOM-based: screenshots exist **only for the printable export**. This amends D104 ("no screenshots (Waymark has none)") and the privacy policy's "never takes screenshots".
+
+### D180. Off by default, on per guide, after a notice
+*6 Nov 2026 · SPEC: Recorder; Sharing and storage; Permissions, privacy and security*
+
+- **Where**: "Capture screenshots for the printable export" is a switch in the panel's Record card (for that recording; `rec.start` `shots: true`) and in the editor for a local guide (`shots.set`). Team guides have none. Both are off by default, and the recorder's switch goes back to off after each start.
+- **Notice**: turning it on shows a warning first ("Screenshots can show customer data that is on the page, such as names, amounts or account numbers. Text inside fields is hidden. Screenshots stay on this computer and are used only in the printable how-to…"). The switch only turns on with **Turn on screenshots**. Turning it off in the editor deletes the guide's screenshots (the hint says so).
+- **The setting is not in the guide**: a list of guide ids in `storage.local` (`shots:guides`, at most 10,000), written in the same queued task that saves a recorded guide (so no sweep sees images without it). Nothing about screenshots is in the guide JSON, its index, guide files or packs.
+- **Messages**: `shots.get` / `shots.set` (extension pages only) answer `{ on, stepIds }`, ids only. `step.test` takes an optional `guideId`.
+
+### D181. Capture needs activeTab: no new permission (B and C rejected)
+*6 Nov 2026 · SPEC: Permissions*
+
+- **Finding** (probe e2e, test build, Xvfb): with only the site's optional host permission granted, `chrome.tabs.captureVisibleTab` fails with "Either the '<all_urls>' or 'activeTab' permission is required." Chromium's check (`PermissionsData::CanCaptureVisiblePage`, `kActiveTabOrAllUrls`) does not count a host permission for one site.
+- **What grants it** (activeTab, for that tab until it goes to another site):
+  - **Alt+R** (`toggle-recording`): verified in e2e (`s2-screenshots`, test 2).
+  - **Alt+W** (`_execute_action`): verified in e2e (tests 1 and 3).
+  - **A click on the toolbar icon**: not automatable (Playwright can't click the toolbar), so not verified directly. Waymark has no popup and listens to `action.onClicked`; Alt+W fires that same event through the action's command, which is the path verified above, and Chrome's activeTab documentation lists "clicking the extension's action" as a grant. So the toolbar click is expected to grant it but is unverified.
+  - **Not** the side panel's Record button, and not a tab that the recording opened (new tab, or another site in the same tab).
+- **Decision (A, approved by the parent session)**: no new permission. Capture is best effort on tabs with activeTab; a refused capture stores nothing and shows a one-click hint (D186).
+- **Rejected**: (B) `<all_urls>` as an optional host permission, requested when screenshots are turned on. It is the only complete option, but it brings Chrome's broadest warning ("Read and change all your data on all websites") and needs Thomas's explicit approval. (C) Drawing the page in the content script (an html2canvas-like library): no permission, but only an approximation (no cross-origin frames, canvas, video, some CSS) and about 200 KB more in every page.
+- **Frames**: only elements in the top page are captured. A step inside an iframe has a rect in that frame's viewport, which the service worker can't place in the tab's picture. The editor shows no "No screenshot" note or Capture for such steps, and Test step says why there is none.
+
+### D182. What is stored: a crop under 60 KB, with the element's box
+*6 Nov 2026 · SPEC: Data model ("Storage")*
+
+- **Crop** (`src/core/shots/crop.ts`, `planCrop`): the visible part of the element plus 200 CSS px on each side, clamped to the captured image, scaled down to at most 800 × 800 image pixels. An element that is off screen or not in the captured area gives no image.
+- **Encoding**: WebP at quality 0.6 with `OffscreenCanvas.convertToBlob` in the service worker (no offscreen document needed). Over 60 KB, it is encoded again at 0.75× the size, up to five tries (`fitUnderCap`); still too big, nothing is stored.
+- **Box**: the element's rectangle within the stored image. The outline is drawn from it **at export time**, so the stored image stays clean.
+
+### D183. When and how a screenshot is taken
+*6 Nov 2026 · SPEC: Recorder*
+
+- **One hook**: in the service worker's `rec.step` handler, after the step is stored and broadcast, for a top-frame step of a recording with screenshots on. It is queued and never awaited: the page's click is never delayed or cancelled, and recording never waits. The picture is taken **after** the action (the issue's proposal said at pointerdown); the D-brief accepts that, and pointerdown would need content code to wait for the service worker.
+- **Rate limit** (`src/core/shots/rate.ts`): Chrome allows about two captures a second. Captures run one at a time, and the `captureVisibleTab` calls themselves are at least 550 ms apart (a quota refusal is retried once, a second later); at most three wait, and the oldest waiting one is dropped (that step has no screenshot; the debug log says why). The queue is in the service worker's memory, unlike its other state: losing it when the worker stops only skips best-effort images, and a stored queue would cost writes on every step.
+- **Waymark's UI is never in an image**: the service worker sends `shot.hide` to every frame of the tab. Each frame hides its whole overlay host (REC pill, spotlight, tooltip, any outline; also a host made meanwhile) with `visibility: hidden`. The top frame answers after two animation frames, and the capture runs only after that answer (800 ms at most; no answer, no picture). `shot.show` follows at once, and the page shows it again on its own after 2.5 s if that message is lost. E2E checks the REC pill's colour is absent from stored crops that cover the pill (and present in a control capture).
+- **Typed text is never in an image** (CLAUDE.md: never store typed field values): during the capture the page also adopts a constructed style sheet that makes the text of text inputs, text areas and editable areas transparent, in the document and in every shadow root (open ones, and closed ones through `chrome.dom.openOrClosedShadowRoot`); placeholders stay (they are labels). The page's DOM is not changed. Embedded documents (iframes, objects) can have fields the top page can't reach (a payment form on a site Waymark isn't allowed on), so the top frame reports their areas and the service worker paints them over (`#d5d9e0`) in the stored crop.
+- **Placing the element**: the element itself is measured at the moment of the capture. The recorder tells the recording client which element each step was emitted for (`onTarget`), and Test step does the same; the client keeps a weak reference to the last 20. `shot.hide` names the step, and the top frame answers with that element's current rect (null when it is gone or hidden: then no picture, rather than an outline on whatever is now at that spot), its viewport size, `devicePixelRatio` and the iframe areas. The ratio (not image width ÷ `innerWidth`) converts to image pixels, because the visible area can be narrower than the layout viewport (seen in e2e with the side panel open).
+- **Skipped**, with a debug log line and no image: the tab is not the one showing in its window, the tab is on another page than the step (origin, path and hash; a link click that navigated, a hash route), the window switched tabs during the capture, the element is gone or hidden, or the step was taken back (Undo) or screenshots turned off before or just after the image was stored (it is deleted again then).
+- **Flicker**: while the user types, the first keystroke's step hides the field's text, caret and the REC pill for two frames plus the capture (about 100–300 ms). Nothing is blocked; accepted.
+- **E2E note**: Playwright's emulated viewport differs from what `captureVisibleTab` shows, so `s2-screenshots` launches with `viewport: null` (`launch(dir, null)` in `fixtures.ts`) and sizes the real window over CDP.
+
+### D184. Where images live: IndexedDB, never synced or shared
+*6 Nov 2026 · SPEC: Sharing and storage*
+
+- An IndexedDB database of the extension's origin (`waymark-shots`, store `shots`, key `guideId/stepId`, index `guideId`): `{ blob (WebP), w, h, box, t, at }`, where `t` is a hash of the step's target (its element) when the image was taken. The connection is opened again after the browser closes it. Not `storage.local`: blobs need no base64, and `storage.local.get(null)` (the index rebuild) never reads them. Content scripts can't open it. The service worker writes; the side panel reads it for the export.
+- Never synced, never in guide files or packs (the pack is built from guides, which hold no image), never in the team library, never in the Markdown how-to.
+
+### D185. When images are deleted
+*6 Nov 2026 · SPEC: User flows (Edit); D100*
+
+- **Which element**: an image belongs to its step only while the step's target hashes to the image's `t` (`shotFits`). So a Re-pick followed by Capture and Save keeps the new image, and a Re-pick captured but discarded leaves an image that is never offered and is swept.
+- **Steps**: on Save, the images of deleted steps and of steps that now point at another element go (`pruneAfterSave`). A deleted step's Undo is a draft change (D100), so its image stays until Save.
+- **Guides**: a deleted guide's images stay while its Undo is possible (it is in the trash). Each delete sets an alarm (`shots-sweep`, 30 s, Chrome's minimum); when it fires, the trash is purged and the sweep removes the images and the setting of guides that are gone. The sweep also runs at browser start and install, on `trash.list`, and after a recording stops (images of steps taken back with Undo).
+- **Turned off**: deletes the guide's images at once. **Replaced** by an import (Replace) or a team library refresh: the setting is turned off and the images deleted, because they showed the old content.
+- The sweep (`staleShots`, `staleFlags`) decides inside the write queue, so it sees guides, the trash, the recording and the setting as one state (a Stop or an Undo restore is never half seen), and deletes afterwards. It keeps the guide being recorded.
+- `shots.get` and the export offer only images of guides with screenshots on that still fit their step, so an image a late capture stored after the switch went off is never shown before the sweep removes it. An image captured in the editor for a step not saved yet can be swept before Save; Capture takes it again.
+
+### D186. A refused screenshot: a calm hint, recording goes on
+*6 Nov 2026 · SPEC: Recorder*
+
+- **At start** (screenshots on), the service worker makes one probe capture of the tab and drops it at once (never decoded or stored).
+- **Refused** (start, a new tab, another site): no image for that step, recording goes on. The recording card in the panel shows "Screenshots need one click on the Waymark icon (or Alt+W) on this tab. Recording goes on; a step without a screenshot is text only in the printable how-to." It stays until a capture succeeds.
+- **The page** shows the same sentence once per tab and site (`shotHinted`, at most 50) in the REC pill's notice (`shot.hint`, which carries no data). A debug log line says the capture was refused (never any image data).
+- Alt+R is not suggested: during a recording it stops it.
+
+### D187. Capture again from the editor
+*6 Nov 2026 · SPEC: User flows (Edit, Test step)*
+
+- In a guide with screenshots on, **Test step** also takes the step's screenshot again, and a step without one shows "No screenshot" with **Capture** (the same action). The content script answers Test step with the element's rect (only when asked, top frame only) after scrolling it into view; the service worker hides Waymark's UI (the Test step spotlight too) and captures through the same queue. The result says "Screenshot saved.", the one-click hint, why it was skipped, or that frames get none.
+- The page's answer is untrusted: the service worker passes only the known Test step fields back to the panel, and checks the rect with `RectSchema`.
+
+### D188. The export: outline drawn, blur on by default, every image reviewed
+*6 Nov 2026 · SPEC: Sharing ("Before export, show a review…"); amends D104*
+
+- **Printable how-to only**: Markdown and guide files never carry images. A step without an image is text only.
+- **Review**: with the printable format, the review lists every screenshot under its guide (a preview of exactly what the file will have) with **Leave out** / **Keep**. Images of steps no longer in the guide are not offered.
+- **Blur** ("Blur everything except the highlighted element") is **on by default**. Screenshots are opt-in, but the text around an element is the likeliest place for customer data, and the step only needs the element; an author who wants context turns it off and checks each image. Everything but the element is pixelated (drawn at 1/12 of its size) and then blurred (radius about 1/80 of the image, at least 6 px), because blur alone left large digits readable. The outline (orange, with a white edge) and the blur are drawn on a canvas in the side panel and **baked into the exported pixels**: the file has no clear copy of the surroundings (a CSS blur would ship the clear image). If the canvas ignores the filter, the image is left out (fail closed). This makes text around the element unreadable in practice; it is not a cryptographic guarantee, so the review still shows every image.
+- **HTML**: each image is a `data:image/webp` URL in a `<figure>` with alt text and its size. Only `data:image/webp` or `data:image/png` base64 URLs are written (anything else is dropped); the page's CSP becomes `default-src 'none'; style-src 'unsafe-inline'; img-src data:`, so it still loads nothing.
+
+### Fixes from the independent review (D180–D188)
+A privacy, storage-lifecycle and recording-performance review of the first version. Regression tests that fail on the first version: `test/unit/shots.test.ts` (call spacing; Re-pick then Capture then Save; hash routes; iframe masks; the page's answer), `test/browser/shots.test.ts` (shadow-root fields; the element measured at capture time; a sweep during Stop).
+- **Typed text in web components and foreign iframes** (high): the field sheet reached only the document. It is now adopted in every shadow root (closed ones too), and iframe areas are painted over (D183).
+- **Outline on the wrong thing** (high): the stored rect was the fingerprint's, from the moment of the action. The page now measures the step's own element at capture time and refuses when it is gone; hash routes count as pages (D183).
+- **Chrome's rate tripped** (medium): job starts were spaced, but a slow hide could put two calls close together. The calls are spaced, with one retry on the quota error (D183).
+- **Re-pick then Capture then Save deleted the new image; a discarded Re-pick left a wrong one** (medium): images carry the hash of their element (D184, D185).
+- **Sweep raced Stop and Undo restore** (medium): it now decides inside the write queue (D185).
+- **Blur too weak, and not fail-safe** (medium): pixelation first, and fail closed (D188).
+- **Turned off, but a queued capture stored after the delete** (low): captures check again after storing, and the export offers only fitting images of guides that are on (D185).
+- **Small**: the IndexedDB connection reopens after the browser closes it; the page's 2.5 s self-restore restarts when the capture starts; README and `docs/STORE.md` (activeTab, alarms, website content) now mention step screenshots.

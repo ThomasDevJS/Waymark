@@ -19,6 +19,8 @@ import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
 import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
+import type { ShotsStatus } from '../../core/messaging/protocol';
+import { SHOT_HINT_PANEL, ShotsSwitch } from './Shots';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -28,6 +30,17 @@ const tests = signal<Record<string, TestResult | 'running'>>({});
 const picking = signal<string | null>(null);
 const suggested = signal<Record<string, string>>({});
 const saving = signal(false);
+/** The guide's screenshot setting and which steps have one (D180, D187); not part of the draft. */
+const shots = signal<ShotsStatus | null>(null);
+
+async function loadShots(guideId: string) {
+  try {
+    const s = await send('shots.get', { guideId });
+    if (draft.value?.id === guideId || !draft.value) shots.value = s;
+  } catch {
+    shots.value = null;
+  }
+}
 /** revisionId of the copy the draft was loaded from; Save is refused if it changed elsewhere. */
 const base = signal<string | null>(null);
 /** The tags field as typed ("a, b"); the draft holds the parsed list. */
@@ -178,6 +191,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     dirty.value = false;
     status.value = null;
     tests.value = {};
+    shots.value = null;
+    void loadShots(guideId);
     void attempt(async () => {
       const g = await send('guide.get', { id: guideId });
       draft.value = g;
@@ -254,6 +269,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
       }
       status.value = `Saved (version ${saved.version}).`;
+      // Deleted steps and re-picked elements lost their screenshots.
+      if (shots.value?.on) void loadShots(saved.id);
       // The saved copy no longer has the step: its Undo would only make the draft dirty again.
       dismissScope('editor');
     }).finally(() => (saving.value = false));
@@ -308,6 +325,18 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           <option value="darker">{SHADE_LABEL.darker}</option>
         </select>
       </label>
+      {!readOnly && (
+        <ShotsSwitch
+          testid="guide-shots"
+          on={!!shots.value?.on}
+          hint={
+            shots.value?.on
+              ? `${shots.value.stepIds.length} of ${g.steps.filter((x) => x.target).length} steps have one. Turning this off deletes them.`
+              : 'Off by default. Used only in the printable how-to; never in guide files or the team library.'
+          }
+          onChange={(on) => void attempt(async () => (shots.value = await send('shots.set', { guideId: g.id, on })))}
+        />
+      )}
       <div class="row">
         <span class="badge">
           {g.steps.length} {g.steps.length === 1 ? 'step' : 'steps'}
@@ -335,6 +364,16 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
+          // Screenshots exist for elements in the top page only (D181).
+          const noShot = !!shots.value?.on && canTarget && !!s.target && !s.target.framePath.length && !shots.value.stepIds.includes(s.id);
+          const runTest = () => {
+            tests.value = { ...tests.value, [s.id]: 'running' };
+            void attempt(async () => {
+              const r = await send('step.test', { tabId: tabId!, step: s, origins: g.appOrigins, ...(shots.value?.on ? { guideId: g.id } : {}) });
+              tests.value = { ...tests.value, [s.id]: r };
+              if (r.shot === 'saved') void loadShots(g.id);
+            });
+          };
           const isPicking = picking.value === s.id;
           const kind = KIND[s.kind];
           const titleId = `step-title-${s.id}`;
@@ -416,13 +455,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                           data-testid={`step-${i}-test`}
                           disabled={tabId === null}
                           title="Look for this step’s element on the page now"
-                          onClick={() => {
-                            tests.value = { ...tests.value, [s.id]: 'running' };
-                            void attempt(async () => {
-                              const r = await send('step.test', { tabId: tabId!, step: s, origins: g.appOrigins });
-                              tests.value = { ...tests.value, [s.id]: r };
-                            });
-                          }}
+                          onClick={runTest}
                         >
                           <Icon name="test" />
                           Test step
@@ -521,6 +554,16 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   </span>
                 </p>
               )}
+              {open && noShot && (
+                <div class="row small" data-testid={`step-${i}-noshot`}>
+                  <span class="muted">
+                    <Icon name="image" /> No screenshot
+                  </span>
+                  <button type="button" class="ghost sm" data-testid={`step-${i}-capture`} disabled={tabId === null || t === 'running'} title="Find the element on the page and take its screenshot" onClick={runTest}>
+                    Capture
+                  </button>
+                </div>
+              )}
               <div role="status" class="test-result" data-testid={t ? `step-${i}-test-result` : undefined}>
                 {t && <TestResultView t={t} />}
               </div>
@@ -596,6 +639,14 @@ const CLUE: Record<string, string> = {
   're-picked': 'picked by you',
 };
 
+/** What happened to the step's screenshot, after Test step or Capture (D187). */
+const SHOT_RESULT: Record<NonNullable<TestResult['shot']>, string> = {
+  saved: 'Screenshot saved.',
+  refused: SHOT_HINT_PANEL,
+  skipped: 'No screenshot this time: the element was not on screen, or the page changed. Try again.',
+  frame: 'Screenshots are taken only for elements on the main page, not inside a frame.',
+};
+
 /** Test step feedback: found (with the clues that matched), fragile, or not found. */
 function TestResultView({ t }: { t: TestResult | 'running' }) {
   if (t === 'running')
@@ -633,6 +684,11 @@ function TestResultView({ t }: { t: TestResult | 'running' }) {
           </span>
           {t.fragile && <span class="small muted">If you own the app, a data-guide-id attribute on the element makes it easy to find.</span>}
         </details>
+        {t.shot && (
+          <span class="small" data-testid="shot-result" data-shot={t.shot}>
+            {SHOT_RESULT[t.shot]}
+          </span>
+        )}
       </div>
     </div>
   );
