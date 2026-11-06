@@ -33,6 +33,11 @@ export interface RecordingState {
   /** URL rule of the page recording started on (pattern only, no query). */
   startRule?: Step['url'];
   appOrigins: string[];
+  /**
+   * Recording into an existing guide (D202): its steps go before this index of that guide
+   * (`guideId` is the guide's own id) on Stop, if the guide is still at this revision.
+   */
+  insert?: { at: number; baseRevisionId: string };
   /** Time (ms) of the last recorded action step, for the navigation rule. */
   lastActionAt: number;
   /** Last URL reported by each recording tab's top frame. */

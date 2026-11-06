@@ -24,6 +24,8 @@ import { withoutLinks } from '../core/text/markdown';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
 import { addShotsFlagInQueue, probeShot, queueShot, shotStep, shotsOn, sweepShots, type ShotOutcome } from './shots';
+import { planInsertStop } from '../core/recorder/insert';
+import { newId } from '../core/model/ids';
 
 const KEY = 'recording';
 
@@ -148,14 +150,27 @@ export async function onShotOutcome(tabId: number, origin: string, outcome: Shot
 
 export const recordingHandlers: Handlers = {
   'rec.state': () => getRecording(),
-  'rec.start': async ({ tabId, title, shots }) => {
+  'rec.start': async ({ tabId, title, shots, insertInto }) => {
     const url = await tabUrl(tabId);
     if (!url || !/^https?:/.test(url)) throw new Error('Open a web page to record on.');
     if (!(await siteAllowed(new URL(url).origin))) throw new Error('Allow Waymark on this site first.');
+    // Into an existing guide (D202): one of your own guides, from a page of its sites.
+    const into = insertInto ? (await getGuides([insertInto.guideId]))[0] : undefined;
+    if (insertInto) {
+      if (!into) throw new Error('Guide not found.');
+      if (into.source === 'library') throw new Error('Team guides are read-only. Use Duplicate in the list to edit your own copy.');
+      if (!into.appOrigins.includes(new URL(url).origin)) throw new Error('Open a page of this guide’s site in this tab first.');
+    }
+    const intoShots = into ? await shotsOn(into.id) : false;
     const state = await enqueue(async () => {
       if (await getRecording()) throw new Error('A recording is already running.');
-      const s = startRecording(title, tabId, url);
-      if (shots) s.shots = true;
+      const s = startRecording(into ? into.title : title, tabId, url);
+      if (into && insertInto) {
+        // The guide's own id: its screenshots, if on, are keyed to it already (D185).
+        s.guideId = into.id;
+        s.insert = { at: Math.min(insertInto.at, into.steps.length), baseRevisionId: into.revisionId };
+        if (intoShots) s.shots = true;
+      } else if (shots) s.shots = true;
       await setRecording(s);
       return s;
     });
@@ -206,6 +221,29 @@ export const recordingHandlers: Handlers = {
     const result = await enqueue(async () => {
       const st = await getRecording();
       if (!st) return null;
+      if (st.insert) {
+        // Into the guide it was started from, if that is still the version the editor showed and
+        // the steps fit (D202). Otherwise nothing is lost: the steps become a guide of their own.
+        const cur = (await getGuides([st.guideId]))[0];
+        const plan = planInsertStop(cur, { title: st.title, steps: st.steps, appOrigins: st.appOrigins, insert: st.insert });
+        if (plan.kind === 'insert') {
+          await writeGuide(plan.guide);
+          await setRecording(null);
+          return { state: st, guide: plan.guide, added: { count: plan.count, at: plan.at } };
+        }
+        if (plan.kind === 'nothing') {
+          await setRecording(null);
+          return { state: st, guide: cur ?? toGuide(st), added: { count: 0, at: st.insert.at } };
+        }
+        // Images taken meanwhile are keyed to the first guide: the sweep after Stop removes them
+        // (review of D202); the new guide has no screenshots.
+        st.guideId = newId();
+        st.title = plan.title;
+        const aside = toGuide(st);
+        await writeGuide(aside);
+        await setRecording(null);
+        return { state: st, guide: aside, aside: true };
+      }
       const guide = toGuide(st);
       await writeGuide(guide);
       // The guide's screenshot setting is written in the same queued task, so no sweep can see
@@ -219,7 +257,13 @@ export const recordingHandlers: Handlers = {
     await updateAllBadges();
     // Images of steps taken back with Undo go now.
     if (result.state.shots) void sweepShots();
-    return { guideId: result.guide.id, title: result.guide.title, steps: result.guide.steps };
+    return {
+      guideId: result.guide.id,
+      title: result.guide.title,
+      steps: result.guide.steps,
+      ...('added' in result && result.added ? { added: result.added } : {}),
+      ...('aside' in result && result.aside ? { aside: true } : {}),
+    };
   },
   'rec.step': async (op, ctx: HandlerContext) => {
     const tabId = ctx.tabId;

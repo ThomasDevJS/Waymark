@@ -13,7 +13,8 @@ import type { ShortcutOutcome } from '../../core/storage/shortcut';
 import { SHOT_HINT_PANEL, ShotsSwitch } from './Shots';
 
 const recording = signal<RecordingState | null>(null);
-const saved = signal<{ title: string; count: number } | null>(null);
+/** The note after Stop; `added`: the steps went into an existing guide (D202), `aside`: into a new one instead. */
+const saved = signal<{ title: string; count: number; added?: boolean; aside?: boolean } | null>(null);
 const title = signal('');
 /** Screenshots for the printable how-to: off unless the author turns them on for this recording (D180). */
 const recShots = signal(false);
@@ -81,7 +82,7 @@ export function showStopped(o: Extract<ShortcutOutcome, { kind: 'stopped' }>, ta
     stoppedAside.value = { guideId: o.guideId, title: o.title, count: o.count };
     return;
   }
-  saved.value = { title: o.title, count: o.count };
+  saved.value = { title: o.title, count: o.count, ...(o.added ? { added: true } : {}), ...(o.aside ? { aside: true } : {}) };
   openEditor(o.guideId, tabId);
 }
 
@@ -146,7 +147,11 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
           <p class="banner success" role="status" data-testid="saved">
             <Icon name="check" />
             <span>
-              Saved “{saved.value.title}” with {saved.value.count} {saved.value.count === 1 ? 'step' : 'steps'}. Check the steps below; Save after any changes.
+              {saved.value.added
+                ? `Added ${saved.value.count} ${saved.value.count === 1 ? 'step' : 'steps'} to “${saved.value.title}”. They are saved; check them below.`
+                : saved.value.aside
+                  ? `The guide changed while you recorded, so the new steps were saved as their own guide, “${saved.value.title}”.`
+                  : `Saved “${saved.value.title}” with ${saved.value.count} ${saved.value.count === 1 ? 'step' : 'steps'}. Check the steps below; Save after any changes.`}
             </span>
           </p>
         )}
@@ -293,7 +298,9 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
               const res = await send('rec.stop', {});
               recording.value = null;
               if (res) {
-                saved.value = { title: res.title, count: res.steps.length };
+                saved.value = res.added
+                  ? { title: res.title, count: res.added.count, added: true }
+                  : { title: res.title, count: res.steps.length, ...(res.aside ? { aside: true } : {}) };
                 openEditor(res.guideId, tabId); // Stop opens the editor (SPEC: Record step 6)
               }
               await refresh(tabId);

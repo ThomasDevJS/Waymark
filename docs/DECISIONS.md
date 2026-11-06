@@ -1437,6 +1437,30 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   It is the same single click, with no automatic grant and no new permission. Granted origins come from `permissions.getAll()`, plain `scheme://host/*` patterns only.
 - **Tests**: `test/unit/embeds.test.ts`: the matcher (look-alike hosts, http, subdomains, other googleusercontent hosts) and the wording for each case.
 
+### D202. Adding a forgotten step: pick it on the page, or record steps into the guide
+*6 Nov 2026 · SPEC: User flows (Edit); issue #89*
+
+- **Why**: Thomas forgot a step while recording, and the editor could only add notes.
+- **Add a step after / at the end** (picker, into the draft): the same picker as Re-pick (`pick.start`, D82 regions, the D153 outline, Esc to cancel). The picked element becomes a click step before the chosen index, with the picked element's title and the page's URL rule (as Re-pick). It is unsaved, like any edit, and opened ready to edit. `picking` holds `new:<at>` while it waits. Only a click: for fields and choices, record.
+- **Record steps after / at the end** (any kind, saved into the guide):
+  - `rec.start` takes `insertInto { guideId, at }`. Only for one of your own guides (team guides are read-only), from a page of one of its sites. The recording uses the guide's own id, so its screenshots, if on, are already keyed to it (D185).
+  - Stop (button or shortcut) puts the steps before `at` in the saved guide as a new version (`insertRecorded`): step ids kept unique, sites added, the 500-step limit checked. The panel reopens the guide with "Added N steps to …".
+  - The editor allows it only without unsaved edits ("Save your changes first"), so the draft and the recording never conflict.
+  - If the guide was saved elsewhere meanwhile (a different revision), the steps are saved as their own guide, "<title> (added steps)", and the panel says so. Nothing is lost and the other edit is not overwritten.
+- **Tests**:
+  - `test/unit/insert-steps.test.ts`: positions, clamping, version and revision, sites, id clashes, the step limit.
+  - `test/e2e/r4-add-steps.spec.ts`:
+    - pick at the end and after a step, then Save keeps the order;
+    - recording into the guide is off with unsaved edits, and Stop inserts and reopens the guide;
+    - a guide changed during the recording gets its steps saved aside.
+- **Fixes from the independent review** (`planInsertStop`, pure, decides Stop):
+  - Stop failed every time when the guide plus the recording went over 500 steps; the steps now go to a guide of their own.
+  - The guide-of-their-own title could exceed 500 characters (Stop failed every time); it is shortened.
+  - Stopping with nothing recorded no longer writes an empty guide.
+  - Screenshots taken during a recording whose steps went aside are swept (they are keyed to the first guide); the new guide has none.
+  - "Add a step after" remembers the step's id, not its index, so steps moved or deleted while the pick waits don't put the new step elsewhere (e2e: a step moved up during the pick).
+  - Stop by shortcut also says when the steps went aside.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

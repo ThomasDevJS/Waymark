@@ -43,7 +43,7 @@ async function toggleNow(tab: chrome.tabs.Tab | undefined, now: () => number): P
   try {
     if (await getRecording()) {
       const r = await recordingHandlers['rec.stop']!({}, ctx);
-      out = r ? { kind: 'stopped', guideId: r.guideId, title: r.title, count: r.steps.length, at: now() } : { kind: 'error', message: 'Nothing was recording.', at: now() };
+      out = r ? { kind: 'stopped', guideId: r.guideId, title: r.title, count: r.added ? r.added.count : r.steps.length, ...(r.added ? { added: true } : {}), ...(r.aside ? { aside: true } : {}), at: now() } : { kind: 'error', message: 'Nothing was recording.', at: now() };
     } else if (tab?.id === undefined) {
       out = { kind: 'error', message: 'Open a web page to record on.', at: now() };
     } else {

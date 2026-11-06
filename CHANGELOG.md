@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Add a forgotten step to a guide: **Add a step** picks it on the page, **Record steps** records more steps into the guide at that place (D202, #89).
+
 ## [0.6.1] - 2026-11-06
 
 ### Added
