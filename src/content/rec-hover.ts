@@ -11,8 +11,8 @@ import { previewClick, type ClickPreview } from '../core/recorder/preview';
 import { eventPath, isOverlayPath, overlayLayer, overlayRoot } from './overlay/host';
 import { testMark } from './test-hooks';
 
-/** How long the pointer rests on a new element before its choice is made (review of D153). */
-export const REST_MS = 60;
+/** How long the pointer rests on a new element before its choice is made (D153; 100 ms since D156, less flicker while sweeping). */
+export const REST_MS = 100;
 
 export const REC_HOVER_LABEL: Record<'warn' | 'skip', string> = {
   warn: 'Hard to find',
@@ -40,10 +40,15 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   let path: EventTarget[] | null = null;
   let lastPath: EventTarget[] | null = null;
   let memo: { from: Element; preview: ClickPreview | null } | null = null;
+  // Recent choices by hovered element, so moving back and forth costs nothing (D156). Cleared by a
+  // press, which can change the page; entries expire after a few seconds.
+  let recent = new WeakMap<Element, { preview: ClickPreview | null; at: number }>();
+  const RECENT_MS = 3000;
   let shown: ClickPreview | null = null;
   let style: HTMLStyleElement | null = null;
 
   const fpOf = (el: Element) => buildFingerprint(el, { framePath: framePath() });
+  const lightFpOf = (el: Element) => buildFingerprint(el, { light: true });
 
   const hide = () => {
     shown = null;
@@ -85,7 +90,10 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
         clearTimeout(rest);
         rest = setTimeout(() => {
           if (!on) return;
-          memo = { from: first, preview: previewClick(p, fpOf) };
+          const hit = recent.get(first);
+          const preview = hit && performance.now() - hit.at < RECENT_MS && (!hit.preview || hit.preview.element.isConnected) ? hit.preview : previewClick(p, fpOf, lightFpOf);
+          if (!hit || hit.preview !== preview) recent.set(first, { preview, at: performance.now() });
+          memo = { from: first, preview };
           shown = memo.preview;
           schedule();
         }, REST_MS);
@@ -119,6 +127,7 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   // A click can rebuild the page or change what is alike on it: decide again where the pointer is.
   const onDown = () => {
     memo = null;
+    recent = new WeakMap();
     hide();
     if (lastPath) {
       path = lastPath;

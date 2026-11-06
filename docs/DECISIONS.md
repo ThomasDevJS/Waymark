@@ -1350,6 +1350,19 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
     - move the wrapper to another origin and Allow it again;
     - play back in the app frame (the wrapper draws nothing), and the click finishes the guide.
 
+### D156. The recording outline's check is cheap: the element's own signals, no page scan
+*6 Nov 2026 · SPEC: Recorder; follow-up to D153*
+
+- **Finding**: Thomas found the recording outline slowed pages down. Each time the pointer settled on a new element, `previewClick` built a full fingerprint. That includes `recordTimeScan`, which scores every candidate on the page and measures their layout to count look-alikes, plus the CSS path and XPath. On a 1,500-row table that took about **320 ms per check**, blocking the page, and more on a large frame-based app.
+- **Why not a 2.5 s hover delay** (Thomas's idea): the outline would mostly appear after the click it was meant to inform, and the cost would still hit whenever the pointer paused. The cost was the scan, not how often it ran.
+- **Change**:
+  - `buildFingerprint(el, { light: true })` gives only the element's own signals: no scan, no paths, no layout. The verdict needs only whether there is something to find it by (`hasStrongSignal`), which never uses the look-alike count.
+  - The full fingerprint is still built for the clickable card of D82 (whether it is one of a kind), as the recorder does. `clickableRegion` returns before any fingerprint for content without a pointer cursor, the usual case.
+  - Now about **0.5 ms per check** on the same table.
+  - Rest before deciding: 100 ms, which reduces flicker while sweeping. Recent verdicts are kept per element for 3 s, so moving back and forth costs nothing; a press clears them.
+  - The light fingerprint is never stored or sent: its paths are empty and its count and rect are placeholders.
+- **Tests**: `test/browser/rec-hover-perf.test.ts` sets a 20 ms budget per check on a 1,500-row table; it fails on the old code at about 310 ms. The recorder parity test in `rec-hover.test.ts` still passes.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides
