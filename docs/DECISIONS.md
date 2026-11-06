@@ -1279,3 +1279,27 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - unit: `framesAtPath` order;
   - e2e (`m6-nested-frames.spec.ts`): record a step in the nested frame, let the app rebuild its frames, then Test step finds it. Before the fix it failed with the message above.
 
+### D153. While recording, an outline shows what a click will record
+*6 Nov 2026 · SPEC: Recorder (event capture); issue #70*
+
+- **Why**: authors only learned a click was "hard to find" (D82) or skipped (D47) after making it. Thomas asked to see what will be picked before clicking, on by default.
+- **What**:
+  - `previewClick` (`src/core/recorder/preview.ts`, pure) makes the recorder's choice for an event path:
+    - the control;
+    - the clickable card of D82 a plain-content click is promoted to (`ok`);
+    - a low-confidence or canvas target (`warn`);
+    - nothing to find it by (`skip`).
+  - `src/content/rec-hover.ts` draws it in the overlay:
+    - solid ring colour for `ok`, dashed orange with "Hard to find" for `warn`, red with "Won't be recorded" for `skip`;
+    - `pointer-events: none` and `aria-hidden`;
+    - hidden over Waymark's own UI, measured at most once per animation frame, memoized on the hovered element, and following scroll and resize;
+    - each frame's content script draws its own outline.
+- **Setting**: `recorderSettings.hover` in storage.local, on by default (Zod `catch(true)`). It is in Settings → Highlight. New messages `recorder.settings.get/set`. Content scripts may only `get`; it returns nothing but this switch. The content script asks each time the recording view arrives, so a change applies at the next step or page. A late reply never turns it back on after recording stops. The service worker's recording code is unchanged.
+- **Tests**:
+  - `test/browser/rec-hover.test.ts`: the choice for a control, a promoted card, plain text and an empty box. The outline sits exactly on the card, takes no pointer, shows its label, and is hidden over the overlay.
+  - `test/e2e/r1-rec-hover.spec.ts` (closed root):
+    - hover shows the outline;
+    - the click is recorded as usual;
+    - session storage has no trace of the outline;
+    - Off in Settings removes it.
+

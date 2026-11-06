@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- While recording, an outline shows what a click will record, with a warning when it would be hard to find or not recorded. On by default; Settings → Highlight turns it off (D153, #70).
+
 ### Changed
 - The on-page **?** button is on by default on sites where a page has guides; turn it off per site in the side panel (D150, #66).
 - The shade around a highlighted step is **Lighter** by default; Medium and Darker stay in Settings and the editor (D151).
