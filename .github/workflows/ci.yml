@@ -1,6 +1,7 @@
 name: CI
 
-# Minute budget (D54): the repo is private on the Free plan (2,000 Actions minutes a month).
+# Runner time (D54, D162): the repo is public, so standard runners cost nothing. The rules below
+# still keep runs short and the queue clear.
 # - Branch pushes no longer run CI on their own; pull requests do, so each push to a PR branch
 #   runs once instead of twice. Pushes to main run once more to publish the extension zip.
 # - A newer run for the same pull request or branch cancels the one in progress.
@@ -9,9 +10,8 @@ name: CI
 #   check jobs still report (a skipped job counts as passed for a required check) and the
 #   `CI result` job can be the one required check. The two lists must agree with
 #   scripts/ci-changes.mjs (test/unit/ci-changes.test.ts checks this).
-# - The e2e shards run only when CI is started by hand (D161). Every change runs the full e2e
-#   suite locally before it is pushed (CLAUDE.md), and the Release workflow runs it again on the
-#   release commit before publishing, so PRs and main pushes pay only for the `check` job.
+# - The e2e shards run on every code change again (D162). From D161 until the repo went public
+#   they ran only by hand, to save minutes. The local e2e run before each push stays (CLAUDE.md).
 on:
   push:
     branches: [main]
@@ -108,8 +108,8 @@ jobs:
 
   e2e:
     needs: changes
-    # By hand only (D161): local runs before every push, and the Release workflow before publishing.
-    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
+    # Skipped like `check` on docs-only pull requests (D54); runs on every code change (D162).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

@@ -162,8 +162,8 @@ jobs:
           retention-days: 1
 
   e2e:
-    # The full end-to-end suite on the release commit (D161): CI runs it only by hand, so a release
-    # is where it runs on GitHub. Read-only; publish waits for it.
+    # The full end-to-end suite on the release commit (D161). CI runs it on every code change too
+    # (D162); this run checks the exact commit being published. Read-only; publish waits for it.
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 25

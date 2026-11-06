@@ -575,6 +575,13 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
   - CLAUDE.md: the local `pnpm test:e2e:xvfb` is the e2e gate for every change.
 - **Cost**: about 8 minutes per merged PR instead of about 30, plus about 10 per release. A change that breaks e2e only on GitHub's runners (not locally) shows up at release time, not at merge. Run CI by hand on a branch when a change is risky for that.
 
+### D162. CI runs e2e on every code change again
+*6 Nov 2026 · D54, D161*
+
+- **Finding**: the owner made the repository public on 6 November. Standard GitHub-hosted runners cost nothing on public repositories, so the minute budget behind D161 no longer applies.
+- **Change**: `ci.yml` runs the two e2e shards on pull requests and `main` pushes again, skipped on docs-only pull requests like `check` (D54). The Release workflow keeps its own e2e job on the release commit (D161). CLAUDE.md, README and the workflow comments say so. `docs/STORE.md` names GitHub Pages on this repository for the privacy policy.
+- **Kept**: the local `pnpm test:e2e:xvfb` before every push. A red e2e shard on GitHub emails the owner, so a flaky test now costs an email.
+
 ## 2026-11-05 — Real-site reliability harness (`pnpm test:real`)
 
 Findings from recording and replaying scripted tasks on public demo apps (see `docs/RELIABILITY.md`).
