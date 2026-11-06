@@ -211,9 +211,12 @@ describe('hiding for a capture (D183)', () => {
     rememberShotTarget('s8', b);
     expect(await settled('s8')).toBe(true);
     let on = true;
+    // Moves 7 px on every rendered frame, always the same way, so two measurements a couple of
+    // frames apart never agree (random positions could land within the 1 px tolerance).
+    let n = 0;
     const move = () => {
       if (!on) return;
-      b.style.top = `${100 + Math.round(Math.random() * 200) + 5}px`;
+      b.style.top = `${100 + 7 * (++n % 60)}px`;
       requestAnimationFrame(move);
     };
     move();
