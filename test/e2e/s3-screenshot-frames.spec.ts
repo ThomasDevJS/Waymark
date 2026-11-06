@@ -217,7 +217,7 @@ const COLORS: [number, number, number][] = [
 /** How deep a frame is, from its frame-path test marker (null: not known yet). */
 const depth = (m: string | null) => (m ? (JSON.parse(m) as string[]).length : null);
 
-test('3 steps in the top page, a same-origin frame and a cross-origin frame: one full-page image each, highlight in place, field text hidden, then preview, PDF and HTML', async ({ context, ext, site, extensionId }) => {
+test('3 steps in the top page, a same-origin frame and a cross-origin frame: one full-page image each, highlight in place, field text hidden, then preview, PDF and HTML', async ({ context, ext, site, extensionId }, testInfo) => {
   test.setTimeout(180_000);
   await ext.grant('http://127.0.0.1/*');
   await ext.grant('http://localhost/*');
@@ -267,6 +267,18 @@ test('3 steps in the top page, a same-origin frame and a cross-origin frame: one
   const guide = await ext.message<{ steps: { id: string; target?: { framePath: string[] } }[] }>('guide.get', { id: guideId });
   expect(guide.steps.map((s) => s.target?.framePath.length)).toEqual([0, 1, 2]);
   const shots = await stored(sw);
+  // So that a failure on CI explains itself: what was stored and where the buttons are in the images.
+  const diag = {
+    viewport: await app.evaluate(() => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio, scrollX, scrollY })),
+    playwrightBoxes: boxes,
+    rows: await Promise.all(
+      guide.steps.map(async (s, i) => {
+        const x = shots.find((r) => r.stepId === s.id);
+        return { step: i + 1, stored: x ? { w: x.w, h: x.h, px: x.px, box: x.box, size: x.size } : null, seen: x ? await colorBox(sw, s.id, COLORS[i]!) : null };
+      }),
+    ),
+  };
+  await testInfo.attach('screenshot-boxes.json', { body: JSON.stringify(diag, null, 2), contentType: 'application/json' });
   for (const [i, s] of guide.steps.entries()) {
     const x = shots.find((r) => r.stepId === s.id)!;
     expect(x, `step ${i + 1} has an image`).toBeTruthy();
@@ -417,3 +429,62 @@ test('a frame Waymark is not allowed on is painted over; the frame it runs in is
 function noteIn(frame: Box): Box {
   return { x: frame.x + 10, y: frame.y + 10, w: Math.min(320, frame.w - 20), h: Math.min(90, frame.h - 20) };
 }
+
+/**
+ * CI found (PR #81): the page can move between the moment frames are measured and the capture
+ * (here: Playwright scrolls the top page to click inside the frame while the previous step's
+ * capture still waits for Chrome's rate limit). A slow CPU, a short window and quick steps make
+ * that race likely. Whatever is stored must match its element; a step may have no image.
+ */
+test('quick steps on a slow CPU while the page scrolls: every stored box is where its element is in the image', async ({ context, ext, site }, testInfo) => {
+  test.setTimeout(150_000);
+  await ext.grant('http://127.0.0.1/*');
+  await ext.grant('http://localhost/*');
+  const app = await openApp(context, `${site.main}/shots/index.html`, async (p) => {
+    const a = p.frames().find((f) => f.url().includes('/shots/inner.html'));
+    const b = p.frames().find((f) => f.url().includes('/shots/partner.html'));
+    return !!a && !!b && depth(await marker(a, 'frame-path')) === 1 && depth(await marker(b, 'frame-path')) === 2;
+  });
+  const sw = await ext.sw();
+  const tabId = await tabIdFor(ext, app);
+  // Short: the frame's lower part is below the fold, so clicking in it scrolls the top page.
+  await sizeWindow(context, app, 1500, 360);
+  await press(app, 'Alt_L+w');
+  await expect.poll(() => canCapture(sw, tabId), { timeout: 8000 }).toBe(true);
+  const cdp = await context.newCDPSession(app);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+  try {
+    await ext.message('rec.start', { tabId, title: 'Fast', shots: true });
+    await expect.poll(() => marker(partner(app), 'recording')).toBe('on');
+    await app.evaluate(() => scrollTo(0, 0));
+    await app.waitForTimeout(700);
+    for (const [f, sel] of [
+      [app.mainFrame(), '#start'],
+      [inner(app), '#details'],
+      [partner(app), '#approve'],
+    ] as const) {
+      await f.locator(sel).click({ noWaitAfter: true });
+    }
+    // Let the queue drain (3 captures at most 2 a second, plus retries).
+    await app.waitForTimeout(6000);
+  } finally {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  }
+  const { guideId } = await ext.message<{ guideId: string }>('rec.stop', {});
+  const guide = await ext.message<{ steps: { id: string }[] }>('guide.get', { id: guideId });
+  expect(guide.steps).toHaveLength(3);
+  const shots = await stored(sw);
+  const rows = [];
+  for (const [i, s] of guide.steps.entries()) {
+    const x = shots.find((r) => r.stepId === s.id);
+    rows.push({ step: i + 1, stored: x ? { w: x.w, h: x.h, px: x.px, box: x.box, size: x.size } : null, seen: x ? await colorBox(sw, s.id, COLORS[i]!) : null });
+  }
+  const diag = { viewport: await app.evaluate(() => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio, scrollY })), rows };
+  await testInfo.attach('screenshot-boxes.json', { body: JSON.stringify(diag, null, 2), contentType: 'application/json' });
+  expect(shots.length, JSON.stringify(diag)).toBeGreaterThanOrEqual(1);
+  for (const r of rows) {
+    if (!r.stored) continue;
+    expect(r.seen, `step ${r.step}: its button is in the image`).not.toBeNull();
+    for (const k of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(r.stored.box[k] - r.seen![k]), `step ${r.step} box.${k} ${JSON.stringify(diag)}`).toBeLessThanOrEqual(2);
+  }
+});

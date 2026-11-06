@@ -5,7 +5,7 @@ import { rememberShotTarget, shotTargetRect } from '../../src/content/shots';
 import { enqueue } from '../../src/core/storage/queue';
 import { stepHashes } from '../../src/core/shots/lifecycle';
 import type { Guide } from '../../src/core/model/schema';
-import { answerShot, checkShot, hideForShot, onTokenMessage, showAfterShot, TOKEN_MSG, unhideable } from '../../src/content/shots';
+import { answerShot, checkShot, settled, hideForShot, onTokenMessage, showAfterShot, TOKEN_MSG, unhideable } from '../../src/content/shots';
 import { overlayHost, overlayLayer, destroyOverlay } from '../../src/content/overlay/host';
 import { renderShot } from '../../src/core/shots/render';
 
@@ -177,6 +177,51 @@ describe('hiding for a capture (D183)', () => {
     expect(ok()).toBe(true);
     showAfterShot();
     expect(checkShot('t')).toBe(false);
+  });
+
+  it('CI fix: a scroll, or the step element moving, after the answer fails the check', () => {
+    const tall = document.createElement('div');
+    tall.style.height = '3000px';
+    document.body.append(tall);
+    const b = document.createElement('button');
+    b.textContent = 'Go';
+    b.style.cssText = 'position:absolute;left:20px;top:100px;width:60px;height:20px';
+    document.body.append(b);
+    rememberShotTarget('s9', b);
+    window.scrollTo(0, 0);
+    hideForShot();
+    answerShot('t', 's9');
+    expect(checkShot('t')).toBe(true);
+    // The page scrolled after it answered (the old check compared iframes only and said yes).
+    window.scrollTo(0, 47);
+    expect(checkShot('t')).toBe(false);
+    window.scrollTo(0, 0);
+    expect(checkShot('t')).toBe(true);
+    // The element itself moved.
+    b.style.top = '140px';
+    expect(checkShot('t')).toBe(false);
+    window.scrollTo(0, 0);
+  });
+
+  it('CI fix: the answer waits until the layout is the same across rendered frames; a page that keeps moving is refused', async () => {
+    const b = document.createElement('button');
+    b.textContent = 'Go';
+    b.style.cssText = 'position:fixed;left:20px;top:100px;width:60px;height:20px';
+    document.body.append(b);
+    rememberShotTarget('s8', b);
+    expect(await settled('s8')).toBe(true);
+    let on = true;
+    const move = () => {
+      if (!on) return;
+      b.style.top = `${100 + Math.round(Math.random() * 200) + 5}px`;
+      requestAnimationFrame(move);
+    };
+    move();
+    try {
+      expect(await settled('s8', 3)).toBe(false);
+    } finally {
+      on = false;
+    }
   });
 
   it('review fix: a designMode document cannot hide its text, so it does not answer', () => {

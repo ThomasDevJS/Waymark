@@ -150,10 +150,54 @@ function adopt(root: Document | ShadowRoot, s: CSSStyleSheet): void {
   }
 }
 
-/** The capture in progress: its token, and what was reported (for shot.check). */
-let session: { token: string; sig: string } | null = null;
+/** The capture in progress: its token, the step asked about, and the layout reported (for shot.check). */
+let session: { token: string; stepId: string | undefined; snap: Snap } | null = null;
 
 const sigOf = (frames: ChildFrame[]) => frames.map((f) => [f.box.x, f.box.y, f.box.w, f.box.h].map(Math.round).join(',')).join(';');
+
+/** What the picture depends on in this frame: scroll, viewport, the step's element, the embedded documents. */
+interface Snap {
+  n: number[];
+  sig: string;
+}
+
+function snapOf(stepId: string | undefined, frames = scan().frames): Snap {
+  const r = shotTargetRect(stepId);
+  return { n: [window.scrollX, window.scrollY, window.innerWidth, window.innerHeight, ...(r ? [r.x, r.y, r.w, r.h] : [-1, -1, -1, -1])], sig: sigOf(frames) };
+}
+
+/** Same layout, within a pixel (D192, CI fix). */
+export const sameSnap = (a: Snap, b: Snap) => a.sig === b.sig && a.n.length === b.n.length && a.n.every((v, i) => Math.abs(v - b.n[i]!) <= 1);
+
+/** Waits `n` rendered frames (or `maxMs`, when frames are throttled off screen). */
+function frames(n: number, maxMs = 250): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, maxMs);
+    const step = (left: number) =>
+      requestAnimationFrame(() => {
+        if (left <= 1) {
+          clearTimeout(t);
+          resolve();
+        } else step(left - 1);
+      });
+    step(n);
+  });
+}
+
+/**
+ * Resolves true once the layout is the same across two rendered frames (CI fix, D192): a page
+ * that just scrolled reports its new positions at once, but the screen can still show the old
+ * ones for a frame or two, so a capture then would not match the measurement. False when the
+ * page keeps moving: no picture.
+ */
+export async function settled(stepId: string | undefined, tries = 4): Promise<boolean> {
+  for (let i = 0; i < tries; i++) {
+    const a = snapOf(stepId);
+    await frames(2);
+    if (sameSnap(a, snapOf(stepId))) return true;
+  }
+  return false;
+}
 
 /**
  * After the capture (D192 review fix): is this frame still as it was reported? The same capture
@@ -163,7 +207,8 @@ const sigOf = (frames: ChildFrame[]) => frames.map((f) => [f.box.x, f.box.y, f.b
 export function checkShot(token: string): boolean {
   if (!session || session.token !== token || !sheet) return false;
   const now = scan();
-  if (now.more || sigOf(now.frames) !== session.sig) return false;
+  // The page moved (scrolled, resized, the element or a frame moved) since it answered.
+  if (now.more || !sameSnap(snapOf(session.stepId, now.frames), session.snap)) return false;
   return now.roots.every((r) => adopted.includes(r) && r.adoptedStyleSheets.includes(sheet!));
 }
 
@@ -274,7 +319,7 @@ export function answerShot(token: string, stepId: string | undefined, more = fal
   const now = scan();
   const s = fieldSheet();
   if (s) for (const root of now.roots) if (!adopted.includes(root)) adopt(root, s);
-  session = { token, sig: sigOf(now.frames) };
+  session = { token, stepId, snap: snapOf(stepId, now.frames) };
   return {
     vw: window.innerWidth,
     vh: window.innerHeight,
@@ -310,7 +355,13 @@ export function startShotClient(): { dispose(): void } {
       // Every frame answers once it is painted without Waymark and without field text (D192).
       void painted()
         .then(() => tokensIn())
-        .then(() => sendResponse(answerShot(token, stepId, hidden.more)));
+        .then(() => settled(stepId))
+        // A frame that keeps moving cannot vouch for the picture. The top frame and the step's
+        // frame refuse it (`more`); any other frame does not answer, so it is painted over.
+        .then((still) => {
+          if (still || isTop || stepId) sendResponse(answerShot(token, stepId, hidden.more || !still));
+          else sendResponse(undefined as unknown as ShotView);
+        });
       return true;
     }
     if (m?.type === 'shot.check') {

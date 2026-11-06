@@ -215,14 +215,14 @@ async function grab(tabId: number, origin: string | null, step: { id: string; fr
   try {
     // No answer from the top frame: Waymark's UI may still be showing there.
     if (step && !reports.has(0)) return { skipped: 'the page did not hide Waymark in time' };
-    if (step && [...reports.values()].some((r) => r.more)) return { skipped: 'too many embedded frames to check' };
+    if (step && [...reports.values()].some((r) => r.more)) return { skipped: 'a frame could not vouch for its picture (moving, or too many embedded frames)' };
     if (step && !reports.get(step.frameId)?.rect) return { skipped: 'the element is gone or hidden' };
     const dataUrl = await captureTab(tab.windowId);
     // The window may have switched to another tab meanwhile: then the picture is of that tab.
     const after = await chrome.tabs.get(tabId).catch(() => null);
     if (!after?.active || !stillThere(after.url, origin, page)) return { skipped: 'the tab or page changed during the capture' };
     // A frame restored, navigated, or grew a new shadow root or iframe meanwhile: the picture may show field text.
-    if (step && !(await stillHidden(send, tokens, reports.keys()))) return { skipped: 'a frame changed during the capture' };
+    if (step && !(await stillHidden(send, tokens, reports.keys()))) return { skipped: MOVED };
     return { dataUrl, reports };
   } catch (e) {
     return isActiveTabRefusal(e) ? { refused: true } : { skipped: 'the capture failed' };
@@ -287,8 +287,13 @@ export interface ShootRequest {
   stillWanted?: () => Promise<boolean>;
 }
 
+/** Why a capture is retried once: the page moved between the measurement and the picture. */
+export const MOVED = 'a frame changed during the capture';
+
 async function shoot(r: ShootRequest): Promise<{ outcome: ShotOutcome; why?: string }> {
-  const g = await grab(r.tabId, r.origin, { id: r.step.id, frameId: r.frameId }, pageOf(r.page));
+  let g = await grab(r.tabId, r.origin, { id: r.step.id, frameId: r.frameId }, pageOf(r.page));
+  // Once more (the call spacer keeps Chrome's rate): a scroll or a click often settles quickly.
+  if ('skipped' in g && g.skipped === MOVED) g = await grab(r.tabId, r.origin, { id: r.step.id, frameId: r.frameId }, pageOf(r.page));
   if ('refused' in g) return { outcome: 'refused' };
   if ('skipped' in g) return { outcome: 'skipped', why: g.skipped };
   const placed = placeShot(g.reports, r.frameId);

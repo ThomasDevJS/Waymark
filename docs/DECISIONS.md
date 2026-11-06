@@ -1591,3 +1591,13 @@ A privacy, frame-geometry, storage-size and print-layout review of the first ver
 - **A second wave of `hideFrames` that never ran** (low): removed.
 - **Rotated or skewed iframes** (low): no token, so masked (D191). Ancestor `overflow` clipping is documented as a limit.
 - **Fenced frames and portals** (low, speculative): treated as embedded documents, so masked.
+
+### Fix from CI: the picture and the measurement must show the same layout (D192)
+CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Reproduced locally (`s3-screenshot-frames`, "quick steps on a slow CPU…": 20× CPU throttling, a short window, no pause between steps), where it failed 2 runs of 10. The test clicks in the frame; Playwright scrolls the top page to do so. When that scroll lands just before a frame answers `shot.hide`, `getBoundingClientRect` already has the new positions, but the screen still shows the old ones for a frame or two, so the capture does not match the box.
+- **Settled before answering**: each frame measures its scroll, viewport, the step's element and its embedded documents, waits two rendered frames, and measures again (`settled`, up to 4 tries). It answers only when both agree within 1 px. If the layout keeps moving, the top frame and the step's frame refuse the picture; any other frame does not answer, so it is painted over.
+- **Checked after the capture**: `shot.check` compares the same measurements (scroll, viewport, the step's element, embedded documents), not only the embedded documents.
+- **One retry**: when a frame changed during the capture, the service worker captures once more (the call spacer keeps Chrome's rate). If it changes again, that step has no image, and Capture in the editor can take it later.
+- **Tests**:
+  - browser `shots.test.ts` ("CI fix"): a scroll or a moved element after the answer fails the check; a page that keeps moving is refused. Both fail on the previous version;
+  - e2e: the throttled test passed 12 runs in a row with the fix, with all 3 images stored in most runs;
+  - every s3 run attaches `screenshot-boxes.json` (viewport, scroll, stored and seen boxes), so a CI failure explains itself.
