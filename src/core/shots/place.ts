@@ -21,8 +21,8 @@ export interface Box {
 export interface ChildFrame {
   /** The child's frameId, once the service worker has resolved it (resolveChildren); -1: unknown. */
   frameId: number;
-  /** The iframe's selector in its frame, as the frame registry names it (frames.ts); none for objects and embeds. */
-  sel?: string;
+  /** The token the child frame posted for this capture (D192); none for objects, embeds, and iframes without Waymark. */
+  token?: string;
   /** The border box: painted over when the frame inside did not hide its fields. */
   box: Box;
   /** The content box: the child's viewport, where its own coordinates start. */
@@ -63,23 +63,38 @@ const finite = (...n: number[]) => n.every((v) => Number.isFinite(v));
 /** The frame registry's links (registry.ts FrameMap): child frameId → its parent and iframe selector. */
 export type FrameLinks = Readonly<Record<string, { parentFrameId: number; selector: string }>>;
 
+/** How far a child's viewport may differ from its iframe's content box, in CSS pixels. */
+const SIZE_SLACK = 2;
+
 /**
- * Names each reported iframe's frameId (D191). A frame cannot learn its children's frameIds, but
- * the frame registry knows every child that claimed a nonce: (parent frameId, iframe selector).
- * A child counts only when exactly one registered frame matches and that frame answered too; an
- * old frame of a rebuilt iframe (D152) does not answer. Anything else stays -1: painted over.
+ * Names each reported iframe's frameId (D191, D192). A frame cannot learn its children's ids, so
+ * the service worker gives every frame a random token per capture; the frame posts it to its
+ * parent, and the parent reports it with the iframe whose window sent it (contentWindow identity,
+ * not a selector, which can be stale or shared). A child is named only when:
+ * - exactly one reported iframe, in all frames, carries the token (a relayed token names nobody);
+ * - the frame with that token answered, and the frame registry knows it as a child of this parent;
+ * - its viewport is the size of the iframe's content box.
+ * Anything else stays -1: painted over.
  */
-export function resolveChildren(reports: ReadonlyMap<number, FrameReport>, links: FrameLinks): Map<number, FrameReport> {
+export function resolveChildren(reports: ReadonlyMap<number, FrameReport>, links: FrameLinks, tokens: ReadonlyMap<number, string>): Map<number, FrameReport> {
+  const byToken = new Map<string, number>();
+  for (const [id, t] of tokens) byToken.set(t, byToken.has(t) ? -1 : id);
+  const uses = new Map<string, number>();
+  for (const r of reports.values()) for (const c of r.frames) if (c.token) uses.set(c.token, (uses.get(c.token) ?? 0) + 1);
   const out = new Map<number, FrameReport>();
   for (const [parent, r] of reports) {
     out.set(parent, {
       ...r,
       frames: r.frames.map((c) => {
-        if (!c.sel) return { ...c, frameId: -1 };
-        const ids = Object.entries(links)
-          .filter(([id, l]) => l.parentFrameId === parent && l.selector === c.sel && reports.has(Number(id)))
-          .map(([id]) => Number(id));
-        return { ...c, frameId: ids.length === 1 && ids[0]! > 0 ? ids[0]! : -1 };
+        const id = c.token && uses.get(c.token) === 1 ? (byToken.get(c.token) ?? -1) : -1;
+        const child = id > 0 ? reports.get(id) : undefined;
+        const ok =
+          !!child &&
+          links[String(id)]?.parentFrameId === parent &&
+          c.k > 0 &&
+          Math.abs(child.vw - c.content.w / c.k) <= SIZE_SLACK &&
+          Math.abs(child.vh - c.content.h / c.k) <= SIZE_SLACK;
+        return { ...c, frameId: ok ? id : -1 };
       }),
     });
   }

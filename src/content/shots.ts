@@ -17,7 +17,6 @@
 import type { ContentPush } from '../core/messaging/protocol';
 import type { Box, ChildFrame, FrameReport } from '../core/shots/place';
 import { isVisible } from '../core/fingerprint/dom';
-import { hostSelector } from '../core/fingerprint';
 import { setOverlayHidden } from './overlay/host';
 import { flashPill } from './overlay/pill';
 import { testMark } from './test-hooks';
@@ -78,13 +77,20 @@ function shadowOf(el: Element): ShadowRoot | null {
   }
 }
 
-function safeSelector(el: Element): string | null {
-  try {
-    const s = hostSelector(el);
-    return s.length <= 2000 ? s : null;
-  } catch {
-    return null;
-  }
+/** The token each child iframe posted for the current capture (D192 review fix): the newest wins. */
+const childTokens = new WeakMap<Element, { token: string; at: number }>();
+export const TOKEN_MSG = 'waymark:shot-token';
+
+/** True when the iframe is drawn with more than a uniform scale (rotation, skew, uneven scale). */
+function oddTransform(el: Element, r: DOMRect, k: number): boolean {
+  const he = el as HTMLElement;
+  const ky = he.offsetHeight > 0 ? r.height / he.offsetHeight : 1;
+  if (Math.abs(ky - k) > 0.01) return true;
+  const t = getComputedStyle(el).transform;
+  const m = /^matrix\(([^)]+)\)$/.exec(t);
+  if (!m) return t !== 'none' && t !== '';
+  const [, b, c] = m[1]!.split(',').map(Number);
+  return Math.abs(b ?? 0) > 1e-6 || Math.abs(c ?? 0) > 1e-6;
 }
 
 /** An embedded document's border box, content box and CSS scale, in this frame's viewport. */
@@ -98,17 +104,20 @@ export function childFrame(el: Element): ChildFrame {
   const pt = px(cs.paddingTop);
   const cw = Math.max(0, he.clientWidth - pl - px(cs.paddingRight));
   const ch = Math.max(0, he.clientHeight - pt - px(cs.paddingBottom));
-  // Frames are named as the frame registry names them (frames.ts): the service worker finds the
-  // child's frameId from (this frame, selector). Objects and embeds have none: always masked.
-  const sel = /^(IFRAME|FRAME)$/.test(el.tagName) ? safeSelector(el) : null;
+  // A child is named by the token it posted for this capture (the service worker knows which frame
+  // it gave that token to). Objects, embeds and oddly transformed iframes carry none: masked.
+  const token = /^(IFRAME|FRAME)$/.test(el.tagName) && !oddTransform(el, r, k) ? childTokens.get(el)?.token : undefined;
   return {
     frameId: -1,
-    ...(sel ? { sel } : {}),
+    ...(token ? { token } : {}),
     box: { x: r.left, y: r.top, w: r.width, h: r.height },
     content: { x: r.left + (he.clientLeft + pl) * k, y: r.top + (he.clientTop + pt) * k, w: cw * k, h: ch * k },
     k: Number.isFinite(k) && k > 0 ? k : 1,
   };
 }
+
+/** Elements that hold another document. */
+const EMBEDDED = /^(IFRAME|FRAME|OBJECT|EMBED|FENCEDFRAME|PORTAL)$/;
 
 /** The document and every shadow root inside it, with the embedded documents in view. */
 function scan(): { roots: (Document | ShadowRoot)[]; frames: ChildFrame[]; more: boolean } {
@@ -121,7 +130,7 @@ function scan(): { roots: (Document | ShadowRoot)[]; frames: ChildFrame[]; more:
     for (const el of roots[i]!.querySelectorAll('*')) {
       const sr = shadowOf(el);
       if (sr) roots.push(sr);
-      if (/^(IFRAME|FRAME|OBJECT|EMBED)$/.test(el.tagName)) {
+      if (EMBEDDED.test(el.tagName)) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh)) continue;
         if (frames.length >= MAX_FRAMES) more = true;
@@ -140,6 +149,26 @@ function adopt(root: Document | ShadowRoot, s: CSSStyleSheet): void {
     // a root that refuses it: nothing more to do here
   }
 }
+
+/** The capture in progress: its token, and what was reported (for shot.check). */
+let session: { token: string; sig: string } | null = null;
+
+const sigOf = (frames: ChildFrame[]) => frames.map((f) => [f.box.x, f.box.y, f.box.w, f.box.h].map(Math.round).join(',')).join(';');
+
+/**
+ * After the capture (D192 review fix): is this frame still as it was reported? The same capture
+ * (not restored meanwhile, same document), the sheet in every root (none made since), and the
+ * same embedded documents in view. Anything else: the service worker drops the image.
+ */
+export function checkShot(token: string): boolean {
+  if (!session || session.token !== token || !sheet) return false;
+  const now = scan();
+  if (now.more || sigOf(now.frames) !== session.sig) return false;
+  return now.roots.every((r) => adopted.includes(r) && r.adoptedStyleSheets.includes(sheet!));
+}
+
+/** The text of a document in designMode is editable without any field: it cannot be hidden. */
+export const unhideable = () => document.designMode === 'on';
 
 function restartRestore(): void {
   clearTimeout(timer);
@@ -163,6 +192,7 @@ export function hideForShot(): { frames: ChildFrame[]; more: boolean } {
 
 export function showAfterShot(): void {
   clearTimeout(timer);
+  session = null;
   setOverlayHidden(false);
   for (const root of adopted) {
     try {
@@ -197,44 +227,107 @@ function painted(maxMs = 250): Promise<void> {
   });
 }
 
+/** How recent a child's token must be to count as posted for this capture while waiting. */
+const FRESH_MS = 1000;
+
+const inView = (el: Element) => {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+};
+
+/**
+ * Waits (up to `maxMs`) until every iframe in view has posted a token recently: a child with
+ * Waymark posts it as soon as it gets shot.hide. A child without Waymark never does; it is
+ * painted over anyway, so the wait only costs time.
+ */
+async function tokensIn(maxMs = 150): Promise<void> {
+  const end = Date.now() + maxMs;
+  while (Date.now() < end) {
+    const now = Date.now();
+    const missing = frameEls().some((el) => /^(IFRAME|FRAME)$/.test(el.tagName) && inView(el) && !(now - (childTokens.get(el)?.at ?? -Infinity) < FRESH_MS));
+    if (!missing) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+/** Every iframe element of this document and its shadow roots (open and closed). */
+function frameEls(): Element[] {
+  const roots: (Document | ShadowRoot)[] = [document];
+  const out: Element[] = [];
+  for (let i = 0; i < roots.length; i++) {
+    for (const el of roots[i]!.querySelectorAll('*')) {
+      const sr = shadowOf(el);
+      if (sr) roots.push(sr);
+      if (EMBEDDED.test(el.tagName)) out.push(el);
+    }
+  }
+  return out;
+}
+
+/**
+ * The frame's answer, once it is painted hidden: measured now (the layout of the capture), with
+ * the sheet adopted in any shadow root made meanwhile. Starts the session shot.check asks about.
+ */
+export function answerShot(token: string, stepId: string | undefined, more = false): ShotView {
+  // The capture starts now: everything stays hidden for the full restore time from here.
+  restartRestore();
+  const now = scan();
+  const s = fieldSheet();
+  if (s) for (const root of now.roots) if (!adopted.includes(root)) adopt(root, s);
+  session = { token, sig: sigOf(now.frames) };
+  return {
+    vw: window.innerWidth,
+    vh: window.innerHeight,
+    dpr: window.devicePixelRatio,
+    rect: shotTargetRect(stepId),
+    frames: now.frames,
+    ...(more || now.more ? { more: true } : {}),
+  };
+}
+
+/** A child's token message: remembered for the iframe whose window sent it (never trusted beyond that). */
+export function onTokenMessage(e: MessageEvent): void {
+  const d = e.data as { __waymark?: unknown; token?: unknown } | null;
+  if (!d || typeof d !== 'object' || d.__waymark !== TOKEN_MSG || typeof d.token !== 'string' || d.token.length > 64 || !e.source) return;
+  const el = frameEls().find((f) => (f as HTMLIFrameElement).contentWindow === e.source);
+  if (el) childTokens.set(el, { token: d.token, at: Date.now() });
+}
+
 export function startShotClient(): { dispose(): void } {
   const isTop = window === window.top;
-  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender, sendResponse: (r: ShotView) => void) => {
+  const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender, sendResponse: (r: ShotView | boolean) => void) => {
     // Only the service worker (no tab) of this extension.
     if (sender.id !== chrome.runtime.id || sender.tab) return false;
     const m = msg as ContentPush;
     if (m?.type === 'shot.hide') {
       const hidden = hideForShot();
+      const token = typeof m.payload?.token === 'string' ? m.payload.token : '';
+      // A designMode document's text cannot be hidden: no answer, so this frame is painted over.
+      if (!token || unhideable()) return false;
+      // Tell the parent which iframe this frame is: the service worker matches the token (D192).
+      if (!isTop) window.parent.postMessage({ __waymark: TOKEN_MSG, token }, '*');
       const stepId = typeof m.payload?.stepId === 'string' ? m.payload.stepId : undefined;
       // Every frame answers once it is painted without Waymark and without field text (D192).
-      void painted().then(() => {
-        // The capture starts now: everything stays hidden for the full restore time from here.
-        restartRestore();
-        // Measured after painting: the layout of the moment of the capture.
-        const now = scan();
-        // A shadow root made meanwhile gets the sheet too.
-        const s = fieldSheet();
-        if (s) for (const root of now.roots) if (!adopted.includes(root)) adopt(root, s);
-        sendResponse({
-          vw: window.innerWidth,
-          vh: window.innerHeight,
-          dpr: window.devicePixelRatio,
-          rect: shotTargetRect(stepId),
-          frames: now.frames,
-          ...(hidden.more || now.more ? { more: true } : {}),
-        });
-      });
+      void painted()
+        .then(() => tokensIn())
+        .then(() => sendResponse(answerShot(token, stepId, hidden.more)));
       return true;
+    }
+    if (m?.type === 'shot.check') {
+      sendResponse(typeof m.payload?.token === 'string' && checkShot(m.payload.token));
+      return false;
     }
     if (m?.type === 'shot.show') showAfterShot();
     else if (m?.type === 'shot.hint' && isTop) flashPill(SHOT_HINT);
     return false;
   };
   chrome.runtime.onMessage.addListener(onMessage);
+  window.addEventListener('message', onTokenMessage);
   return {
     dispose() {
       showAfterShot();
       targets.clear();
+      window.removeEventListener('message', onTokenMessage);
       try {
         chrome.runtime.onMessage.removeListener(onMessage);
       } catch {

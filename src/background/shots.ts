@@ -37,6 +37,8 @@ export const SHOTS_ALARM = 'shots-sweep';
 export const HIDE_WAIT_MS = 800;
 /** Frames asked to hide per capture (the registry keeps 64 per tab, D48). */
 export const MAX_HIDE_FRAMES = 80;
+/** How long frames have to confirm, after the capture, that nothing changed. */
+export const CHECK_WAIT_MS = 400;
 /** Chrome allows about two captureVisibleTab calls a second: calls are kept this far apart (D183). */
 export const CALL_GAP_MS = 550;
 /** Colour painted over embedded documents, whose fields the top page can't hide (D183). */
@@ -144,37 +146,35 @@ const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | undefined> =>
 
 /**
  * Asks every frame Waymark may run in to hide its UI and field text (D192): the top frame, the
- * step's frame and every frame the registry knows in the tab, all at once. Only the step's frame
- * is asked for the element. A frame that does not answer in time is not in the result: it is
- * painted over. (Reported children with a known frameId not asked yet are asked in a next wave.)
+ * step's frame and every frame the registry knows in the tab, all at once, each with its own
+ * random token. Only the step's frame is asked for the element. A frame that does not answer in
+ * time is not in the result: it is painted over.
  */
 export async function hideFrames(
   send: (frameId: number, msg: ContentPush) => Promise<unknown>,
-  first: number[],
+  known: number[],
   stepFrameId: number,
   stepId: string,
   waitMs = HIDE_WAIT_MS,
-): Promise<Reports> {
+): Promise<{ reports: Reports; tokens: Map<number, string> }> {
   const deadline = Date.now() + waitMs;
+  const ids = [...new Set([0, stepFrameId, ...known])].filter((id) => Number.isInteger(id) && id >= 0).slice(0, MAX_HIDE_FRAMES);
+  const tokens = new Map(ids.map((id) => [id, crypto.randomUUID()] as const));
+  const answers = await Promise.all(
+    ids.map(async (frameId) => {
+      const msg: ContentPush = { type: 'shot.hide', payload: { token: tokens.get(frameId)!, ...(frameId === stepFrameId ? { stepId } : {}) } };
+      return [frameId, asFrameReport(await withTimeout(send(frameId, msg), Math.max(0, deadline - Date.now())))] as const;
+    }),
+  );
   const reports: Reports = new Map();
-  const asked = new Set<number>();
-  let wave = [...new Set([0, stepFrameId, ...first])].filter((id) => Number.isInteger(id) && id >= 0).slice(0, MAX_HIDE_FRAMES);
-  while (wave.length && Date.now() < deadline) {
-    for (const id of wave) asked.add(id);
-    const answers = await Promise.all(
-      wave.map(async (frameId) => {
-        const msg: ContentPush = { type: 'shot.hide', payload: frameId === stepFrameId ? { stepId } : {} };
-        return [frameId, asFrameReport(await withTimeout(send(frameId, msg), Math.max(0, deadline - Date.now())))] as const;
-      }),
-    );
-    for (const [id, r] of answers) if (r) reports.set(id, r);
-    wave = [
-      ...new Set(
-        answers.flatMap(([, r]) => (r ? r.frames.map((c) => c.frameId) : [])).filter((id) => id > 0 && !asked.has(id)),
-      ),
-    ].slice(0, Math.max(0, MAX_HIDE_FRAMES - asked.size));
-  }
-  return reports;
+  for (const [id, r] of answers) if (r) reports.set(id, r);
+  return { reports, tokens };
+}
+
+/** After the capture: every frame that answered must still be hidden as it reported (D192). */
+export async function stillHidden(send: (frameId: number, msg: ContentPush) => Promise<unknown>, tokens: ReadonlyMap<number, string>, frames: Iterable<number>, waitMs = CHECK_WAIT_MS): Promise<boolean> {
+  const ok = await Promise.all([...frames].map(async (id) => (await withTimeout(send(id, { type: 'shot.check', payload: { token: tokens.get(id) ?? '' } }), waitMs)) === true));
+  return ok.every(Boolean);
 }
 
 /** The tab's frame registry (D45, D152): which frame is which iframe of which parent. */
@@ -204,10 +204,13 @@ async function grab(tabId: number, origin: string | null, step: { id: string; fr
   if (!tab.active) return { skipped: 'the tab is not the one showing' };
   if (!stillThere(tab.url, origin, page)) return { skipped: 'the page changed after the action' };
   let reports: Reports = new Map();
+  let tokens = new Map<number, string>();
+  const send = (frameId: number, msg: ContentPush) => chrome.tabs.sendMessage(tabId, msg, { frameId });
   if (step) {
     const links = await frameLinks(tabId);
-    const answered = await hideFrames((frameId, msg) => chrome.tabs.sendMessage(tabId, msg, { frameId }), knownFrames(links), step.frameId, step.id);
-    reports = resolveChildren(answered, links);
+    const hidden = await hideFrames(send, knownFrames(links), step.frameId, step.id);
+    tokens = hidden.tokens;
+    reports = resolveChildren(hidden.reports, links, tokens);
   }
   try {
     // No answer from the top frame: Waymark's UI may still be showing there.
@@ -218,6 +221,8 @@ async function grab(tabId: number, origin: string | null, step: { id: string; fr
     // The window may have switched to another tab meanwhile: then the picture is of that tab.
     const after = await chrome.tabs.get(tabId).catch(() => null);
     if (!after?.active || !stillThere(after.url, origin, page)) return { skipped: 'the tab or page changed during the capture' };
+    // A frame restored, navigated, or grew a new shadow root or iframe meanwhile: the picture may show field text.
+    if (step && !(await stillHidden(send, tokens, reports.keys()))) return { skipped: 'a frame changed during the capture' };
     return { dataUrl, reports };
   } catch (e) {
     return isActiveTabRefusal(e) ? { refused: true } : { skipped: 'the capture failed' };

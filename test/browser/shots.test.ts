@@ -5,7 +5,7 @@ import { rememberShotTarget, shotTargetRect } from '../../src/content/shots';
 import { enqueue } from '../../src/core/storage/queue';
 import { stepHashes } from '../../src/core/shots/lifecycle';
 import type { Guide } from '../../src/core/model/schema';
-import { hideForShot, showAfterShot } from '../../src/content/shots';
+import { answerShot, checkShot, hideForShot, onTokenMessage, showAfterShot, TOKEN_MSG, unhideable } from '../../src/content/shots';
 import { overlayHost, overlayLayer, destroyOverlay } from '../../src/content/overlay/host';
 import { renderShot } from '../../src/core/shots/render';
 
@@ -108,9 +108,8 @@ describe('hiding for a capture (D183)', () => {
     expect(root.adoptedStyleSheets).toHaveLength(0);
   });
 
-  it('reports each iframe with its selector, border box and content box (border and padding inside it, D191)', () => {
+  it('reports each iframe with its border box and content box (border and padding inside it, D191)', () => {
     const frame = document.createElement('iframe');
-    frame.id = 'pay';
     frame.style.cssText = 'position:fixed;left:30px;top:40px;width:200px;height:100px;border:3px solid #000;padding:5px 7px';
     document.body.append(frame);
     const embed = document.createElement('object');
@@ -121,14 +120,73 @@ describe('hiding for a capture (D183)', () => {
     document.body.append(off);
     const { frames, more } = hideForShot();
     expect(more).toBe(false);
-    const f = frames.find((x) => x.sel?.includes('pay'))!;
+    expect(frames).toHaveLength(2);
+    const f = frames.find((x) => x.box.x === 30)!;
     expect(f.box).toEqual({ x: 30, y: 40, w: 220, h: 116 });
     expect(f.content).toEqual({ x: 40, y: 48, w: 200, h: 100 });
     expect(f.k).toBe(1);
     expect(f.frameId).toBe(-1);
-    // An object is reported (to be painted over) without a selector; an iframe off screen is not reported.
-    expect(frames.filter((x) => !x.sel).map((x) => x.box)).toEqual([{ x: 300, y: 40, w: 50, h: 50 }]);
-    expect(frames).toHaveLength(2);
+    expect(f.token).toBeUndefined();
+  });
+
+  it('review fix: a child is named by the token its own window posted, not by a selector; transformed iframes carry none', async () => {
+    const mk = (left: number, css = '') => {
+      const f = document.createElement('iframe');
+      f.style.cssText = `position:fixed;left:${left}px;top:10px;width:100px;height:80px;border:0;${css}`;
+      document.body.append(f);
+      return f;
+    };
+    const a = mk(0);
+    const b = mk(150);
+    const rotated = mk(300, 'transform:rotate(10deg)');
+    const post = (f: HTMLIFrameElement, token: string) => onTokenMessage(new MessageEvent('message', { data: { __waymark: TOKEN_MSG, token }, source: f.contentWindow }));
+    post(b, 'tb');
+    post(rotated, 'tr');
+    // A message from a window that is no iframe here, or junk, names nothing.
+    onTokenMessage(new MessageEvent('message', { data: { __waymark: TOKEN_MSG, token: 'tx' }, source: window }));
+    onTokenMessage(new MessageEvent('message', { data: { __waymark: TOKEN_MSG, token: 7 }, source: a.contentWindow }));
+    const { frames } = hideForShot();
+    const at = (x: number) => frames.find((f) => Math.round(f.box.x) === x || (x === 300 && f.box.x > 280));
+    expect(at(0)!.token).toBeUndefined();
+    expect(at(150)!.token).toBe('tb');
+    expect(at(300)!.token).toBeUndefined();
+  });
+
+  it('review fix: after hiding, a new shadow root, a new iframe or a restore fails the check', () => {
+    const ok = () => {
+      showAfterShot();
+      hideForShot();
+      answerShot('t', undefined);
+      return checkShot('t');
+    };
+    expect(ok()).toBe(true);
+    expect(checkShot('other')).toBe(false);
+    // A web component mounted after the answer: its fields never got the sheet.
+    const host = document.createElement('div');
+    document.body.append(host);
+    expect(ok()).toBe(true);
+    host.attachShadow({ mode: 'open' }).append(document.createElement('input'));
+    expect(checkShot('t')).toBe(false);
+    // A new iframe in view after the answer: it was neither reported nor masked.
+    expect(ok()).toBe(true);
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;left:0;top:0;width:50px;height:50px';
+    document.body.append(f);
+    expect(checkShot('t')).toBe(false);
+    // Restored (shot.show, or the 2.5 s self-restore): not hidden any more.
+    expect(ok()).toBe(true);
+    showAfterShot();
+    expect(checkShot('t')).toBe(false);
+  });
+
+  it('review fix: a designMode document cannot hide its text, so it does not answer', () => {
+    expect(unhideable()).toBe(false);
+    document.designMode = 'on';
+    try {
+      expect(unhideable()).toBe(true);
+    } finally {
+      document.designMode = 'off';
+    }
   });
 
   it("review fix: the step's own element is measured at capture time; gone or hidden means no picture", () => {

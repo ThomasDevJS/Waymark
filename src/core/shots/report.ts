@@ -12,7 +12,7 @@ const BoxSchema = z.object({ x: n, y: n, w: n.positive(), h: n.positive() });
 const ChildSchema = z.object({
   // The page never names frame ids: the service worker resolves them (resolveChildren).
   frameId: z.literal(-1),
-  sel: z.string().max(2000).optional(),
+  token: z.string().max(64).optional(),
   box: BoxSchema,
   content: z.object({ x: n, y: n, w: n.min(0), h: n.min(0) }),
   k: n.positive().max(100),

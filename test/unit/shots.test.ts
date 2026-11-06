@@ -9,7 +9,7 @@ import { createCallSpacer, createCaptureQueue, DROPPED } from '../../src/core/sh
 import { asIdList, MAX_SHOT_GUIDES, shotFits, staleFlags, staleShots, stepHashes, targetHash } from '../../src/core/shots/lifecycle';
 import { isOldShot, parseShotKey, shotKey, SHOT_VERSION } from '../../src/core/shots/store';
 import { blurPx, highlightRect, renderPlan } from '../../src/core/shots/render';
-import { hideFrames, isActiveTabRefusal, isQuotaRefusal, pageOf, placeShot, shotStep } from '../../src/background/shots';
+import { hideFrames, stillHidden, isActiveTabRefusal, isQuotaRefusal, pageOf, placeShot, shotStep } from '../../src/background/shots';
 import { howtoHtml, howtoImageKey, howtoMarkdown, PRINT_CSS } from '../../src/core/sharing/howto';
 import { exportJson } from '../../src/entrypoints/sidepanel/ExportReview';
 import { fittingShots, parsePreviewQuery, previewPath } from '../../src/entrypoints/howto/data';
@@ -314,26 +314,23 @@ describe('lifecycle (D185)', () => {
 
 describe('hiding in every frame (D192)', () => {
   const ok = (frames: ChildFrame[] = [], rect: ReturnType<typeof box> | null = null) => ({ vw: 800, vh: 600, dpr: 1, rect, frames });
-  const sel = (selector: string, b: ReturnType<typeof box>): ChildFrame => ({ ...child(-1, b), sel: selector });
-  it('asks the top frame, the step frame and every registered frame at once; only the step frame is asked for the element', async () => {
+  const tok = (token: string, b: ReturnType<typeof box>): ChildFrame => ({ ...child(-1, b), token });
+  it('asks the top frame, the step frame and every registered frame at once, each with its own token; only the step frame gets the step', async () => {
     const sent: [number, ContentPush][] = [];
-    const answers: Record<number, unknown> = {
-      0: ok([sel('#a', box(0, 0, 100, 100)), child(-1, box(0, 200, 10, 10))]),
-      5: ok([sel('#b', box(0, 0, 50, 50))], box(1, 1, 10, 10)),
-      8: ok(),
-    };
-    const reports = await hideFrames(async (id, msg) => (sent.push([id, msg]), answers[id]), [8, 5, 99], 5, 'step1', 500);
+    const answers: Record<number, unknown> = { 0: ok([child(-1, box(0, 200, 10, 10))]), 5: ok([], box(1, 1, 10, 10)), 8: ok() };
+    const { reports, tokens } = await hideFrames(async (id, msg) => (sent.push([id, msg]), answers[id]), [8, 5, 99], 5, 'step1', 500);
     expect(sent.map(([id]) => id)).toEqual([0, 5, 8, 99]);
-    expect(sent.find(([id]) => id === 5)![1]).toEqual({ type: 'shot.hide', payload: { stepId: 'step1' } });
-    expect(sent.find(([id]) => id === 0)![1]).toEqual({ type: 'shot.hide', payload: {} });
+    expect(sent.find(([id]) => id === 5)![1]).toEqual({ type: 'shot.hide', payload: { token: tokens.get(5), stepId: 'step1' } });
+    expect(sent.find(([id]) => id === 0)![1]).toEqual({ type: 'shot.hide', payload: { token: tokens.get(0) } });
+    expect(new Set(tokens.values()).size).toBe(4);
     expect([...reports.keys()].sort()).toEqual([0, 5, 8]);
   });
   it('a frame that answers late or with junk is left out (and so painted over)', async () => {
-    const reports = await hideFrames(
+    const { reports } = await hideFrames(
       async (id) => {
         if (id === 3) return new Promise((r) => setTimeout(() => r(ok()), 300));
         if (id === 4) return { vw: 'x' };
-        return ok([sel('#x', box(0, 0, 10, 10))]);
+        return ok();
       },
       [3, 4],
       0,
@@ -342,34 +339,72 @@ describe('hiding in every frame (D192)', () => {
     );
     expect([...reports.keys()]).toEqual([0]);
   });
-  it('names children through the frame registry: one registered frame that answered, else masked', () => {
-    const links = {
-      '5': { parentFrameId: 0, selector: '#a' },
-      '6': { parentFrameId: 5, selector: '#b' },
-      // A rebuilt iframe (D152): an old frame at the same place that no longer answers.
-      '3': { parentFrameId: 0, selector: '#a' },
-      // Two live frames claim the same place: neither is trusted.
-      '10': { parentFrameId: 0, selector: '#c' },
-      '11': { parentFrameId: 0, selector: '#c' },
-    };
-    const reports = new Map<number, FrameReport>([
-      [0, report([sel('#a', box(0, 0, 500, 400)), sel('#c', box(600, 0, 100, 100)), sel('#none', box(0, 500, 100, 100)), child(-1, box(800, 0, 50, 50))])],
-      [5, report([sel('#b', box(10, 10, 100, 100))])],
-      [6, report([], box(1, 1, 20, 10))],
-      [10, report()],
-      [11, report()],
+  it('names a child only by the token its own frame posted, checked against the registry and its size', () => {
+    const links = { '5': { parentFrameId: 0, selector: '#a' }, '6': { parentFrameId: 5, selector: '#b' }, '7': { parentFrameId: 0, selector: '#x' } };
+    const tokens = new Map([
+      [0, 't0'],
+      [5, 't5'],
+      [6, 't6'],
+      [7, 't7'],
     ]);
-    const named = resolveChildren(reports, links);
-    expect(named.get(0)!.frames.map((c) => c.frameId)).toEqual([5, -1, -1, -1]);
+    const reports = new Map<number, FrameReport>([
+      [0, report([tok('t5', box(0, 0, 500, 400)), tok('stale', box(600, 0, 100, 100)), child(-1, box(800, 0, 50, 50))])],
+      [5, report([tok('t6', box(10, 10, 100, 100))], null, 500, 400)],
+      [6, report([], box(1, 1, 20, 10), 100, 100)],
+    ]);
+    const named = resolveChildren(reports, links, tokens);
+    expect(named.get(0)!.frames.map((c) => c.frameId)).toEqual([5, -1, -1]);
     expect(named.get(5)!.frames.map((c) => c.frameId)).toEqual([6]);
-    const layout = layoutFrames(named)!;
-    expect(layout.masks).toEqual([box(600, 0, 100, 100), box(0, 500, 100, 100), box(800, 0, 50, 50)]);
+    expect(layoutFrames(named)!.masks).toEqual([box(600, 0, 100, 100), box(800, 0, 50, 50)]);
     expect(placeShot(named, 6)?.el).toEqual(box(11, 11, 20, 10));
-    // A frame registered under another parent does not count here.
-    expect(resolveChildren(reports, { '5': { parentFrameId: 9, selector: '#a' } }).get(0)!.frames[0]!.frameId).toBe(-1);
+    // The registry knows 5 under another parent: not named.
+    expect(resolveChildren(reports, { ...links, '5': { parentFrameId: 9, selector: '#a' } }, tokens).get(0)!.frames[0]!.frameId).toBe(-1);
+    // Its viewport is not the size of the iframe it is reported in: not named.
+    const wrongSize = new Map(reports).set(5, report([], null, 300, 400));
+    expect(resolveChildren(wrongSize, links, tokens).get(0)!.frames[0]!.frameId).toBe(-1);
+  });
+  it('review fix: a stale or shared selector can no longer un-mask a foreign iframe; a relayed token names nobody', () => {
+    // Granted frame 5 is registered as the parent's first iframe. The page then inserts a foreign
+    // iframe before it, which now has the selector 5 was registered with. Selectors are no longer
+    // used: the foreign iframe posted no token, so it is painted over.
+    const links = { '5': { parentFrameId: 0, selector: 'xpath:/html[1]/body[1]/iframe[1]' } };
+    const tokens = new Map([
+      [0, 't0'],
+      [5, 't5'],
+    ]);
+    const foreign = child(-1, box(0, 0, 300, 200));
+    const granted = tok('t5', box(0, 300, 500, 400));
+    const reports = new Map<number, FrameReport>([
+      [0, report([foreign, granted])],
+      [5, report([], null, 500, 400)],
+    ]);
+    const layout = layoutFrames(resolveChildren(reports, links, tokens))!;
+    expect(layout.masks).toEqual([box(0, 0, 300, 200)]);
+    expect(layout.placed.has(5)).toBe(true);
+    // The page relays frame 5's token into its own iframe: two iframes carry it, neither is named.
+    const relayed = new Map<number, FrameReport>([
+      [0, report([tok('t5', box(0, 0, 500, 400)), granted])],
+      [5, report([], null, 500, 400)],
+    ]);
+    expect(layoutFrames(resolveChildren(relayed, links, tokens))!.masks).toHaveLength(2);
+  });
+  it('review fix: after the capture every frame that answered must confirm it is still hidden', async () => {
+    const tokens = new Map([
+      [0, 'a'],
+      [5, 'b'],
+    ]);
+    const sent: ContentPush[] = [];
+    expect(await stillHidden(async (_id, m) => (sent.push(m), true), tokens, [0, 5])).toBe(true);
+    expect(sent).toEqual([
+      { type: 'shot.check', payload: { token: 'a' } },
+      { type: 'shot.check', payload: { token: 'b' } },
+    ]);
+    expect(await stillHidden(async (id) => id === 0, tokens, [0, 5])).toBe(false);
+    expect(await stillHidden(async () => 'yes', tokens, [0])).toBe(false);
+    expect(await stillHidden(() => new Promise((r) => setTimeout(() => r(true), 300)), tokens, [0], 50)).toBe(false);
   });
   it("the frames' answers are checked", () => {
-    const r = ok([{ ...child(-1, box(0, 0, 10, 10)), sel: '#f' }], box(1, 2, 3, 4));
+    const r = ok([{ ...child(-1, box(0, 0, 10, 10)), token: 'f' }], box(1, 2, 3, 4));
     expect(asFrameReport(r)).toEqual(r);
     // The page never names frame ids (it could point a mask's exemption at any frame).
     expect(asFrameReport(ok([child(2, box(0, 0, 10, 10))]))).toBeNull();
