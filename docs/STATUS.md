@@ -67,6 +67,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - On the author's own guide, the not-found card and the tooltip's crosshair button start **Pick the right element**: `run.fix.start` → `Run.fix` → the view's `fixing` hides the player and every frame enters the editor's pick mode. The answer (`pick.result` with no editor pick pending) saves the guide and moves the run onto the fixed step (`fixPicked`, `src/background/fix.ts`; pure parts `fixedStep`, `applyRunStep`, `fixPending` in `src/core/player/run.ts`). The panel's Undo toast reads `runFix:<tabId>` (`Library.tsx`) and sends `run.fix.undo`.
 - Tests: `test/unit/fix-step.test.ts`, e2e `test/e2e/f1-fix-step.spec.ts` (test hook `player=fixing:N`).
 
+## Steps that may break (D211, issue #96)
+- `run.match` records one result per step token (`recordPlay`, `src/background/stats.ts`) into `stats:<guideId>`; reasons and thresholds are in `src/core/stats/plays.ts`, with the shared fragile rule (`isFragile(matchStrength(r))`) Test step uses too. `writeGuides` prunes results of changed or deleted steps and keeps `statsIndex` (flagged steps per guide) for the library row. The editor reads `stats.guide`.
+- Tests: `test/unit/play-stats.test.ts`, e2e `test/e2e/f2-play-stats.spec.ts`; `pnpm bench` has the worst case.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

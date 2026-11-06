@@ -12,6 +12,8 @@ export interface MatchReport {
   margin: number;
   instance: 'unique' | 'any';
   pathMatches: boolean;
+  /** Strong signals the match used (D211). */
+  strong?: number;
   /** The reporting document (sender.documentId), when the browser gives one (D84). */
   doc?: string;
 }
@@ -25,7 +27,7 @@ export function recordReport(board: MatchBoard | undefined, r: MatchReport): Mat
   const b = board && board.stepToken === r.stepToken ? board : emptyBoard(r.stepToken);
   // One entry per frame: a frame that reloads (new document, new token) replaces its old entry,
   // so a dead document can never win or tie with its own successor.
-  b.reports[String(r.frameId)] = { frameId: r.frameId, token: r.frameToken, found: r.found, score: r.score, margin: r.margin, instance: r.instance, pathMatches: r.pathMatches, ...(r.doc ? { doc: r.doc } : {}) };
+  b.reports[String(r.frameId)] = { frameId: r.frameId, token: r.frameToken, found: r.found, score: r.score, margin: r.margin, instance: r.instance, pathMatches: r.pathMatches, ...(r.strong !== undefined ? { strong: r.strong } : {}), ...(r.doc ? { doc: r.doc } : {}) };
   if (r.frameId === 0) b.topGaveUp = !r.found;
   return recomputeWinner(b);
 }

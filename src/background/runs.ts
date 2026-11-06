@@ -19,6 +19,7 @@ import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
 import { DEFAULT_SHADE, resolveShade } from '../core/player/shade';
 import { getPlayerSettings } from './player-settings';
+import { recordPlay, type Play } from './stats';
 
 /** The origin of a page an entry names, so a page's own Copy log leaves out other sites (D111). */
 function originOf(url: string | undefined): string | null {
@@ -399,6 +400,17 @@ export const runHandlers: Handlers = {
       const prev = before && before.stepToken === r.stepToken ? { winner: before.winner, gave: before.topGaveUp } : null;
       const doc = (ctx.sender as { documentId?: string }).documentId;
       const board = recordReport(before, { ...r, frameId, ...(doc ? { doc } : {}) });
+      // The step's result for its play statistics (D211): the winning frame's report once a frame
+      // wins, or "not found" once the top frame gives up on the step's page (the not-found card).
+      // Only on a change, and keyed by the step token, so repeated reports count once.
+      const step = currentStep(run);
+      let play: Play | null = null;
+      if (board.winner && prev?.winner !== board.winner) {
+        const w = Object.values(board.reports).find((x) => x.token === board.winner);
+        if (w) play = { found: true, score: w.score, margin: w.margin, strong: w.strong ?? 0 };
+      } else if (!board.winner && board.topGaveUp && !prev?.gave && frameId === 0 && step && urlMatches(step.url, ctx.sender.tab?.url ?? '', run.guideSnapshot.appOrigins)) {
+        play = { found: false, score: r.score, margin: 0, strong: 0 };
+      }
       // Two or more frames found it: ask them whether they still exist (D84), once per burst.
       const now = Date.now();
       const check = docsToCheck(board, now);
@@ -415,9 +427,10 @@ export const runHandlers: Handlers = {
         frames: Object.keys(board.reports).length,
         topGaveUp: board.topGaveUp,
       }));
-      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner, check, boardId: board.id };
+      return { changed: !prev || prev.winner !== board.winner || prev.gave !== board.topGaveUp, found: !!board.winner, check, boardId: board.id, play: play && step ? { guideId: run.guideSnapshot.id, step, play } : null };
     });
     if (!changed) return { ok: true };
+    if (changed.play) await recordPlay(changed.play.guideId, changed.play.step, r.stepToken, changed.play.play);
     // Two or more frames found it: drop the reports of frames that no longer exist (D84).
     if (changed.check.length && (await checkFrames(tabId, r.stepToken, changed.check))) {
       changed.changed = true;

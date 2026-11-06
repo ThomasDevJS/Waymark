@@ -21,6 +21,8 @@ import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
 import type { ShotsStatus } from '../../core/messaging/protocol';
 import { SHOT_HINT_PANEL, ShotsSwitch } from './Shots';
+import { reasonText, type Reason } from '../../core/stats/plays';
+import { targetHash } from '../../core/shots/lifecycle';
 
 const draft = signal<Guide | null>(null);
 const dirty = signal(false);
@@ -32,6 +34,24 @@ const suggested = signal<Record<string, string>>({});
 const saving = signal(false);
 /** The guide's screenshot setting and which steps have one (D180, D187); not part of the draft. */
 const shots = signal<ShotsStatus | null>(null);
+
+/** Steps that may break, from plays on this device (D211): reasons per step, for the element they were about. */
+const plays = signal<Record<string, { t: string; reasons: Reason[] }>>({});
+
+async function loadPlays(guideId: string) {
+  try {
+    const r = await send('stats.guide', { guideId });
+    if (draft.value?.id === guideId || !draft.value) plays.value = r.steps;
+  } catch {
+    plays.value = {};
+  }
+}
+
+/** The step's reasons, while the draft still has the element they were about (a Re-pick clears them at once). */
+function playReasons(s: Step): Reason[] {
+  const p = plays.value[s.id];
+  return p && s.target && p.t === targetHash(s.target) ? p.reasons : [];
+}
 
 async function loadShots(guideId: string) {
   try {
@@ -270,7 +290,9 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     status.value = null;
     tests.value = {};
     shots.value = null;
+    plays.value = {};
     void loadShots(guideId);
+    void loadPlays(guideId);
     void attempt(async () => {
       const g = await send('guide.get', { id: guideId });
       draft.value = g;
@@ -351,6 +373,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         draft.value = { ...draft.value!, version: saved.version, revisionId: saved.revisionId, updatedAt: saved.updatedAt };
       }
       status.value = `Saved (version ${saved.version}).`;
+      void loadPlays(saved.id);
       // Deleted steps and re-picked elements lost their screenshots.
       if (shots.value?.on) void loadShots(saved.id);
       // The saved copy no longer has the step: its Undo would only make the draft dirty again.
@@ -459,6 +482,20 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
             });
           };
           const isPicking = picking.value === s.id;
+          const repick = () => {
+            if (picking.value === s.id) {
+              void attempt(() => send('pick.cancel', { tabId: tabId! }));
+              endPicking();
+              return;
+            }
+            picking.value = s.id;
+            clearTimeout(pickTimer);
+            pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
+            void attempt(() => send('pick.start', { tabId: tabId!, origins: g.appOrigins })).then((r) => {
+              if (!r) endPicking();
+            });
+          };
+          const reasons = playReasons(s);
           const kind = KIND[s.kind];
           const titleId = `step-title-${s.id}`;
           const bodyId = `step-body-${s.id}`;
@@ -480,6 +517,12 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                   <span class="badge warn" title={s.flags.map((f) => FLAG_HELP[f].label).join(', ')}>
                     <Icon name="warn" />
                     {FLAG_HELP[s.flags[0]!].label}
+                  </span>
+                ) : null}
+                {!open && !s.flags?.length && reasons.length ? (
+                  <span class="badge warn" data-testid={`step-${i}-may-break`} title={reasons.map(reasonText).join(', ')}>
+                    <Icon name="warn" />
+                    May break
                   </span>
                 ) : null}
                 <span class="push" />
@@ -513,6 +556,31 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
               {open && (
                 <div class="step-body unfold" id={bodyId}>
                   <FlagNotes flags={s.flags} testid={`step-${i}-flags`} />
+                  {reasons.length > 0 && (
+                    <div class="flag-notes" data-testid={`step-${i}-plays`}>
+                      {reasons.map((r) => (
+                        <p key={r.kind}>
+                          <span class="badge warn">
+                            <Icon name="warn" />
+                            {reasonText(r)}
+                          </span>{' '}
+                          <span class="small muted">From plays on this device.</span>
+                        </p>
+                      ))}
+                      {canTarget && (
+                        <div class="toolbar">
+                          <button type="button" class="ghost sm" data-testid={`step-${i}-plays-test`} disabled={tabId === null} onClick={runTest}>
+                            <Icon name="test" />
+                            Test step
+                          </button>
+                          <button type="button" class="ghost sm" data-testid={`step-${i}-plays-repick`} disabled={readOnly || tabId === null} onClick={repick}>
+                            <Icon name="crosshair" />
+                            Re-pick element
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <label class="field">
                     <span class="label">
                       Title <span class="hint">· to make words bold, put two stars on each side: **like this**</span>
@@ -551,19 +619,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                           aria-pressed={isPicking}
                           disabled={readOnly || tabId === null}
                           title="Choose a different element on the page for this step"
-                          onClick={() => {
-                            if (picking.value === s.id) {
-                              void attempt(() => send('pick.cancel', { tabId: tabId! }));
-                              endPicking();
-                              return;
-                            }
-                            picking.value = s.id;
-                            clearTimeout(pickTimer);
-                            pickTimer = setTimeout(endPicking, 120_000); // the service worker stops accepting picks then
-                            void attempt(() => send('pick.start', { tabId: tabId!, origins: g.appOrigins })).then((r) => {
-                              if (!r) endPicking();
-                            });
-                          }}
+                          onClick={repick}
                         >
                           <Icon name={isPicking ? 'close' : 'crosshair'} />
                           {isPicking ? 'Cancel picking' : 'Re-pick element'}

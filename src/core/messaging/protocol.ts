@@ -10,6 +10,7 @@ import type { RecordingState, RecordingView } from '../recorder/session';
 import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
+import type { Reason } from '../stats/plays';
 import type { VoiceSettings } from '../voice/settings';
 import { HD_HOST_PATTERNS, HdStatusSchema, type HdStatus } from '../voice/hd';
 import type { TestResult } from '../../background/editor';
@@ -103,6 +104,9 @@ export const RequestSchemas = {
   'pick.cancel': z.object({ tabId: z.number().int() }),
   // The panel's Undo after the player fixed a step (D210): that tab's last fix only.
   'run.fix.undo': z.object({ tabId: z.number().int() }),
+  // Steps that may break, from plays on this device (D211): counts per guide, and one guide's steps.
+  'stats.summary': z.object({ ids: z.array(z.string().max(64)).max(10_000) }),
+  'stats.guide': z.object({ guideId: z.string().max(64) }),
   'voice.list': z.object({}),
   'voice.test': z.object({ lang: z.string().max(35).optional() }),
   'voice.settings.get': z.object({}),
@@ -173,6 +177,8 @@ export const RequestSchemas = {
     margin: z.number().min(-100).max(100),
     instance: z.enum(['unique', 'any']),
     pathMatches: z.boolean(),
+    // Strong signals the match used (D211); optional for a content script from before.
+    strong: z.number().int().min(0).max(10).optional(),
   }),
   'run.problem': z.object({ stepId: z.string().max(64) }),
   'run.mute': z.object({ muted: z.boolean() }),
@@ -258,6 +264,8 @@ export interface ResponseMap {
   'pick.abort': { ok: boolean };
   'run.fix.start': { ok: boolean; why?: 'step' | 'guide' | 'page' };
   'run.fix.undo': { ok: boolean };
+  'stats.summary': { counts: Record<string, number> };
+  'stats.guide': { steps: Record<string, { t: string; reasons: Reason[] }> };
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null };
@@ -390,6 +398,8 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'pick.start',
   'pick.cancel',
   'run.fix.undo',
+  'stats.summary',
+  'stats.guide',
   'voice.list',
   'voice.test',
   'voice.settings.get',

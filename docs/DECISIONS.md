@@ -1772,3 +1772,42 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
   - The tooltip says why a start was refused: the step changed, not the author's own guide, or the page.
   - The player's side has its own test (`test/browser/player-fix.test.ts`: hidden while picking, the card back after a cancel, no button on a library guide, the refusal text, a route change and the top frame's timeout send `pick.abort`). `PlayerDeps.isTop` lets that test, which runs in an iframe, act as the top frame.
 - **Tests**: `test/unit/fix-step.test.ts` (helpers; who may start; save, rebase, refusals, timeout; Esc; Undo and its refusal; page load and step change end the pick). `test/e2e/f1-fix-step.spec.ts`: a renamed button fixed from the card (Esc, a refused paragraph, the toast's Undo, fixed again, a second play without the card, the tooltip's button and Esc on a highlighted step); a cross-origin iframe step fixed inside the frame; a library guide shows neither button.
+
+## 2026-11-06 — Fragile-step warnings from real plays (issue #96)
+
+### D211. Step results from plays on this device flag steps that may break
+*6 Nov 2026 · SPEC: Data model ("Storage"), Player and overlay, User flows (Edit); issue #96*
+
+- **What is kept**: per guide, `stats:<guideId>` in storage.local. For each step:
+  - the hash of the element the results are about (`targetHash`, the same hash the screenshots use);
+  - the last step token;
+  - whether the element is repeated;
+  - the last 20 results as `[minute, found, score, margin, strong signals]`.
+  
+  Only numbers, ids and dates: no names, text or URLs. `statsIndex` holds the number of flagged steps per guide. The library reads that one key; reading every guide's results took 600 ms at 500 × 50 steps × 20 plays (`pnpm bench`), the index takes 0.5 ms. In that worst case the results are 12 MB.
+- **When a result is recorded** (`run.match`, `src/background/runs.ts` → `recordPlay`, `src/background/stats.ts`):
+  - **found**: when a frame wins, with that frame's score, margin and strong count. Only the winner counts.
+  - **not found**: when the top frame gives up and no frame found it, while the tab is on the step's page. That is the not-found card; the off-track card, or a step skipped before either, records nothing.
+  - **once per play**: one result per step token. Repeated reports (several frames, a service worker restart, Retry) replace that play's result, so the last outcome counts, never twice.
+  - **only for the current element**: nothing is recorded when the stored guide's step now has another element (the run plays an old snapshot).
+  - **real runs only**: tutorials and the Practice page don't use `run.match`, so they never write results.
+- **Reasons** (`src/core/stats/plays.ts`, thresholds in one place):
+  - "Not found in N of the last M plays": 2 or more misses among the last 5.
+  - "Found by one signal only": the last found play matched one strong signal or none.
+  - "Barely ahead of a look-alike": the last found play was under 25 points ahead (`UNIQUE_MARGIN` + 10); not for repeated elements, whose ties are expected.
+- **Shared fragile rule**: Test step and plays use one function, `isFragile(matchStrength(r))`. `run.match` gains `strong` (an integer 0–10, optional, Zod-bounded).
+  - Change to Test step: the matcher's fast path (a unique `data-guide-id` or test id) reports only `testId`, so Test step called those finds "fragile". They are the sturdiest way to find an element, so the fast path now counts as `FAST_PATH_STRONG` (10), never fragile.
+  - The matcher itself is unchanged.
+- **The results follow the guide** (`writeGuides`, the one place every guide write goes through):
+  - A step deleted, or given another element, loses its results on the next save. That covers Re-pick, the player's fix (#95), an import and a team library refresh in one rule.
+  - A guide deleted to the Undo trash keeps them, so Undo brings them back. They go when the trash is purged, or at once when a guide is removed without the trash (replaced by an import or the team library).
+  - A duplicate is a new id and starts empty.
+- **UI**:
+  - The library row says "N steps may break". For team guides the hint says to tell the author or duplicate it.
+  - In the editor, a folded step shows a "May break" badge. The open step lists each reason, "From plays on this device", with **Test step** and **Re-pick element** buttons.
+  - An unsaved Re-pick hides the step's reasons at once: they are for the old element's hash.
+- **Tests**:
+  - `test/unit/play-stats.test.ts`: thresholds; the shared rule and the fast path; one result per token; starting over on another element; pruning; the run's recording (winner only, the card only on the step's page, an old snapshot); messages; following the guide through save, delete, Undo, purge and removal.
+  - `test/e2e/f2-play-stats.spec.ts`: two plays of a guide where step 1 is found by its text alone and step 3 is gone. The library says "2 steps may break" and the editor gives both reasons; a step found by its test id is not flagged; Re-pick clears the flag before and after Save.
+  - `t1-tutorials.spec.ts`: a tutorial writes no results.
+  - `pnpm bench`: summary, one guide's results, and a save with results.

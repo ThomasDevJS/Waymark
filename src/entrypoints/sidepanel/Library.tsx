@@ -34,6 +34,8 @@ const message = signal<string | null>(null);
 const error = signal<string | null>(null);
 /** Guide id → when the learner last finished it (D101). */
 const completed = signal<Record<string, string>>({});
+/** Steps that may break per guide, from plays on this device (D211). */
+const mayBreak = signal<Record<string, number>>({});
 /** Guides already finished when the list was shown: their badge doesn't pop (D131). */
 let completedAtOpen: Set<string> | null = null;
 /** Selected tag chips (D102): a guide must carry all of them. */
@@ -56,6 +58,7 @@ async function load() {
     pending.value = (await send('allow.pending', {})).origins;
     completed.value = (await send('completions.list', {})).completed;
     completedAtOpen ??= new Set(Object.keys(completed.value));
+    mayBreak.value = (await send('stats.summary', { ids: all.value.map((g) => g.id) })).counts;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
@@ -239,7 +242,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     completedAtOpen = null; // re-read on this mount: returning from the editor pops nothing
     void load().then(resumeUndo);
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes || 'completions' in changes)) void load();
+      if (area === 'local' && ('guides:index' in changes || 'pendingAllow' in changes || 'completions' in changes || 'statsIndex' in changes)) void load();
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -348,6 +351,16 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                 </span>
               )}
               {g.source === 'library' && <span class="badge accent">Team</span>}
+              {!!mayBreak.value[g.id] && (
+                <span
+                  class="badge warn"
+                  data-testid={`may-break-${g.id}`}
+                  title={g.source === 'library' ? 'From plays on this device. Team guides are read-only: tell the guide’s author, or Duplicate it to fix your copy.' : 'From plays on this device. Open the guide in the editor to see which steps and why.'}
+                >
+                  <Icon name="warn" />
+                  {mayBreak.value[g.id]} {mayBreak.value[g.id] === 1 ? 'step' : 'steps'} may break
+                </span>
+              )}
             </span>
           </div>
           <div class="guide-actions">

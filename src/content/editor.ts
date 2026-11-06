@@ -9,7 +9,8 @@ import type { ElementFingerprint } from '../core/model/schema';
 import { promoteToRegion } from '../core/recorder/region';
 import { hasStrongSignal } from '../core/matcher/signals';
 import { rememberShotTarget } from './shots';
-import { waitForMatch, STRONG } from '../core/matcher';
+import { waitForMatch } from '../core/matcher';
+import { isFragile, matchStrength } from '../core/stats/plays';
 import { NO_RUN } from '../core/player/run';
 import { roleWord, stepTitle } from '../core/text/templates';
 import type { TestResult } from '../background/editor';
@@ -149,7 +150,8 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
       testMark('tested', 'not-found');
       return { found: false, score: r.bestScore, margin: 0, matched: r.matched, fragile: false, reason: 'Nothing on this page matches this step. Check that this is the right page, or Re-pick element.' };
     }
-    const strong = r.matched.filter((k) => STRONG.has(k));
+    // The same rule as the plays' "Found by one signal only" (D211).
+    const fragile = isFragile(matchStrength(r));
     testUi = new PlayerUI({
       next: () => testUi?.clear(),
       back() {},
@@ -163,10 +165,10 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     const target = r.spotlight ?? r.element;
     target.scrollIntoView({ block: 'center', behavior: 'auto' });
     testUi.showStep({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Test step', stepIndex: 0, total: 1, step: { ...step, advance: 'action' }, stepToken: 'test' }, target);
-    testUi.flash(strong.length > 1 ? 'Found. The details are in the side panel.' : 'Found, but fragile. The details are in the side panel.');
+    testUi.flash(fragile ? 'Found, but fragile. The details are in the side panel.' : 'Found. The details are in the side panel.');
     testTimer = setTimeout(() => testUi?.clear(), 4000);
     testMark('tested', 'found');
-    const out: TestResult = { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: strong.length <= 1 };
+    const out: TestResult = { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile };
     // For the step's screenshot (D187): the service worker measures this element at capture time.
     // In frames too (D191): the service worker places it through its frames.
     if (wantShot) rememberShotTarget(step.id, target);

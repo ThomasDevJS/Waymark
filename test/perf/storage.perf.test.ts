@@ -67,6 +67,24 @@ describe('service worker paths with 500 guides x 50 steps', () => {
     expect(all).toHaveLength(500);
     const { writeGuide } = await import('../../src/core/storage/guides');
     await time('editor save: writeGuide (one guide + the index)', () => writeGuide({ ...all[3]!, title: 'Renamed' }), 5);
+
+    // Play results (D211), worst case: every step of every guide played 20 times.
+    const { recordResult, statsKey, withCount, STATS_INDEX_KEY } = await import('../../src/core/stats/plays');
+    let statBytes = 0;
+    let counts: Record<string, number> = {};
+    for (const g of all) {
+      let st = {};
+      for (const step of g.steps) for (let i = 0; i < 20; i++) st = recordResult(st, step, `t${i}`, [29900000 + i, i % 7 ? 1 : 0, 88, 40, i % 3]);
+      statBytes += JSON.stringify(st).length;
+      counts = withCount(counts, g.id, st);
+      await local.set({ [statsKey(g.id)]: st, [STATS_INDEX_KEY]: counts });
+    }
+    process.stdout.write(`play results, every step played 20 times: ${(statBytes / 1e6).toFixed(1)} MB\n`);
+    const { statsHandlers } = await import('../../src/background/stats');
+    const ids = index.map((g) => g.id);
+    await time('library: stats.summary (500 guides)', () => statsHandlers['stats.summary']!({ ids }, {} as never), 3);
+    await time('editor: stats.guide (one guide)', () => statsHandlers['stats.guide']!({ guideId: ids[3]! }, {} as never), 5);
+    await time('editor save with results: writeGuide', () => writeGuide({ ...all[3]!, title: 'Renamed again' }), 5);
     report();
     expect(index).toHaveLength(500);
   }, 300_000);

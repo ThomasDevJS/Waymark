@@ -5,6 +5,8 @@
 import { GuideSchema, type Guide, type UrlRule } from '../model/schema';
 import { toPlainText } from '../text/markdown';
 import { enqueue } from './queue';
+import { liveTrash, TRASH_KEY } from './trash';
+import { pruneStats, readCounts, readStats, STATS_INDEX_KEY, statsKey, withCount } from '../stats/plays';
 
 /**
  * One line per guide: everything the badge, "For this page", the side panel list and search,
@@ -88,7 +90,37 @@ export async function writeGuides(guides: Guide[], removeIds: string[]): Promise
   const next = [...index.filter((e) => !touched.has(e.id)), ...parsed.map(indexEntry)];
   const set: Record<string, unknown> = { [INDEX_KEY]: next };
   for (const g of parsed) set[guideKey(g.id)] = g;
-  if (removeIds.length) await chrome.storage.local.remove(removeIds.map(guideKey));
+  // Play results (D211) follow the guide: a deleted step, or a step with another element (Re-pick,
+  // a fix from the player, an import or library refresh), starts over. A removed guide's results
+  // stay while it is in the Undo trash and go with it (purgeTrash); otherwise they go now.
+  const statKeys = parsed.map((g) => statsKey(g.id));
+  const stats = statKeys.length ? await chrome.storage.local.get([...statKeys, STATS_INDEX_KEY]) : {};
+  const drop: string[] = [];
+  let counts = readCounts(stats[STATS_INDEX_KEY]);
+  let countsChanged = false;
+  for (const g of parsed) {
+    const raw = stats[statsKey(g.id)];
+    if (raw === undefined) continue;
+    const kept = pruneStats(readStats(raw), g);
+    if (Object.keys(kept).length) set[statsKey(g.id)] = kept;
+    else drop.push(statsKey(g.id));
+    counts = withCount(counts, g.id, kept);
+    countsChanged = true;
+  }
+  if (removeIds.length) {
+    const inTrash = new Set(liveTrash((await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY], Date.now()).map((e) => e.guide.id));
+    const gone = removeIds.filter((id) => !inTrash.has(id));
+    if (gone.length) {
+      if (!statKeys.length) counts = readCounts((await chrome.storage.local.get(STATS_INDEX_KEY))[STATS_INDEX_KEY]);
+      for (const id of gone) {
+        drop.push(statsKey(id));
+        counts = withCount(counts, id, null);
+      }
+      countsChanged = true;
+    }
+  }
+  if (countsChanged) set[STATS_INDEX_KEY] = counts;
+  if (removeIds.length || drop.length) await chrome.storage.local.remove([...removeIds.map(guideKey), ...drop]);
   await chrome.storage.local.set(set);
 }
 

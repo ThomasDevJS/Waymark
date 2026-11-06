@@ -234,7 +234,7 @@ export function applyRunStep(run: Run, step: Step): boolean {
 export interface MatchBoard {
   stepToken: string;
   /** Keyed by frameId. */
-  reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean; /** The reporting document (sender.documentId), to tell a frame that is gone (D84). */ doc?: string }>;
+  reports: Record<string, { frameId: number; token: string; found: boolean; score: number; margin: number; instance: 'unique' | 'any'; pathMatches: boolean; /** Strong signals the match used (D211). */ strong?: number; /** The reporting document (sender.documentId), to tell a frame that is gone (D84). */ doc?: string }>;
   winner: string | null;
   topGaveUp: boolean;
   /** New for every board: a frame resends its report only when the board holding it was replaced (#36). */
