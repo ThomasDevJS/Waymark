@@ -9,14 +9,14 @@ import { send } from '../../core/messaging/client';
 import type { Guide } from '../../core/model/schema';
 import type { GuideIndexEntry } from '../../core/storage/guides';
 import { guideMatchesUrl } from '../../core/discovery/match';
-import { buildSearch, searchGuides } from '../../core/discovery/search';
+import { buildSearch, searchGuides, searchPage } from '../../core/discovery/search';
 import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
 import { useFlipList } from '../../ui/useMotion';
 import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
-import { PAGE_SEARCH_FROM, pageTagChips } from '../../core/discovery/page-search';
+import { fold, pageTagChips, showsPageSearch } from '../../core/discovery/page-search';
 import { showToast, ToastSlot, toast } from './Toast';
 import { UNDO_MS } from '../../core/storage/trash';
 import { HelpTip } from './Help';
@@ -235,18 +235,11 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     pageTags.value = [];
   }
   const pageCount = tabUrl ? all.value.filter((g) => guideMatchesUrl(g, tabUrl)).length : 0;
-  const pageSearch = pageCount >= PAGE_SEARCH_FROM;
+  const pageSearch = showsPageSearch(pageCount);
   const pageChips = useMemo(() => (tabUrl ? pageTagChips(all.value.filter((g) => guideMatchesUrl(g, tabUrl))) : []), [all.value, tabUrl]);
-  const pageActiveTags = pageSearch ? pageTags.value.filter((t) => pageChips.some((c) => c.toLocaleLowerCase() === t.toLocaleLowerCase())) : [];
+  const pageActiveTags = pageSearch ? pageTags.value.filter((t) => pageChips.some((c) => fold(c) === fold(t))) : [];
   const pageFiltering = pageSearch && (!!pageQuery.value.trim() || pageActiveTags.length > 0);
-  const forPage = pageFiltering
-    ? withTags(
-        searchGuides(index, all.value, pageQuery.value)
-          .map((id) => forPageAll.find((g) => g.id === id))
-          .filter((g): g is GuideIndexEntry => !!g),
-        pageActiveTags,
-      )
-    : forPageAll;
+  const forPage = pageFiltering ? searchPage(index, forPageAll, pageQuery.value, pageActiveTags) : forPageAll;
   // "Select all" picks the guides on screen, never ones hidden by search, tags or the page filter.
   const onScreen = [...forPage, ...others];
   const allShown = onScreen.length > 0 && onScreen.every((g) => selected.value.has(g.id));
@@ -590,7 +583,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                 <div class="chips" role="group" aria-label="Filter the guides for this page by tag" data-testid="page-tag-chips">
                   <Icon name="tag" />
                   {pageChips.map((tag) => {
-                    const on = pageActiveTags.some((t) => t.toLocaleLowerCase() === tag.toLocaleLowerCase());
+                    const on = pageActiveTags.some((t) => fold(t) === fold(tag));
                     return (
                       <button
                         type="button"
@@ -598,7 +591,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                         class={`chip${on ? ' on' : ''}`}
                         aria-pressed={on}
                         data-testid={`page-tag-${tag}`}
-                        onClick={() => (pageTags.value = on ? pageActiveTags.filter((t) => t.toLocaleLowerCase() !== tag.toLocaleLowerCase()) : [...pageActiveTags, tag])}
+                        onClick={() => (pageTags.value = on ? pageActiveTags.filter((t) => fold(t) !== fold(tag)) : [...pageActiveTags, tag])}
                       >
                         {on && <Icon name="check" />}
                         {tag}

@@ -9,7 +9,7 @@ import { eventPath, overlayHost, overlayLayer, overlayRoot } from './overlay/hos
 import { testMark } from './test-hooks';
 import { dlog } from './debug';
 import { CircleQuestionMark, MapPin, Play, Search } from 'lucide';
-import { matchPageGuides, PAGE_SEARCH_FROM, pageTagChips, type PageGuide } from '../core/discovery/page-search';
+import { matchPageGuides, pageTagChips, showsPageSearch, type PageGuide } from '../core/discovery/page-search';
 import { buildSvg } from '../ui/svg';
 
 /** The launcher's styles (exported for the motion test, D134). */
@@ -166,6 +166,15 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
     if (refocus) button?.focus();
   };
 
+  /** The place for the note after a start that didn't happen; it replaces an earlier note. */
+  const startNote = (host: HTMLElement): HTMLElement => {
+    host.querySelector(':scope > .wm-start-note')?.remove();
+    const wrap = document.createElement('div');
+    wrap.className = 'wm-start-note';
+    host.append(wrap);
+    return wrap;
+  };
+
   const start = async (id: string, openStart = false, into: HTMLElement | null = null) => {
     try {
       const r = await send('launcher.start', { guideId: id, openStart });
@@ -177,18 +186,21 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
       }
       const host = into ?? menu ?? offer;
       if (!host) return;
+      // One note at a time, announced: with the search, focus stays in the box (D170 review).
+      const wrap = startNote(host);
       const note = document.createElement('div');
       note.className = 'wm-note';
+      note.setAttribute('role', 'status');
       if (r.reachable) {
         note.textContent = 'This guide starts on another page.';
         const open = document.createElement('button');
         open.className = 'wm-primary';
         open.append(buildSvg(Play), 'Open start page');
         open.addEventListener('click', () => void start(id, true, host));
-        host.append(note, open);
+        wrap.append(note, open);
       } else {
         note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then press Start.`;
-        host.append(note);
+        wrap.append(note);
       }
     } catch (e) {
       // Never fail silently (#42): the menu stays and says so.
@@ -199,7 +211,7 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
         note.className = 'wm-note';
         note.setAttribute('role', 'alert');
         note.textContent = e instanceof Error && e.message ? `Couldn’t start this guide: ${e.message}` : 'Couldn’t start this guide here.';
-        host.append(note);
+        startNote(host).append(note);
       }
       testMark('launcher-error', '1');
     }
@@ -261,6 +273,9 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
     list.id = 'wm-launcher-list';
     list.setAttribute('role', 'listbox');
     list.setAttribute('aria-labelledby', 'wm-launcher-title');
+    // Never a Tab stop of its own, even once it scrolls (Chromium makes scrollers focusable).
+    list.tabIndex = -1;
+    list.addEventListener('mousedown', (e) => e.preventDefault());
     const status = document.createElement('div');
     status.className = 'wm-note';
     status.setAttribute('role', 'status');
@@ -294,10 +309,15 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
       });
       list.replaceChildren(...opts);
       list.hidden = shown.length === 0;
+      input.setAttribute('aria-expanded', String(!list.hidden));
       const filtering = !!query.trim() || picked.length > 0;
+      // A note about an earlier guide no longer applies once the list changes.
+      if (filtered) m.querySelector(':scope > .wm-start-note')?.remove();
       status.textContent = shown.length === 0 ? 'No guides match' : filtering ? `${shown.length} of ${guides.length} guides` : '';
       status.classList.toggle('wm-sr', shown.length > 0);
-      setActive(filtered && filtering && shown.length ? 0 : Math.min(active, shown.length - 1));
+      // A changed filter selects its best match, or nothing once it is cleared: never a guide
+      // that only happens to sit where the selection was (review).
+      setActive(filtered ? (filtering && shown.length ? 0 : -1) : Math.min(active, shown.length - 1));
       if (__WAYMARK_TEST__) testMark('launcher-results', shown.map((g) => g.id).join(','));
     };
 
@@ -306,6 +326,7 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
       draw(true);
     });
     input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return; // Enter confirms an IME candidate, not a guide
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         if (!shown.length) return;
@@ -348,7 +369,7 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
     h.id = 'wm-launcher-title';
     h.textContent = 'Guides for this page';
     menu.append(h);
-    if (guides.length >= PAGE_SEARCH_FROM) {
+    if (showsPageSearch(guides.length)) {
       search = searchList(menu);
     } else {
       for (const g of guides) {
@@ -363,6 +384,7 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
     menu.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
+        if (e.isComposing) return; // Esc cancels the IME composition first
         e.preventDefault();
         // With a search: the first Esc clears it, the next one closes (D170).
         if (search?.clear()) search.input.focus();
@@ -414,6 +436,8 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
   const refresh = () => {
     send('guide.forPage', { url: location.href })
       .then((r) => {
+        // A route report that changes nothing keeps an open menu and what was typed in it (review).
+        if (menu && JSON.stringify(r.guides) === JSON.stringify(guides)) return render(r.launcher && guides.length > 0);
         guides = r.guides;
         closeMenu();
         render(r.launcher && guides.length > 0);

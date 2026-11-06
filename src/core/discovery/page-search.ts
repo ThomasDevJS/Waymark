@@ -6,11 +6,16 @@
 
 /** The search box appears from this many guides for the page, in the menu and in the panel (D170). */
 export const PAGE_SEARCH_FROM = 6;
+/** True when a page with `count` guides gets the search box (both places use this). */
+export function showsPageSearch(count: number): boolean {
+  return count >= PAGE_SEARCH_FROM;
+}
 /** Caps on `guide.forPage` (D171): guides per page, title length, tags per guide and tag length. */
 export const MAX_FOR_PAGE = 100;
 export const MAX_FOR_PAGE_TITLE = 500;
-export const MAX_FOR_PAGE_TAGS = 10;
-export const MAX_FOR_PAGE_TAG = 60;
+/** As many as the guide index keeps (MAX_INDEX_TAGS), so the menu and the panel see the same tags. */
+export const MAX_FOR_PAGE_TAGS = 20;
+export const MAX_FOR_PAGE_TAG = 100;
 /** Tag chips shown under a page's search box (D170). */
 export const MAX_PAGE_CHIPS = 3;
 

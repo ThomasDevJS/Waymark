@@ -30,14 +30,16 @@ let pageKeys: string[] = [];
 const onPageKey = (e: KeyboardEvent) => pageKeys.push(`${e.type}:${e.key}`);
 const search0 = location.search;
 
-async function open(guides: typeof MANY) {
+let startReply: unknown = { status: 'started' };
+async function open(guides: typeof MANY, closed = true) {
+  if (!closed) history.replaceState(null, '', location.pathname);
   vi.stubGlobal('chrome', {
     runtime: {
       sendMessage: async (m: { type: string; payload: { guideId?: string } }) => {
         if (m.type === 'guide.forPage') return { ok: true, data: { guides, launcher: true } };
         if (m.type === 'launcher.start') {
           started.push(m.payload.guideId!);
-          return { ok: true, data: { status: 'started' } };
+          return { ok: true, data: startReply };
         }
         return { ok: true, data: {} };
       },
@@ -48,7 +50,7 @@ async function open(guides: typeof MANY) {
   await until(() => mark('launcher') === String(guides.length));
   // The closed root: from the document, only the host can be seen.
   const host = document.querySelector('waymark-overlay') as HTMLElement;
-  expect(host.shadowRoot).toBeNull();
+  if (closed) expect(host.shadowRoot).toBeNull();
   // Keyboard only: Tab reaches the ? button, Enter opens the menu.
   (document.activeElement as HTMLElement | null)?.blur();
   await userEvent.keyboard('{Tab}');
@@ -62,6 +64,7 @@ beforeEach(() => {
   history.replaceState(null, '', `${location.pathname}?waymark-test-closed`);
   started = [];
   pageKeys = [];
+  startReply = { status: 'started' };
   document.addEventListener('keydown', onPageKey);
   window.addEventListener('keyup', onPageKey);
 });
@@ -157,5 +160,71 @@ describe('? menu search with many guides, closed shadow root (D170)', () => {
     await until(() => started.length === 1);
     expect(started).toEqual(['inv']);
     void host;
+  });
+
+  it('exactly 6 guides get the search', async () => {
+    await open(MANY.slice(0, 6));
+    expect(mark('launcher-menu')).toBe('search');
+  });
+});
+
+/** Fixes from the independent review of #69; each test fails on the first version. */
+describe('? menu search: review fixes (D170)', () => {
+  it('clearing the box selects nothing: Enter never starts a guide that only sits where the selection was', async () => {
+    await open(MANY);
+    await userEvent.keyboard('inv{ArrowDown}');
+    expect(mark('launcher-active')).toBe('tea');
+    await userEvent.keyboard('{Backspace}{Backspace}{Backspace}');
+    expect(mark('launcher-results')).toBe(MANY.map((g) => g.id).join(','));
+    expect(mark('launcher-active')).toBe('');
+    await userEvent.keyboard('{Enter}');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(started).toEqual([]);
+  });
+
+  it('a long list that scrolls is not a Tab stop: with no chips, Tab leaves the overlay from the box', async () => {
+    const untagged = Array.from({ length: 12 }, (_, i) => ({ id: `g${i}`, title: `Guide number ${i}`, tags: [] as string[] }));
+    const host = await open(untagged);
+    expect(document.activeElement).toBe(host);
+    await userEvent.keyboard('{Tab}');
+    // Before the fix, focus stayed in the overlay, on the bare scrolling listbox.
+    expect(document.activeElement).not.toBe(host);
+  });
+
+  it('a route report that changes nothing keeps the open menu and what was typed', async () => {
+    const host = await open(MANY);
+    await userEvent.keyboard('inv');
+    launcher!.refresh();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mark('launcher-menu')).toBe('search');
+    expect(mark('launcher-results')).toBe('inv,tea');
+    await userEvent.keyboard('i'); // "invi": only "Invite a teammate"
+    expect(mark('launcher-results')).toBe('tea');
+    expect(document.activeElement).toBe(host);
+  });
+
+  it('(open root, to look inside) the combobox is collapsed while nothing matches; IME Enter starts nothing; one start note at a time, announced', async () => {
+    startReply = { status: 'needs-start', reachable: false, pattern: '/elsewhere' };
+    const host = await open(MANY, false);
+    const root = host.shadowRoot!;
+    const input = root.querySelector('input')!;
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    await userEvent.keyboard('zzz');
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.keyboard('{Backspace}{Backspace}{Backspace}inv');
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, composed: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(started).toEqual([]);
+    await userEvent.keyboard('{Enter}');
+    await until(() => started.length === 1);
+    await userEvent.keyboard('{Enter}');
+    await until(() => started.length === 2);
+    await new Promise((r) => setTimeout(r, 50));
+    const notes = root.querySelectorAll('.wm-menu .wm-note[role=status]:not(:empty)');
+    expect([...notes].map((n) => n.textContent)).toEqual(['2 of 7 guides', 'This guide starts on a page like /elsewhere. Open that page, then press Start.']);
+    // Typing again: the note about the earlier guide goes.
+    await userEvent.keyboard('i');
+    expect(root.querySelectorAll('.wm-start-note').length).toBe(0);
   });
 });

@@ -13,9 +13,10 @@ import {
   MAX_FOR_PAGE_TAGS,
   PAGE_SEARCH_FROM,
   pageTagChips,
+  showsPageSearch,
   words,
 } from '../../src/core/discovery/page-search';
-import { buildSearch, searchGuides } from '../../src/core/discovery/search';
+import { buildSearch, searchGuides, searchPage } from '../../src/core/discovery/search';
 import { ForPageResponseSchema } from '../../src/core/messaging/protocol';
 import { memArea } from '../perf/fixtures';
 
@@ -33,6 +34,8 @@ const ids = (r: { id: string }[]) => r.map((x) => x.id);
 describe('page search matching (D170)', () => {
   it('starts from 6 guides', () => {
     expect(PAGE_SEARCH_FROM).toBe(6);
+    expect(showsPageSearch(5)).toBe(false);
+    expect(showsPageSearch(6)).toBe(true);
   });
   it('folds case and accents', () => {
     expect(fold('Crème BRÛLÉE')).toBe('creme brulee');
@@ -118,6 +121,7 @@ describe('guide.forPage sends only the sender origin’s guides, with tags (D171
   };
   const ctx = (url: string, frameId = 0) => ({ kind: 'content', sender: { origin: new URL(url).origin, tab: { id: 1, url } }, tabId: 1, frameId }) as never;
 
+  // The URL rules already check the origin; the handler's own origin filter is defence in depth.
   it('lists its own origin’s guides with id, title and tags only', async () => {
     const handler = await setup([
       entry('mine', 'https://app.example.com', ['Billing']),
@@ -142,14 +146,39 @@ describe('guide.forPage sends only the sender origin’s guides, with tags (D171
 });
 
 describe('panel search is accent-insensitive too (D172)', () => {
+  // Words fuzzy matching (0.2) can't reach: short ones, several accents, ß.
   it('finds accented titles and tags without accents, and the other way round', () => {
     const lib = [
-      { id: '1', title: 'Crème brûlée', tags: ['Küche'], stepTitles: '' },
-      { id: '2', title: 'Plain order', tags: [], stepTitles: '' },
+      { id: '1', title: 'Café menu', tags: ['Résumé'], stepTitles: '' },
+      { id: '2', title: 'Straße wechseln', tags: [], stepTitles: '' },
+      { id: '3', title: 'Plain order', tags: [], stepTitles: '' },
     ];
     const ms = buildSearch(lib);
-    expect(searchGuides(ms, lib, 'creme')).toEqual(['1']);
-    expect(searchGuides(ms, lib, 'kuche')).toEqual(['1']);
-    expect(searchGuides(ms, lib, 'BRÛLÉE')).toEqual(['1']);
+    expect(searchGuides(ms, lib, 'cafe')).toEqual(['1']);
+    expect(searchGuides(ms, lib, 'resume')).toEqual(['1']);
+    expect(searchGuides(ms, lib, 'strasse')).toEqual(['2']);
+    expect(searchGuides(ms, lib, 'CAFÉ')).toEqual(['1']);
+  });
+});
+
+describe('the panel’s "For this page" filter agrees with the ? menu (D170 review)', () => {
+  const page = [
+    { id: 'a', title: 'Send an invoice', tags: ['Café'], stepTitles: '' },
+    { id: 'b', title: 'Refund a payment', tags: ['Cafe'], stepTitles: '' },
+    { id: 'c', title: 'Invite a teammate', tags: ['Team'], stepTitles: '' },
+  ];
+  const ms = buildSearch(page);
+  it('every typed word must match, as in the menu', () => {
+    expect(ids(searchPage(ms, page, 'invoice refund', []))).toEqual([]);
+    expect(ids(searchPage(ms, page, 'invoice refund', []))).toEqual(ids(matchPageGuides(page, 'invoice refund')));
+    expect(ids(searchPage(ms, page, 'send invoice', []))).toEqual(['a']);
+  });
+  it('a chip matches tags without case or accents, as the chips merge them', () => {
+    expect(pageTagChips(page)).toContain('Café');
+    expect(ids(searchPage(ms, page, '', ['Café']))).toEqual(['a', 'b']);
+    expect(ids(searchPage(ms, page, '', ['Café']))).toEqual(ids(matchPageGuides(page, '', ['Café'])));
+  });
+  it('keeps the page’s guides only', () => {
+    expect(ids(searchPage(ms, page.slice(0, 1), 'refund', []))).toEqual([]);
   });
 });

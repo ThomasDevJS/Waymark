@@ -1,7 +1,7 @@
 /** Client-side guide search (SPEC: Discovery: title, description, tags and step titles; MiniSearch). */
 import MiniSearch from 'minisearch';
 import type { GuideIndexEntry } from '../storage/guides';
-import { fold } from './page-search';
+import { fold, matchPageGuides } from './page-search';
 
 /** What search reads: an index entry (D49), never the full guide. */
 export type Searchable = Pick<GuideIndexEntry, 'id' | 'title' | 'description' | 'tags' | 'stepTitles'>;
@@ -39,4 +39,22 @@ export function searchGuides(ms: MiniSearch<Doc>, guides: { id: string }[], quer
   const q = query.trim();
   if (!q) return guides.map((g) => g.id);
   return ms.search(q).map((r) => String(r.id));
+}
+
+/**
+ * The "For this page" filter in the panel (D170): the library's index, but every typed word must
+ * match (as in the ? menu), and selected tags compare without case or accents (as the chips merge
+ * them). Best match first; with no query, the page's order.
+ */
+export function searchPage<T extends Searchable>(ms: MiniSearch<Doc>, pageGuides: T[], query: string, tags: string[]): T[] {
+  const q = query.trim();
+  let out = pageGuides;
+  if (q) {
+    const byId = new Map(pageGuides.map((g) => [g.id, g]));
+    out = ms
+      .search(q, { combineWith: 'AND' })
+      .map((r) => byId.get(String(r.id)))
+      .filter((g): g is T => !!g);
+  }
+  return matchPageGuides(out, '', tags);
 }
