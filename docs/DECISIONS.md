@@ -398,14 +398,14 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Why Kokoro**: a spike in Chromium compared Kokoro and Piper ([results on #4](https://github.com/ThomasDevJS/Waymark/issues/4#issuecomment-6645098454)).
   - Kokoro sounds far more natural. Its weights and voices are Apache-2.0.
   - Piper is about 7× faster, but its good English voices are often non-commercial.
-- **License decision (provisional; Thomas may reverse it)**: both engines phonemize with eSpeak NG, which is GPL-3.0. That includes the npm `phonemizer` package that kokoro-js uses. To ship no GPL code, Waymark has its own English G2P (`src/core/voice/g2p/`). It reads words from the misaki lexicon (Apache-2.0; the dictionaries Kokoro was trained with), downloaded as data with the model. For unknown words it tries, in order:
+- **License decision (provisional; the owner may reverse it)**: both engines phonemize with eSpeak NG, which is GPL-3.0. That includes the npm `phonemizer` package that kokoro-js uses. To ship no GPL code, Waymark has its own English G2P (`src/core/voice/g2p/`). It reads words from the misaki lexicon (Apache-2.0; the dictionaries Kokoro was trained with), downloaded as data with the model. For unknown words it tries, in order:
   1. word forms (-s, -es, -ed, -ing);
   2. CamelCase and two-word compounds ("dropdown", "Gmail", "QuickBooks");
   3. spelled acronyms ("CSV", "PDFs");
   4. numbers, money, times, emails and web addresses as words;
   5. rough letter-to-sound rules ("Jira", "Okta").
 
-  The phonemizer sits behind one function type (`Phonemizer` in `src/offscreen/kokoro.ts`), so a GPL engine could be swapped in if Thomas accepts GPL-3. Consequence: the HD voice is English only. Other languages keep the system voice.
+  The phonemizer sits behind one function type (`Phonemizer` in `src/offscreen/kokoro.ts`), so a GPL engine could be swapped in if the owner accepts GPL-3. Consequence: the HD voice is English only. Other languages keep the system voice.
 - **Model size**: fp16 (163 MB), not q8 (92 MB). On the spike machine (4 vCPU, no GPU), q8 ran at about 1.9× real time with 4 threads, over the 1.5× limit. fp16 ran at about 0.8–0.95×. Listening samples of both are in the PR.
 - **Download**:
   - The opt-in click requests `https://huggingface.co/*` and `https://raw.githubusercontent.com/*`. Both serve CORS, but the permission makes the consent explicit and keeps the download working if that changes.
@@ -515,7 +515,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 - **Cost**: about 3 minutes per release (two jobs). Release files don't count against the 500 MB of artifact storage, and the release page is a stable download link for testers, unlike CI artifacts, which expire (D54). A docs-only commit has no CI run to check, so tag the version bump's merge commit, which always has one.
 - **Review** (independent): CHANGELOG.md did not exist yet (added here, with every version so far); the guard checked a build that `pnpm zip` then rebuilt; CI on the tagged commit was assumed, not checked; the write job ran install scripts; re-runs kept a stale title and flags; the notes parser cut at `## ` inside code blocks and missed linked headings. All fixed, with tests for the parser.
 - **Version bumps** belong to the release lane, not to feature PRs (coordinating session, 5 Nov 2026). Feature PRs add their changes under `## [Unreleased]` in `CHANGELOG.md`.
-- **Cutting a release** (Thomas or the coordinating session; no tag is pushed automatically):
+- **Cutting a release** (the owner or the coordinating session; no tag is pushed automatically):
   1. `pnpm release X.Y.Z` (`scripts/release.mjs`, unit-tested) bumps `package.json`, turns `## [Unreleased]` into `## [X.Y.Z] - <date>` with a new empty Unreleased section and links, and updates the version in `docs/STATUS.md` and the README. It refuses a version that isn't newer, and an empty Unreleased section.
   2. Run `pnpm check`, commit "Release X.Y.Z", open a PR and merge it.
   3. `git fetch origin main && git tag -a vX.Y.Z -m "Waymark X.Y.Z" origin/main && git push origin vX.Y.Z`. The workflow does the rest. Or run the workflow by hand (D160).
@@ -535,7 +535,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 ### D58. Internal use for now: install from GitHub Releases, no store listing
 *5 Nov 2026 · SPEC: Distribution and cost; D57*
 
-- **Decision** (Thomas): Waymark is for internal use for now. The team installs the zip from the repository's Releases page in developer mode (README, "Install"). There is no Chrome Web Store listing, private or public, and the repository stays private.
+- **Decision** (the owner): Waymark is for internal use for now. The team installs the zip from the repository's Releases page in developer mode (README, "Install"). There is no Chrome Web Store listing, private or public, and the repository stays private.
 - **What this changes**: the spec's plan of a private store listing first is on hold. `docs/STORE.md` stays as a draft for later, and D57's open items (a contact address and a host for the privacy policy) are not needed until then. `docs/PRIVACY.md` still describes what the code does and stays current.
 - **Cost of the choice**: no automatic updates. Each person replaces the unzipped folder with a newer release and reloads the extension. Developer mode shows Chrome's "developer mode extensions" notice at browser start.
 
@@ -552,8 +552,8 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 ### D160. A release can be started by hand: the workflow creates the tag
 *5 Nov 2026 · D56; release lane decisions are D160–D169*
 
-- **Finding**: the coordinating session works in a cloud container whose git proxy allows branch pushes but refuses tags (HTTP 403 on `git push origin v0.4.0`). Every release needed Thomas to push the tag from his own machine.
-- **Decision** (Thomas asked for the coordinating session to be able to cut releases): `.github/workflows/release.yml` also runs on `workflow_dispatch` with a `version` and an optional full `commit` SHA. Thomas can press **Run workflow** in the Actions tab, and the coordinating session can start it through the Actions API.
+- **Finding**: the coordinating session works in a cloud container whose git proxy allows branch pushes but refuses tags (HTTP 403 on `git push origin v0.4.0`). Every release needed the owner to push the tag from their own machine.
+- **Decision** (the owner asked for the coordinating session to be able to cut releases): `.github/workflows/release.yml` also runs on `workflow_dispatch` with a `version` and an optional full `commit` SHA. The owner can press **Run workflow** in the Actions tab, and the coordinating session can start it through the Actions API.
 - **Checks** before anything is written (the read-only build job): the run is on `main`; the version looks like `X.Y.Z` (an optional pre-release part); the commit, if given, is a 40-character SHA; the tag doesn't exist yet. Then the same checks as a pushed tag: the version matches `package.json` at that commit, the commit is on `main`, and its CI passed.
 - **Writing**: the `publish` job, still the only one with `contents: write`, creates the annotated tag through the API and then publishes the release as before. A tag made with the workflow's own token starts no second release run.
 - **Pushed tags** keep working unchanged.
@@ -568,7 +568,7 @@ Behavior changes made for the verified review findings on PR #1. IDs are R-numbe
 ### D161. CI runs e2e only by hand and before a release
 *6 Nov 2026 · D52, D54, D160*
 
-- **Finding**: 90% of the Free plan's 2,000 monthly Actions minutes were used by 6 November (Thomas). A merged PR cost about 30 runner minutes: on the PR, `check` (about 3 minutes) plus two e2e shards (about 6 each, billed per job), then the same again on `main` after the merge. Every PR's full e2e suite also runs locally before it is pushed and again before it is merged (coordinating session), so the CI e2e runs duplicated a gate that already exists.
+- **Finding**: 90% of the Free plan's 2,000 monthly Actions minutes were used by 6 November (the owner). A merged PR cost about 30 runner minutes: on the PR, `check` (about 3 minutes) plus two e2e shards (about 6 each, billed per job), then the same again on `main` after the merge. Every PR's full e2e suite also runs locally before it is pushed and again before it is merged (coordinating session), so the CI e2e runs duplicated a gate that already exists.
 - **Change**:
   - `ci.yml`: the e2e job runs only on `workflow_dispatch` (Actions → CI → Run workflow). Pull requests and `main` pushes run `changes` and `check`: type check, lint, both builds, the manifest guard, and unit and browser tests.
   - `release.yml`: the CI gate on the release commit waits for `check` only. A new read-only `e2e` job runs the whole suite on that commit, and `publish` needs it, so nothing is published without a green e2e run on GitHub.
@@ -721,7 +721,7 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D84. A frame that is gone never blocks the frame that replaced it
 *5 Nov 2026 · SPEC: Element targeting, playback step 8 (frame winner); issue #38*
 
-- **Finding** (Thomas's debug log, a real dashboard):
+- **Finding** (the owner's debug log, a real dashboard):
   - A screen opened from the top nav is rebuilt in **new iframe elements** (new frameIds), while the old frames live on for about 0.5 s.
   - The old inner frame found the element first, then the new one did. Two found, on-path reports tie, so there is no winner and nothing is drawn.
   - The old frame never reports again, so its entry stays. D45's "one entry per frame" covers a frame that reloads (same frameId), not a frame element that is replaced.
@@ -741,7 +741,7 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D85. The on-page ? menu works with the production closed shadow root; tests can use it too
 *5 Nov 2026 · SPEC: Discovery and hints (launcher); Player and overlay ("Overlay", closed shadow root); issue #42*
 
-- **Finding** (Thomas, store-like build): the ? menu listed his guide, but a click closed the menu and nothing started.
+- **Finding** (the owner, store-like build): the ? menu listed their guide, but a click closed the menu and nothing started.
   - The menu closes on a press "outside" it, using a document `pointerdown` listener that checked `composedPath()` for the menu.
   - In production the overlay's shadow root is closed, so from the document a press on a menu item only shows the overlay host. The press counted as outside, the menu closed on `pointerdown`, and the click never landed.
   - Test builds use an open root, which hid this from every test.
@@ -773,7 +773,7 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D87. A frame reports its search once; it re-sends only when the board holding its report was replaced
 *5 Nov 2026 · SPEC: Element targeting, playback step 8; issue #36 (found with the debug log, D110)*
 
-- **Finding**: after each search a frame reported its result, then immediately called `render()`. Its report was still on the way, so the view had no winner yet, and D45's re-send fired. Every frame sent two `run.match` per step. Worse, every later view without a winner (for example when the top frame gave up after 8 s) made **all** finished frames re-send again. Thomas's log shows waves of `report.again` from about 25 frames.
+- **Finding**: after each search a frame reported its result, then immediately called `render()`. Its report was still on the way, so the view had no winner yet, and D45's re-send fired. Every frame sent two `run.match` per step. Worse, every later view without a winner (for example when the top frame gave up after 8 s) made **all** finished frames re-send again. The owner's log shows waves of `report.again` from about 25 frames.
 - **Change**:
   - Each board gets an `id` (a new one whenever the board is created anew, for example after the page-load clear of D45). The view carries `boardId`, and the `run.match` reply carries the board the report went into.
   - A frame re-sends only when no report of its own is on the way and the view shows a different board from the one holding its report. That is exactly D45's case, where the board was replaced after the report arrived. It re-sends at most 3 times per search.
@@ -795,7 +795,7 @@ Findings from recording and replaying scripted tasks on public demo apps (see `d
 ### D89. Polish from testing: "Tutorial page" without made-up names, a compact done card, a lighter shade
 *5 Nov 2026 · SPEC: Built-in tutorials (D128); Player UI · issues #56, #57, #58*
 
-- **Change**: the page's header was a made-up brand ("Northwind Invoices", marked Practice) and its sample invoices had made-up company names. Thomas asked for it to say plainly what it is. The header is now **Tutorial page**, the samples are "Sample customer A/B/C", and every user-visible "practice page" (tab title, panel hint, button labels, the tour's first step and its voice line, a copied tutorial's note) now says "tutorial page". Internal names (`practice.html`, `practice-*` ids) are unchanged, so copied tutorials and tests keep working. D128 and `docs/UX.md` 5.1 describe the old name; this entry supersedes their wording.
+- **Change**: the page's header was a made-up brand ("Northwind Invoices", marked Practice) and its sample invoices had made-up company names. The owner asked for it to say plainly what it is. The header is now **Tutorial page**, the samples are "Sample customer A/B/C", and every user-visible "practice page" (tab title, panel hint, button labels, the tour's first step and its voice line, a copied tutorial's note) now says "tutorial page". Internal names (`practice.html`, `practice-*` ids) are unchanged, so copied tutorials and tests keep working. D128 and `docs/UX.md` 5.1 describe the old name; this entry supersedes their wording.
 - **Done card** (#57): it repeated the step header ("Step 1 of 1", a full bar, mute and X) above a check, "Done!" and the note stacked in a column, so it was tall for two lines of text. It now has no header: the check sits beside "Done!" and "You finished …", and Close is the one way out (Esc still closes). About half the height.
 - **Shade** (#58): the dim around a spotlighted element is 20% lighter by default (`--wm-scrim` 0.5 → 0.4 on light pages, 0.6 → 0.5 dark). A user and per-guide control for it is a separate feature (#58).
 - **Tests**: `test/browser/player.test.ts` checks the done card has no header or bar, one button, the check beside the title, and is under 130 px tall (it fails on the old card). `test/browser/practice.test.ts` checks the heading and that none of the old names appear; the tour's first-step text and voice line are checked in `test/unit/tutorials.test.ts` and `test/e2e/t1-tutorials.spec.ts`.
@@ -1154,7 +1154,7 @@ CSS only (`src/content/launcher.ts`); no listener, message or focus rule changes
 ### D140. The HD voice is offered once, on an extension page, the first time a tutorial or guide speaks
 *5 Nov 2026 · SPEC: Voiceover (HD voice); Permissions, privacy and security; issue #44*
 
-- **Not at install** (decided with Thomas on #44): 170 MB before people trust the extension, slow or blocked networks, English only, and it would blur "optional" in the privacy policy and the listing. The gate on #44 ("a step is read within about 1 s on Thomas's laptop") passed, so the offer recommends it.
+- **Not at install** (decided with the owner on #44): 170 MB before people trust the extension, slow or blocked networks, English only, and it would blur "optional" in the privacy policy and the listing. The gate on #44 ("a step is read within about 1 s on the owner's laptop") passed, so the offer recommends it.
 - **The card** (`src/ui/HdOffer.tsx`): "Try the HD voice. Tutorials (or Guides) sound much better with the HD voice. It runs on your device: one download of about 170 MB, and after that nothing is sent online." Buttons **Listen to a sample** (D141), **Download**, **Not now**, and a line that the usual voice keeps reading and that Settings has the switch.
 - **Where** (constraint: the click must ask for the download hosts, which only an extension page can do):
   - the **Practice page**, beside the tutorial list, while a tutorial plays;
@@ -1215,7 +1215,7 @@ A privacy, permissions, accessibility and copy review of the code. Each fix has 
 ## 2026-11-05 — Highlight shade (issue #58)
 
 ### D144. Shade control: three named levels, in Settings and per guide
-*5 Nov 2026 · SPEC: Player and overlay ("Spotlight"); issue #58 (Thomas). Builds on D89's lighter default.*
+*5 Nov 2026 · SPEC: Player and overlay ("Spotlight"); issue #58 (the owner). Builds on D89's lighter default.*
 
 - **Levels, not a number**: Lighter, Medium (the default, `--wm-scrim`) and Darker. A closed set (`SHADES` in `src/core/player/shade.ts`) in every schema and message, so a guide file or a page can never ask for a black or invisible dim.
 - **Derived from the default**: Lighter is `color-mix(in srgb, var(--wm-scrim) 60%, transparent)` and Darker is `color-mix(in srgb, var(--wm-scrim) 75%, #000)`, so both follow `--wm-scrim` in each scheme, and a later change to the default (D89) moves all three together. With D89's default (0.40 on light pages, 0.50 dark), the alphas are:
@@ -1268,14 +1268,14 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D150. The on-page "?" launcher is on by default where a page has guides
 *6 Nov 2026 · SPEC: Discovery (on-page launcher); issue #66*
 
-- **Change**: SPEC said the launcher is "off by default; turned on per site". Thomas found that learners never saw it unless someone turned it on for each site first. It is now on unless turned off for the site: `site.settings.get` and `guide.forPage` read a missing per-site value as on. An explicit Off is stored as before and wins. The button still shows only on allowed sites, in the top frame, when the page has at least one matching guide, so a site with no guides is unchanged.
+- **Change**: SPEC said the launcher is "off by default; turned on per site". The owner found that learners never saw it unless someone turned it on for each site first. It is now on unless turned off for the site: `site.settings.get` and `guide.forPage` read a missing per-site value as on. An explicit Off is stored as before and wins. The button still shows only on allowed sites, in the top frame, when the page has at least one matching guide, so a site with no guides is unchanged.
 - **Why it is safe**: nothing new runs on a page. The content script was already on every allowed page (route watching for the badge), and the button lists only guides for that origin.
 - **Tests**: `test/e2e/m5-discovery-sharing.spec.ts` checks that a page with no guides has no button. After a guide is recorded, the button shows with no setting changed. Turning it off for the site hides it and the switch stays off after reopening the panel; turning it on brings it back. The first two checks fail on the old code.
 
 ### D151. The default shade is Lighter
 *6 Nov 2026 · SPEC: Player (shade, D144–D147); issue #58*
 
-- **Change**: Thomas asked for the Lighter level as the default. `DEFAULT_SHADE` is now `lighter`, so it applies to guides with no shade of their own, to "Follow each guide", to unknown values and to runs on another site. The levels themselves don't change, and Medium keeps the `--wm-scrim` token from D89.
+- **Change**: the owner asked for the Lighter level as the default. `DEFAULT_SHADE` is now `lighter`, so it applies to guides with no shade of their own, to "Follow each guide", to unknown values and to runs on another site. The levels themselves don't change, and Medium keeps the `--wm-scrim` token from D89.
 - **Effect on saved guides**: a guide whose editor choice was "Default" has no `shade` field, so it now plays Lighter. A guide that picked a level keeps it. The editor stores Medium explicitly now and drops Lighter (the new default).
 - **Copy**: the editor's option reads "Default (Lighter)", built from the constant; the Settings hints were updated to match.
 - **Tests**: `test/unit/shade.test.ts` and `test/browser/shade.test.ts` (the default is Lighter and lighter than the Medium token).
@@ -1292,7 +1292,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D153. While recording, an outline shows what a click will record
 *6 Nov 2026 · SPEC: Recorder (event capture); issue #70*
 
-- **Why**: authors only learned a click was "hard to find" (D82) or skipped (D47) after making it. Thomas asked to see what will be picked before clicking, on by default.
+- **Why**: authors only learned a click was "hard to find" (D82) or skipped (D47) after making it. The owner asked to see what will be picked before clicking, on by default.
 - **What**:
   - `previewClick` (`src/core/recorder/preview.ts`, pure) makes the recorder's choice for an event path:
     - the control;
@@ -1328,7 +1328,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D155. Embedded sites: each frame reports its child frames' sites; the panel offers Allow
 *6 Nov 2026 · SPEC: Recorder ("Frames and shadow DOM"); Permissions; issue #77*
 
-- **Finding**: Thomas recorded on a Google Sites page that embeds a web app, and Waymark did nothing inside it. Google Sites shows an embed through a wrapper frame on `<n>-atari-embeds.googleusercontent.com`, with the app's own site inside it. Waymark runs per frame, only on allowed sites, and nothing told the user which sites to allow. SPEC said the panel offers Allow for a cross-origin frame's site; that was never built. Recording and playback across frames already worked once each site was allowed (nonce frame mapping; `appOrigins` grows per frame).
+- **Finding**: the owner recorded on a Google Sites page that embeds a web app, and Waymark did nothing inside it. Google Sites shows an embed through a wrapper frame on `<n>-atari-embeds.googleusercontent.com`, with the app's own site inside it. Waymark runs per frame, only on allowed sites, and nothing told the user which sites to allow. SPEC said the panel offers Allow for a cross-origin frame's site; that was never built. Recording and playback across frames already worked once each site was allowed (nonce frame mapping; `appOrigins` grows per frame).
 - **Reports** (`src/content/embeds.ts`, `src/core/frames/embeds.ts`):
   - every frame Waymark runs in sends `frame.embeds` with its **direct** child frames' origins, including frames in open shadow roots. These are http(s) origins only, never paths or queries; about:blank, srcdoc and other schemes are left out;
   - it sends at start and after frames are added or change `src` (a MutationObserver, debounced 500 ms), and only when the list changed. It sends again after a route report, because the list is cleared on page changes.
@@ -1343,7 +1343,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - origins that are granted only to fetch the library count as not allowed and become guide sites through `site.allowed` (D80);
   - nested embeds unlock one level at a time: once the wrapper is allowed, its content script reports the app inside it.
 - **Injection after a grant** (`injectIntoFrames`): `permissions.onAdded` and `site.allowed` used to inject into tabs whose top page was on the new site. An embedded frame inside a page on another site never got the script until a reload. Now the frames of every tab Waymark can access are asked for their origin (only frames it may access answer), and the script goes only into frames on the newly granted sites. Frames where it already runs are normally not restarted; a frame that navigates during the grant may get a second instance, and the newest takes over. Install and update still use `injectIntoOpenTabs`. Patterns match like Chrome's: scheme `*`, host `*` and `*.domain`, any port (`originMatchesPattern`).
-- **Google Sites' wrapper changes address on every publish** (community reports; no Google documentation): after a republish the panel offers Allow for the new wrapper. A wildcard grant for `*.googleusercontent.com` is not part of this: it would also cover Drive and Docs previews, Apps Script apps and more, so it needs Thomas's explicit choice and its own switch. Guides keep playing after a republish: framePath is made of selectors, and the step is in the app frame, whose origin is stable. The wrapper frame is not a guide site, so it gets only the "run exists" view (D48), never guide data.
+- **Google Sites' wrapper changes address on every publish** (community reports; no Google documentation): after a republish the panel offers Allow for the new wrapper. A wildcard grant for `*.googleusercontent.com` is not part of this: it would also cover Drive and Docs previews, Apps Script apps and more, so it needs the owner's explicit choice and its own switch. Guides keep playing after a republish: framePath is made of selectors, and the step is in the app frame, whose origin is stable. The wrapper frame is not a guide site, so it gets only the "run exists" view (D48), never guide data.
 - **Fixes from the independent review** (each test fails on the reviewed version where it can be reached):
   - the list was cleared on every `tabs.onUpdated` "loading", which also fires when a frame inside the page navigates. Most frames never reported again, so the offer vanished. It is now pruned per frame, as above;
   - frame injection matched only `http(s)://host/*`. Grants made through Chrome's own site access (`https://*/*`, `*://host/*`, `*.domain`) stopped reaching open tabs. It now matches real match patterns;
@@ -1363,8 +1363,8 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D156. The recording outline's check is cheap: the element's own signals, no page scan
 *6 Nov 2026 · SPEC: Recorder; follow-up to D153*
 
-- **Finding**: Thomas found the recording outline slowed pages down. Each time the pointer settled on a new element, `previewClick` built a full fingerprint. That includes `recordTimeScan`, which scores every candidate on the page and measures their layout to count look-alikes, plus the CSS path and XPath. On a 1,500-row table that took about **320 ms per check**, blocking the page, and more on a large frame-based app.
-- **Why not a 2.5 s hover delay** (Thomas's idea): the outline would mostly appear after the click it was meant to inform, and the cost would still hit whenever the pointer paused. The cost was the scan, not how often it ran.
+- **Finding**: the owner found the recording outline slowed pages down. Each time the pointer settled on a new element, `previewClick` built a full fingerprint. That includes `recordTimeScan`, which scores every candidate on the page and measures their layout to count look-alikes, plus the CSS path and XPath. On a 1,500-row table that took about **320 ms per check**, blocking the page, and more on a large frame-based app.
+- **Why not a 2.5 s hover delay** (the owner's idea): the outline would mostly appear after the click it was meant to inform, and the cost would still hit whenever the pointer paused. The cost was the scan, not how often it ran.
 - **Change**:
   - `buildFingerprint(el, { light: true })` gives only the element's own signals: no scan, no paths, no layout. The verdict needs only whether there is something to find it by (`hasStrongSignal`), which never uses the look-alike count.
   - The full fingerprint is still built for the clickable card of D82 (whether it is one of a kind), as the recorder does. `clickableRegion` returns before any fingerprint for content without a pointer cursor, the usual case.
@@ -1376,7 +1376,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D157. A Google Drive file can be the team library
 *6 Nov 2026 · SPEC: Sharing ("v1: library URL"); issue #83*
 
-- **Why**: Thomas's team keeps files in Google Drive and wants the guide file there, at $0 and with no backend. "Anyone with the link" sharing is fine for him (asked and answered). Anyone who gets the link can read the guides.
+- **Why**: the owner's team keeps files in Google Drive and wants the guide file there, at $0 and with no backend. "Anyone with the link" sharing is fine for them (asked and answered). Anyone who gets the link can read the guides.
 - **Change**:
   - Settings → Team library accepts a Drive file's normal share link: `/file/d/<id>/view`, `/file/u/0/d/<id>/…`, `open?id=`, `uc?id=` on drive.google.com or docs.google.com, or a `drive.usercontent.google.com/download` link.
   - `libraryAddress` turns it once, on subscribe (in Settings and again in `library.set`), into Google's direct download: `https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t`. `confirm=t` skips the "can't scan this file" page.
@@ -1384,25 +1384,25 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - Folder links and anything not on these exact hosts stay as typed, so they fail as before.
 - **Clearer errors** (for every library, not only Drive): an answer that is a web page (`text/html`, or a body starting with `<`), such as a sign-in, sharing or scan page, now says so instead of failing to parse JSON. For Drive it says to share the file as "Anyone with the link"; elsewhere it asks for the file's own address. A Drive 403 or 404 says the file is not there or not shared.
 - **Settings**: the team library text mentions Drive. A Drive library shows how to update the file without changing its link (Manage versions → Upload new version).
-- **Risk**: Google does not document this address; it moved from `drive.google.com/uc` to `drive.usercontent.google.com` in 2024, and the old address now redirects to it (checked). If Google changes it again, only `driveDownloadUrl` changes. Verified here only up to Drive's answers for missing files (404, `text/html`). A real shared file is to be confirmed by Thomas.
-- **Not done**: private, domain-only Drive files. Using the user's Google sign-in ("A+" in #83) and OAuth ("B") are left for later, at Thomas's call.
+- **Risk**: Google does not document this address; it moved from `drive.google.com/uc` to `drive.usercontent.google.com` in 2024, and the old address now redirects to it (checked). If Google changes it again, only `driveDownloadUrl` changes. Verified here only up to Drive's answers for missing files (404, `text/html`). A real shared file is to be confirmed by the owner.
+- **Not done**: private, domain-only Drive files. Using the user's Google sign-in ("A+" in #83) and OAuth ("B") are left for later, at the owner's call.
 - **Tests**: `test/unit/drive-library.test.ts`: every link shape, links that must not match (http, look-alike hosts, folders, bad ids), the download address, and the web-page and 404 errors through `fetchLibraryText`.
 
 ### D158. The step badge sits beside the element, never on it; a flaky preview test made deterministic
 *6 Nov 2026 · SPEC: Sharing (printable how-to); issue #87; follow-up to D193*
 
-- **Finding**: in Thomas's export the round step number was drawn at the highlight's top-left corner, kept inside the image. On a small tab at the top edge it moved onto the tab and hid the start of its label ("Safety" read "afety").
+- **Finding**: in the owner's export the round step number was drawn at the highlight's top-left corner, kept inside the image. On a small tab at the top edge it moved onto the tab and hid the start of its label ("Safety" read "afety").
 - **Change** (`badgeSpot`, `src/core/shots/render.ts`, pure):
   - the badge is placed outside the highlight and its ring. Spots are tried in order: the top-left corner as before, then the other corners, the sides, and off-centre along the sides (a long bar at the top of the image). The first spot that lies wholly in the image and clear of the ring wins;
   - if none fits, a smaller badge (9 units) is tried, and only then the inside of the box, for an element that fills the image;
   - the badge is sized to the target: about three quarters of a small element's height, 9 to 13 units (units scale with the image). Its number scales with it.
 - **Flaky test** (`howto-preview.test.ts`, "Zoom draws only the part around the element"): it read the second image's `naturalWidth` without waiting for it to decode, and once under full `pnpm check` load it read 0. It now waits for each image to decode, polls for the zoomed drawing instead of a time, and the other test that read a width directly does the same. It passed 20 of 20 runs of the whole file with every CPU busy.
-- **Tests**: `test/unit/badge-spot.test.ts`: Thomas's case (a small tab at the top edge), an element in each corner, a full-width bar at the top, the usual top-left spot, sizes, and an element filling the image.
+- **Tests**: `test/unit/badge-spot.test.ts`: the owner's case (a small tab at the top edge), an element in each corner, a full-width bar at the top, the usual top-left spot, sizes, and an element filling the image.
 
 ### D159. Links and zoom in the printable how-to
 *6 Nov 2026 · SPEC: Sharing (printable how-to); issues #85, #86; amends D104*
 
-- **Why**: Thomas wants readers of the exported PDF or HTML to click straight to the app, and to enlarge a screenshot in the HTML file.
+- **Why**: the owner wants readers of the exported PDF or HTML to click straight to the app, and to enlarge a screenshot in the HTML file.
 - **Links** (HTML and the preview that Save as PDF prints; Markdown is unchanged and has none):
   - **The start page**: "Start at" is a link to the start site (origin only, as D104 already showed).
   - **A step's page**: an "Open this page" link where the page changes from the step before (`stepPageLinks`). Only a plain path from the step's own address rule on the start site is linked, never a rule with `:param` stand-ins for ids or a query. Steps inside a frame have their frame's address, so they get none.
@@ -1415,7 +1415,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D200. A theme setting: System, Light or Dark
 *6 Nov 2026 · SPEC: UI (design system, D90); issue #88*
 
-- **Why**: Waymark follows the computer's light or dark setting. Thomas asked for a setting to pick one, with System as the default.
+- **Why**: Waymark follows the computer's light or dark setting. The owner asked for a setting to pick one, with System as the default.
 - **Tokens** (`src/ui/tokens.css`): the dark values apply under `prefers-color-scheme: dark` unless Light was chosen (`:not([data-wm-theme='light'])`), and always when Dark was chosen (`[data-wm-theme='dark']`), on `:root` (extension pages) and `.wm-theme` (the overlay layer). The two blocks hold the same values; `test/unit/theme.test.ts` checks they stay identical. System sets no attribute.
 - **Setting**: `uiTheme` in storage.local (`system`, `light` or `dark`). Messages `ui.theme.get` (content and extension; it returns the choice only) and `ui.theme.set` (extension pages). Settings → Appearance has the three choices.
 - **Where it applies**:
@@ -1428,9 +1428,9 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - `test/e2e/r3-theme.spec.ts`: Dark on a light system and Light on a dark system, in Settings and live in the overlay of a recording page; System again; a reopened page starts in the stored choice.
 
 ### D201. Google Sites: plain wording when its embed wrapper changed
-*6 Nov 2026 · SPEC: Recorder ("Frames"); follow-up to D155; Thomas's decision D-2*
+*6 Nov 2026 · SPEC: Recorder ("Frames"); follow-up to D155; the owner's decision D-2*
 
-- **Decision (Thomas)**: no wildcard grant for `*.googleusercontent.com`. Chrome's patterns can't express `*-atari-embeds.googleusercontent.com`, so a narrower permission is impossible. After a republish, the new wrapper address is still allowed with one click.
+- **Decision (the owner)**: no wildcard grant for `*.googleusercontent.com`. Chrome's patterns can't express `*-atari-embeds.googleusercontent.com`, so a narrower permission is impossible. After a republish, the new wrapper address is still allowed with one click.
 - **Change**: on a `https://sites.google.com` page, when the Allow offer includes a Google Sites wrapper (`^https://[^./]+-atari-embeds\.googleusercontent\.com$`, `isGoogleSitesWrapper`), the offer says:
   - "Your Google Site was updated. Click Allow to keep using Waymark in it." when an earlier wrapper was allowed before (`googleSitesNotice` → `updated`);
   - "This Google Site shows an embedded app through Google's own frame…" for the first one.
@@ -1440,7 +1440,7 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D202. Adding a forgotten step: pick it on the page, or record steps into the guide
 *6 Nov 2026 · SPEC: User flows (Edit); issue #89*
 
-- **Why**: Thomas forgot a step while recording, and the editor could only add notes.
+- **Why**: the owner forgot a step while recording, and the editor could only add notes.
 - **Add a step after / at the end** (picker, into the draft): the same picker as Re-pick (`pick.start`, D82 regions, the D153 outline, Esc to cancel). The picked element becomes a click step before the chosen index, with the picked element's title and the page's URL rule (as Re-pick). It is unsaved, like any edit, and opened ready to edit. `picking` holds `new:<at>` while it waits. Only a click: for fields and choices, record.
 - **Record steps after / at the end** (any kind, saved into the guide):
   - `rec.start` takes `insertInto { guideId, at }`. Only for one of your own guides (team guides are read-only), from a page of one of its sites. The recording uses the guide's own id, so its screenshots, if on, are already keyed to it (D185).
@@ -1525,7 +1525,7 @@ The printable how-to (D104) can show a screenshot of each step with its element 
   - **A click on the toolbar icon**: not automatable (Playwright can't click the toolbar), so not verified directly. Waymark has no popup and listens to `action.onClicked`; Alt+W fires that same event through the action's command, which is the path verified above, and Chrome's activeTab documentation lists "clicking the extension's action" as a grant. So the toolbar click is expected to grant it but is unverified.
   - **Not** the side panel's Record button, and not a tab that the recording opened (new tab, or another site in the same tab).
 - **Decision (A, approved by the parent session)**: no new permission. Capture is best effort on tabs with activeTab; a refused capture stores nothing and shows a one-click hint (D186).
-- **Rejected**: (B) `<all_urls>` as an optional host permission, requested when screenshots are turned on. It is the only complete option, but it brings Chrome's broadest warning ("Read and change all your data on all websites") and needs Thomas's explicit approval. (C) Drawing the page in the content script (an html2canvas-like library): no permission, but only an approximation (no cross-origin frames, canvas, video, some CSS) and about 200 KB more in every page.
+- **Rejected**: (B) `<all_urls>` as an optional host permission, requested when screenshots are turned on. It is the only complete option, but it brings Chrome's broadest warning ("Read and change all your data on all websites") and needs the owner's explicit approval. (C) Drawing the page in the content script (an html2canvas-like library): no permission, but only an approximation (no cross-origin frames, canvas, video, some CSS) and about 200 KB more in every page.
 - **Frames**: only elements in the top page are captured. A step inside an iframe has a rect in that frame's viewport, which the service worker can't place in the tab's picture. The editor shows no "No screenshot" note or Capture for such steps, and Test step says why there is none.
 
 ### D182. What is stored: a crop under 60 KB, with the element's box
@@ -1598,7 +1598,7 @@ A privacy, storage-lifecycle and recording-performance review of the first versi
 
 ## 2026-11-06 — Export rework: full-page screenshots, frames, preview (issue #78)
 
-Thomas tested 0.5.0 on a real frame-based app: a 3-step guide had one image (a small crop, blurred unreadable), the steps inside frames had none, and frame masking greyed most of the app. These decisions rework D182, D183 (masking), D187 (frames), D188 (blur and review) and the frames note of D181. Unchanged: off by default per guide with the notice (D180), activeTab only with no new permission (D181), IndexedDB only (D184), the lifecycle (D185), the refusal hint (D186).
+The owner tested 0.5.0 on a real frame-based app: a 3-step guide had one image (a small crop, blurred unreadable), the steps inside frames had none, and frame masking greyed most of the app. These decisions rework D182, D183 (masking), D187 (frames), D188 (blur and review) and the frames note of D181. Unchanged: off by default per guide with the notice (D180), activeTab only with no new permission (D181), IndexedDB only (D184), the lifecycle (D185), the refusal hint (D186).
 
 ### D190. What is stored: the whole visible tab, with the element's box
 *6 Nov 2026 · SPEC: Data model ("Storage"); amends D182*
