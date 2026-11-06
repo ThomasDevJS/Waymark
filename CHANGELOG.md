@@ -6,6 +6,14 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- **Printable how-to with screenshots, reworked** after testing on a real frame-based app (D190–D199, #78):
+  - a step's screenshot is now the **whole visible page** (at most 1600 px wide, under 250 KB) with the step's element **highlighted** (a ring, a soft dim and the step's number), instead of a small blurred crop;
+  - **steps inside frames** get a screenshot too, from recording, Test step and Capture: the element is placed through its frames. Field text is hidden in every frame Waymark runs in; only frames of sites Waymark isn't allowed on are greyed out;
+  - a **preview page** opens from the export (Printable how-to → **Preview how-to**). It shows the how-to exactly as it will be saved; per step you can **Leave out**, **Blur** (light, so the layout stays readable; off by default) or **Zoom to the element**. Then **Save as PDF** or **Download HTML**. Steps without a screenshot say how to get one;
+  - the printed page is light only, has the step count and the date under the title, never splits a step across pages, and fits two steps per page;
+  - screenshots taken by 0.5.0 (close-ups) still print, and are marked in the preview and the editor with **Capture again**.
+
 ## [0.5.0] - 2026-11-06
 
 ### Added

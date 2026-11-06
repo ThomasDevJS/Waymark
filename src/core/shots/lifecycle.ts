@@ -13,6 +13,8 @@ export interface ShotRef {
   stepId: string;
   /** targetHash of the step's element when the image was taken. */
   t?: string;
+  /** A 0.5.0 close-up rather than the whole page (D196). */
+  old?: boolean;
 }
 
 /** Keys in a fixed order, so the same target always gives the same text. */

@@ -68,11 +68,14 @@ test('exports a guide as a Markdown and a printable HTML how-to after the review
   const text = readFileSync((await md.path())!, 'utf8');
   expect(text).toBe(['# Export orders', '', `Start at ${site.main}`, '', '1. Click **Import**', '', '2. Click **Export**', '', '   Pick **CSV**.', ''].join('\n'));
 
-  // HTML: the same review, this time from the guide's Share… (D124); nothing but the origin as an address.
+  // HTML: the same review, this time from the guide's Share… (D124), then the preview page (D195);
+  // nothing but the origin as an address.
   await panel.getByTestId(`more-${guideId}`).click();
   await panel.getByTestId(`share-${guideId}`).click();
   await panel.getByTestId('format-html').check();
-  const [html] = await Promise.all([panel.waitForEvent('download'), panel.getByTestId('download-howto').click()]);
+  const [preview] = await Promise.all([context.waitForEvent('page'), panel.getByTestId('open-preview').click()]);
+  await expect(preview.getByTestId('howto-preview')).toHaveAttribute('data-ready', 'yes');
+  const [html] = await Promise.all([preview.waitForEvent('download'), preview.getByTestId('howto-download').click()]);
   expect(html.suggestedFilename()).toBe('guides.html');
   const page = readFileSync((await html.path())!, 'utf8');
   expect(page).toContain('<li><div class="title">Click <strong>Import</strong></div>');

@@ -9,7 +9,7 @@ export const SHOTS_LABEL = 'Capture screenshots for the printable export';
 
 /** What the author reads before screenshots are turned on (D180). */
 export const SHOTS_NOTICE =
-  'Screenshots can show customer data that is on the page, such as names, amounts or account numbers. Text inside fields is hidden. Screenshots stay on this computer and are used only in the printable how-to, where you can check each one and leave it out before you download.';
+  'Screenshots show the whole visible page, which can include customer data such as names, amounts or account numbers. Text inside fields is hidden, and parts of the page from sites Waymark isn’t allowed on are greyed out. Screenshots stay on this computer and are used only in the printable how-to, where you preview each one and can leave it out or blur it before you save.';
 
 /** The one-click hint when Chrome refused a screenshot (D186). */
 export const SHOT_HINT_PANEL = 'Screenshots need one click on the Waymark icon (or Alt+W) on this tab.';

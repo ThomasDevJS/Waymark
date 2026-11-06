@@ -1,99 +1,166 @@
-/** Step screenshots for the printable how-to (D180–D188): crop math, caps, rate limit, lifecycle. */
+/**
+ * Step screenshots for the printable how-to (D180–D188, reworked in D190–D199): frame geometry,
+ * the stored image's plan and caps, zoom, rate limit, lifecycle, migration, the preview's address.
+ */
 import { describe, expect, it } from 'vitest';
-import { CONTEXT_PX, fitUnderCap, MAX_BYTES, MAX_TRIES, MAX_W, planCrop } from '../../src/core/shots/crop';
+import { fitUnderCap, intersect, layoutFrames, MAX_BYTES, MAX_TRIES, MAX_W, placeElement, planImage, resolveChildren, zoomRect, type ChildFrame, type FrameReport } from '../../src/core/shots/place';
+import { asFrameReport } from '../../src/core/shots/report';
 import { createCallSpacer, createCaptureQueue, DROPPED } from '../../src/core/shots/rate';
 import { asIdList, MAX_SHOT_GUIDES, shotFits, staleFlags, staleShots, stepHashes, targetHash } from '../../src/core/shots/lifecycle';
-import { parseShotKey, shotKey } from '../../src/core/shots/store';
-import { highlightRect } from '../../src/core/shots/render';
-import { asPageView, isActiveTabRefusal, isQuotaRefusal, maskBoxes, pageOf, shotStep, toViewport } from '../../src/background/shots';
-import { howtoHtml, howtoImageKey, howtoMarkdown } from '../../src/core/sharing/howto';
-import { exportJson, keptShots, shotRowKey } from '../../src/entrypoints/sidepanel/ExportReview';
-import { parseMessage } from '../../src/core/messaging/protocol';
+import { isOldShot, parseShotKey, shotKey, SHOT_VERSION } from '../../src/core/shots/store';
+import { blurPx, highlightRect, renderPlan } from '../../src/core/shots/render';
+import { hideFrames, isActiveTabRefusal, isQuotaRefusal, pageOf, placeShot, shotStep } from '../../src/background/shots';
+import { howtoHtml, howtoImageKey, howtoMarkdown, PRINT_CSS } from '../../src/core/sharing/howto';
+import { exportJson } from '../../src/entrypoints/sidepanel/ExportReview';
+import { fittingShots, parsePreviewQuery, previewPath } from '../../src/entrypoints/howto/data';
+import { parseMessage, type ContentPush } from '../../src/core/messaging/protocol';
 import type { Guide, Step } from '../../src/core/model/schema';
 import type { ShotRecord } from '../../src/core/shots/store';
 
-const rect = (x: number, y: number, w: number, h: number, vw = 1280, vh = 900) => ({ x, y, w, h, vw, vh });
+const box = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
+const child = (frameId: number, b: ReturnType<typeof box>, inset = 0, k = 1): ChildFrame => ({
+  frameId,
+  box: b,
+  content: { x: b.x + inset * k, y: b.y + inset * k, w: b.w - 2 * inset * k, h: b.h - 2 * inset * k },
+  k,
+});
+const report = (frames: ChildFrame[] = [], rect: ReturnType<typeof box> | null = null, vw = 1000, vh = 700): FrameReport => ({ vw, vh, dpr: 1, rect, frames });
 
-describe('planCrop (D182)', () => {
-  it('keeps the element plus 200 px of context, clamped to the image', () => {
-    const p = planCrop(rect(500, 400, 100, 40), 1280, 900)!;
-    expect(p).toMatchObject({ sx: 300, sy: 200, sw: 500, sh: 440, dw: 500, dh: 440 });
-    expect(p.box).toEqual({ x: 200, y: 200, w: 100, h: 40 });
+describe('placing an element through its frames (D191)', () => {
+  it('adds up iframe offsets, borders and padding along the path (same- and cross-origin alike)', () => {
+    // Top: an iframe at (100, 50) with a 2 px border and 8 px padding (content at 110, 60).
+    // Inside it: an iframe at (20, 30) with a 1 px border (content at 21, 31) holding the element.
+    const reports = new Map<number, FrameReport>([
+      [0, report([child(4, box(100, 50, 600, 500), 10)])],
+      [4, report([child(9, box(20, 30, 300, 200), 1)], null, 580, 480)],
+      [9, report([], box(5, 6, 40, 20), 298, 198)],
+    ]);
+    const layout = layoutFrames(reports)!;
+    expect(layout.placed.get(4)).toMatchObject({ ox: 110, oy: 60, k: 1 });
+    expect(layout.placed.get(9)).toMatchObject({ ox: 131, oy: 91, k: 1 });
+    expect(placeElement(layout, 9, box(5, 6, 40, 20))).toEqual(box(136, 97, 40, 20));
+    expect(layout.masks).toEqual([]);
+    expect(placeShot(reports, 9)?.el).toEqual(box(136, 97, 40, 20));
   });
-
-  it('clamps at the image edges and keeps the box where the element is', () => {
-    const p = planCrop(rect(10, 20, 50, 30), 1280, 900)!;
-    expect(p).toMatchObject({ sx: 0, sy: 0, sw: 10 + 50 + CONTEXT_PX, sh: 20 + 30 + CONTEXT_PX });
-    expect(p.box).toEqual({ x: 10, y: 20, w: 50, h: 30 });
+  it('takes a scaled iframe (CSS transform) into account', () => {
+    const reports = new Map<number, FrameReport>([
+      [0, report([child(2, box(100, 100, 200, 100), 0, 0.5)])],
+      [2, report([], box(40, 20, 100, 40), 400, 200)],
+    ]);
+    expect(placeShot(reports, 2)?.el).toEqual(box(120, 110, 50, 20));
   });
-
-  it('works in image pixels on a 2x screen, then fits 800 px wide', () => {
-    const p = planCrop(rect(500, 400, 100, 40), 2560, 1800)!;
-    // 500 CSS px of crop is 1000 image px; scaled by 0.8 to 800.
-    expect(p.sw).toBe(1000);
-    expect(p.dw).toBe(MAX_W);
-    expect(p.box).toEqual({ x: 320, y: 320, w: 160, h: 64 });
+  it('clips the element to every frame it is in, and to the viewport; hidden means no picture', () => {
+    const reports = new Map<number, FrameReport>([
+      [0, report([child(2, box(0, 600, 400, 300))])],
+      [2, report([], box(10, 50, 100, 200))],
+    ]);
+    // The frame is cut off at the viewport's bottom (700): only 50 px of the element show.
+    expect(placeShot(reports, 2)?.el).toEqual(box(10, 650, 100, 50));
+    // Scrolled out of its frame's view: nothing to point at.
+    const out = new Map<number, FrameReport>([
+      [0, report([child(2, box(0, 0, 400, 300))])],
+      [2, report([], box(10, 400, 100, 20))],
+    ]);
+    expect(placeShot(out, 2)).toBeNull();
   });
-
-  it('never stores more than 800 px in either direction', () => {
-    const p = planCrop(rect(0, 0, 1280, 900), 1280, 900)!;
-    expect(p.dw).toBeLessThanOrEqual(800);
-    expect(p.dh).toBeLessThanOrEqual(800);
+  it('a frame that did not answer is painted over, with everything in it; a frame that did is not', () => {
+    const reports = new Map<number, FrameReport>([
+      [0, report([child(2, box(0, 0, 400, 300)), child(3, box(500, 0, 400, 300)), child(-1, box(0, 400, 200, 100))])],
+      [2, report([child(7, box(10, 10, 100, 100))])],
+    ]);
+    const layout = layoutFrames(reports)!;
+    // 3 (no Waymark there), the object/embed (-1), and 7 inside 2 (no answer) are masked.
+    expect(layout.masks).toEqual([box(500, 0, 400, 300), box(0, 400, 200, 100), box(10, 10, 100, 100)]);
+    expect(layout.placed.has(2)).toBe(true);
+    expect(placeElement(layout, 3, box(1, 1, 10, 10))).toBeNull();
   });
-
-  it('keeps only the visible part of an element partly off screen', () => {
-    const p = planCrop(rect(-50, 880, 200, 100), 1280, 900)!;
-    expect(p.box.x).toBe(0);
-    expect(p.box.y).toBe(880 - p.sy);
-    expect(p.box.h).toBe(20);
+  it('fails closed on odd reports: a frame id listed twice, a loop, no top frame', () => {
+    const twice = new Map<number, FrameReport>([
+      [0, report([child(2, box(0, 0, 100, 100)), child(2, box(200, 0, 100, 100))])],
+      [2, report([], box(1, 1, 10, 10))],
+    ]);
+    expect(layoutFrames(twice)!.masks).toHaveLength(2);
+    expect(placeShot(twice, 2)).toBeNull();
+    const loop = new Map<number, FrameReport>([
+      [0, report([child(2, box(0, 0, 100, 100))])],
+      [2, report([child(0, box(0, 0, 10, 10))])],
+    ]);
+    expect(layoutFrames(loop)!.placed.size).toBe(2);
+    expect(layoutFrames(new Map([[2, report()]]))).toBeNull();
   });
-
-  it('is null for an element off screen, a bad viewport or junk numbers', () => {
-    expect(planCrop(rect(100, 2000, 50, 50), 1280, 900)).toBeNull();
-    expect(planCrop(rect(100, 100, 0, 50), 1280, 900)).toBeNull();
-    expect(planCrop(rect(100, 100, 50, 50, 0, 900), 1280, 900)).toBeNull();
-    expect(planCrop(rect(Number.NaN, 100, 50, 50), 1280, 900)).toBeNull();
-    expect(planCrop(rect(100, 100, 50, 50), 0, 0)).toBeNull();
-  });
-
-  it('uses the pixel ratio when given: the visible area can be narrower than the layout viewport', () => {
-    // A 1200 px layout viewport, of which 814 px show (a side panel): the image is 814 wide at 1x.
-    const p = planCrop(rect(30, 200, 20, 20, 1200, 265), 814, 265, 1, 1)!;
-    expect(p.box).toEqual({ x: 30, y: 200 - p.sy, w: 20, h: 20 });
-    expect(p.sx).toBe(0);
-    // Zoom or a 2x screen: device pixels per CSS pixel.
-    expect(planCrop(rect(100, 100, 10, 10), 2560, 1800, 1, 2)!.sx).toBe(0);
-    expect(planCrop(rect(300, 300, 10, 10), 2560, 1800, 1, 2)!.sx).toBe(200);
-    // An element in the part that doesn't show is not captured.
-    expect(planCrop(rect(1000, 200, 50, 20, 1200, 265), 814, 265, 1, 1)).toBeNull();
-    // A junk ratio falls back to the image width.
-    expect(planCrop(rect(300, 300, 10, 10), 1280, 900, 1, Number.NaN)!.sx).toBe(100);
-  });
-
-  it('scales down further when asked (the size cap)', () => {
-    const full = planCrop(rect(500, 400, 100, 40), 1280, 900)!;
-    const half = planCrop(rect(500, 400, 100, 40), 1280, 900, 0.5)!;
-    expect(half.dw).toBe(Math.round(full.dw / 2));
-    expect(half.box.w).toBe(Math.round(full.box.w / 2));
+  it('intersect is empty for boxes that only touch', () => {
+    expect(intersect(box(0, 0, 10, 10), box(10, 0, 5, 5))).toBeNull();
   });
 });
 
-describe('fitUnderCap (D182)', () => {
-  it('keeps the first encoding under 60 KB', async () => {
-    const out = await fitUnderCap(async (scale) => ({ size: 40_000, scale }));
-    expect(out?.scale).toBe(1);
+describe('the stored image: the whole visible tab (D190)', () => {
+  it('keeps the viewport, scaled to at most 1600 px wide, with the element box in image pixels', () => {
+    const plan = planImage(box(100, 50, 40, 20), [], 2560, 1440, 2)!;
+    expect(plan.dw).toBe(MAX_W);
+    expect(plan.dh).toBe(900);
+    expect(plan.s).toBeCloseTo(1.25);
+    expect(plan.box).toEqual(box(125, 63, 50, 25));
   });
-  it('scales down until the image fits', async () => {
+  it('a small window is not scaled up', () => {
+    const plan = planImage(box(10, 10, 20, 20), [], 1200, 800, 1)!;
+    expect([plan.dw, plan.dh, plan.s]).toEqual([1200, 800, 1]);
+  });
+  it('paints over masks, rounded outward and kept in the image', () => {
+    const plan = planImage(box(10, 10, 20, 20), [box(0.4, 100.6, 50.2, 2000)], 1000, 700, 1)!;
+    expect(plan.masks).toEqual([box(0, 100, 51, 600)]);
+  });
+  it('the captured area can be narrower than the viewport: an element outside it has no image', () => {
+    expect(planImage(box(1100, 10, 50, 20), [], 1000, 700, 1)).toBeNull();
+    expect(planImage(box(990, 10, 50, 20), [], 1000, 700, 1)!.box).toEqual(box(990, 10, 10, 20));
+  });
+  it('scales down further for the size cap, and refuses junk', () => {
+    expect(planImage(box(10, 10, 20, 20), [], 1000, 700, 1, 0.5)!.dw).toBe(500);
+    expect(planImage(box(10, 10, 20, 20), [], 0, 700, 1)).toBeNull();
+    expect(planImage(box(10, 10, 20, 20), [], 1000, 700, NaN)).toBeNull();
+  });
+  it('fits under 250 KB: smaller until it fits, then gives up', async () => {
+    expect(MAX_BYTES).toBe(250_000);
     const tried: number[] = [];
-    const out = await fitUnderCap(async (scale) => (tried.push(scale), { size: Math.round(100_000 * scale * scale) }));
+    const out = await fitUnderCap(async (scale) => (tried.push(scale), { size: Math.round(400_000 * scale * scale) }));
     expect(out!.image.size).toBeLessThanOrEqual(MAX_BYTES);
-    expect(tried).toEqual([1, 0.75]);
-  });
-  it('gives up after the last try, and when nothing can be drawn', async () => {
+    expect(tried).toEqual([1, 0.8, 0.6400000000000001]);
     let n = 0;
     expect(await fitUnderCap(async () => (n++, { size: 10 * MAX_BYTES }))).toBeNull();
     expect(n).toBe(MAX_TRIES);
     expect(await fitUnderCap(async () => null)).toBeNull();
+  });
+});
+
+describe('zoom to the element (D194)', () => {
+  it('keeps the image shape, contains the element with room, and stays inside the image', () => {
+    const z = zoomRect(box(800, 450, 60, 30), 1600, 900);
+    expect(z.w / z.h).toBeCloseTo(1600 / 900, 1);
+    expect(z.x).toBeLessThan(800);
+    expect(z.x + z.w).toBeGreaterThan(860);
+    expect(z.w).toBeGreaterThanOrEqual(640);
+    expect(z.w).toBeLessThan(1600);
+  });
+  it('at an edge it moves inside; a huge element gives the whole image', () => {
+    const z = zoomRect(box(0, 0, 20, 20), 1600, 900);
+    expect([z.x, z.y]).toEqual([0, 0]);
+    expect(zoomRect(box(0, 0, 1500, 800), 1600, 900)).toEqual(box(0, 0, 1600, 900));
+  });
+  it('old close-ups are drawn whole; new images move the box with the zoom', () => {
+    const shot = { w: 1600, h: 900, box: box(800, 450, 60, 30) };
+    expect(renderPlan(shot, true).src).toEqual(box(0, 0, 1600, 900));
+    const z = renderPlan({ ...shot, v: 2 }, true);
+    expect(z.box.x).toBe(800 - z.src.x);
+    expect(renderPlan({ ...shot, v: 2 }, false).box).toEqual(shot.box);
+  });
+});
+
+describe('light blur (D193)', () => {
+  it('is about 3.5 CSS pixels, from the stored scale (a third of D188, no pixelation)', () => {
+    expect(blurPx({ w: 1600, px: 1.25 })).toBe(4.4);
+    expect(blurPx({ w: 1280, px: 1 })).toBe(3.5);
+    // Old records have no scale: from the width, never below 2.
+    expect(blurPx({ w: 800 })).toBe(2.2);
+    expect(blurPx({ w: 100 })).toBe(2);
   });
 });
 
@@ -245,44 +312,83 @@ describe('lifecycle (D185)', () => {
   });
 });
 
-describe('placing the element at capture time (D183)', () => {
-  const view = { vw: 1000, vh: 700, dpr: 2, rect: { x: 10, y: 20, w: 30, h: 40 }, frames: [{ x: 0, y: 500, w: 300, h: 100 }] };
-  it("takes the element, viewport, pixel ratio and frames from the page's answer, and refuses junk", () => {
-    expect(asPageView(view)).toEqual(view);
-    expect(asPageView({ ...view, rect: null })).toEqual({ ...view, rect: null });
-    expect(asPageView(true)).toBeNull();
-    expect(asPageView(undefined)).toBeNull();
-    expect(asPageView({ ...view, vw: '1' })).toBeNull();
-    expect(asPageView({ ...view, vw: 0 })).toBeNull();
-    expect(asPageView({ ...view, dpr: 0 })).toBeNull();
-    expect(asPageView({ ...view, dpr: Infinity })).toBeNull();
-    expect(asPageView({ ...view, rect: { x: 1, y: 1, w: 0, h: 5 } })).toBeNull();
-    expect(asPageView({ ...view, frames: [{ x: 'a' }] })).toBeNull();
-    expect(asPageView({ ...view, frames: undefined })).toBeNull();
-    expect(asPageView({ ...view, frames: Array.from({ length: 51 }, () => ({ x: 0, y: 0, w: 1, h: 1 })) })).toBeNull();
+describe('hiding in every frame (D192)', () => {
+  const ok = (frames: ChildFrame[] = [], rect: ReturnType<typeof box> | null = null) => ({ vw: 800, vh: 600, dpr: 1, rect, frames });
+  const sel = (selector: string, b: ReturnType<typeof box>): ChildFrame => ({ ...child(-1, b), sel: selector });
+  it('asks the top frame, the step frame and every registered frame at once; only the step frame is asked for the element', async () => {
+    const sent: [number, ContentPush][] = [];
+    const answers: Record<number, unknown> = {
+      0: ok([sel('#a', box(0, 0, 100, 100)), child(-1, box(0, 200, 10, 10))]),
+      5: ok([sel('#b', box(0, 0, 50, 50))], box(1, 1, 10, 10)),
+      8: ok(),
+    };
+    const reports = await hideFrames(async (id, msg) => (sent.push([id, msg]), answers[id]), [8, 5, 99], 5, 'step1', 500);
+    expect(sent.map(([id]) => id)).toEqual([0, 5, 8, 99]);
+    expect(sent.find(([id]) => id === 5)![1]).toEqual({ type: 'shot.hide', payload: { stepId: 'step1' } });
+    expect(sent.find(([id]) => id === 0)![1]).toEqual({ type: 'shot.hide', payload: {} });
+    expect([...reports.keys()].sort()).toEqual([0, 5, 8]);
   });
-  it('the rect is used with the viewport size of the moment', () => {
-    expect(toViewport({ x: 90, y: 300, w: 50, h: 20 }, { vw: 800, vh: 600 })).toEqual(rect(90, 300, 50, 20, 800, 600));
+  it('a frame that answers late or with junk is left out (and so painted over)', async () => {
+    const reports = await hideFrames(
+      async (id) => {
+        if (id === 3) return new Promise((r) => setTimeout(() => r(ok()), 300));
+        if (id === 4) return { vw: 'x' };
+        return ok([sel('#x', box(0, 0, 10, 10))]);
+      },
+      [3, 4],
+      0,
+      's',
+      100,
+    );
+    expect([...reports.keys()]).toEqual([0]);
   });
-  it('review fix: iframes are painted over in the stored image (their fields cannot be hidden)', () => {
-    const plan = planCrop(rect(100, 100, 50, 20, 1000, 700), 2000, 1400, 1, 2)!;
-    const [m] = maskBoxes([{ x: 0, y: 200, w: 300, h: 100 }], plan, 2);
-    const k = plan.dw / plan.sw;
-    expect(m!.x).toBe(Math.floor((0 - plan.sx) * k));
-    expect(m!.y).toBe(Math.floor((400 - plan.sy) * k));
-    expect(m!.w).toBeGreaterThanOrEqual(Math.floor(600 * k));
+  it('names children through the frame registry: one registered frame that answered, else masked', () => {
+    const links = {
+      '5': { parentFrameId: 0, selector: '#a' },
+      '6': { parentFrameId: 5, selector: '#b' },
+      // A rebuilt iframe (D152): an old frame at the same place that no longer answers.
+      '3': { parentFrameId: 0, selector: '#a' },
+      // Two live frames claim the same place: neither is trusted.
+      '10': { parentFrameId: 0, selector: '#c' },
+      '11': { parentFrameId: 0, selector: '#c' },
+    };
+    const reports = new Map<number, FrameReport>([
+      [0, report([sel('#a', box(0, 0, 500, 400)), sel('#c', box(600, 0, 100, 100)), sel('#none', box(0, 500, 100, 100)), child(-1, box(800, 0, 50, 50))])],
+      [5, report([sel('#b', box(10, 10, 100, 100))])],
+      [6, report([], box(1, 1, 20, 10))],
+      [10, report()],
+      [11, report()],
+    ]);
+    const named = resolveChildren(reports, links);
+    expect(named.get(0)!.frames.map((c) => c.frameId)).toEqual([5, -1, -1, -1]);
+    expect(named.get(5)!.frames.map((c) => c.frameId)).toEqual([6]);
+    const layout = layoutFrames(named)!;
+    expect(layout.masks).toEqual([box(600, 0, 100, 100), box(0, 500, 100, 100), box(800, 0, 50, 50)]);
+    expect(placeShot(named, 6)?.el).toEqual(box(11, 11, 20, 10));
+    // A frame registered under another parent does not count here.
+    expect(resolveChildren(reports, { '5': { parentFrameId: 9, selector: '#a' } }).get(0)!.frames[0]!.frameId).toBe(-1);
   });
-  it('review fix: a hash route is another page', () => {
+  it("the frames' answers are checked", () => {
+    const r = ok([{ ...child(-1, box(0, 0, 10, 10)), sel: '#f' }], box(1, 2, 3, 4));
+    expect(asFrameReport(r)).toEqual(r);
+    // The page never names frame ids (it could point a mask's exemption at any frame).
+    expect(asFrameReport(ok([child(2, box(0, 0, 10, 10))]))).toBeNull();
+    expect(asFrameReport({ ...r, more: true })).toEqual({ ...r, more: true });
+    for (const bad of [null, 1, { ...r, dpr: 0 }, { ...r, dpr: 11 }, { ...r, vw: Infinity }, { ...r, rect: { x: 0, y: 0, w: 0, h: 1 } }, { ...r, frames: [{ frameId: 1.5, box: box(0, 0, 1, 1), content: box(0, 0, 1, 1), k: 1 }] }, { ...r, frames: Array.from({ length: 101 }, () => child(-1, box(0, 0, 1, 1))) }])
+      expect(asFrameReport(bad)).toBeNull();
+  });
+  it('review fix kept: a hash route is another page', () => {
     expect(pageOf('https://a.example/app#/customers')).not.toBe(pageOf('https://a.example/app#/orders'));
     expect(pageOf('https://a.example/app?q=1')).toBe(pageOf('https://a.example/app?q=2'));
   });
-  it('only top-frame elements are captured', () => {
+  it('steps in frames are captured too (D191)', () => {
     expect(shotStep(step('a'), 0)).toBe(true);
-    expect(shotStep(step('a'), 3)).toBe(false);
+    expect(shotStep(step('a'), 3)).toBe(true);
     const framed = step('a');
     framed.target!.framePath = ['iframe#x'];
-    expect(shotStep(framed, 0)).toBe(false);
+    expect(shotStep(framed, 7)).toBe(true);
     expect(shotStep({ target: undefined }, 0)).toBe(false);
+    expect(shotStep(step('a'), undefined)).toBe(false);
   });
   it("tells Chrome's activeTab refusal and its rate limit from other failures (D181, D183)", () => {
     expect(isActiveTabRefusal(new Error("Either the '<all_urls>' or 'activeTab' permission is required."))).toBe(true);
@@ -310,7 +416,7 @@ const guide = (steps: Step[]): Guide => ({
 
 const IMG = 'data:image/webp;base64,UklGRhYAAABXRUJQVlA4TAoAAAAvAAAAAEX/I/of';
 
-describe('printable how-to with screenshots (D188)', () => {
+describe('printable how-to with screenshots (D188, D195)', () => {
   it('embeds a data image per step that has one, with a data-only CSP', () => {
     const g = guide([step('a'), step('b')]);
     const html = howtoHtml([g], new Map([[howtoImageKey('g1', 'a'), { src: IMG, w: 400, h: 300 }]]));
@@ -337,17 +443,45 @@ describe('printable how-to with screenshots (D188)', () => {
     expect(howtoMarkdown([g])).not.toMatch(/!\[|data:image/);
     expect(exportJson([g], new Set())).not.toMatch(/data:image|webp|screenshot/i);
   });
-  it('the review drops screenshots the author left out, and those of steps no longer in the guide', () => {
+  it('the preview offers only screenshots of steps still in the guide, showing their element', () => {
     const g = guide([step('a'), step('b')]);
     const rec = (stepId: string, t = targetHash(step(stepId).target)): ShotRecord => ({ key: `g1/${stepId}`, guideId: 'g1', stepId, blob: new Blob(), w: 1, h: 1, box: { x: 0, y: 0, w: 1, h: 1 }, t, at: 0 });
-    const kept = keptShots([g], [rec('a'), rec('b'), rec('old')], new Set([shotRowKey('g1', 'b')]));
-    expect(kept.map((x) => x.stepId)).toEqual(['a']);
+    expect(fittingShots([g], [rec('a'), rec('b'), rec('old')]).map((x) => x.stepId)).toEqual(['a', 'b']);
     // An image of another element than the saved step's (a discarded Re-pick) is not offered.
-    expect(keptShots([g], [rec('a', 'stale')], new Set())).toEqual([]);
+    expect(fittingShots([g], [rec('a', 'stale')])).toEqual([]);
+  });
+  it('a header with the step count and the date; light only; a step never split across pages', () => {
+    const html = howtoHtml([guide([step('a'), step('b')])], new Map(), { date: '6 November 2026' });
+    expect(html).toContain('<p class="meta">2 steps · 6 November 2026</p>');
+    expect(PRINT_CSS).toContain('color-scheme: light');
+    expect(PRINT_CSS).not.toContain('prefers-color-scheme');
+    expect(PRINT_CSS).toMatch(/li \{[^}]*break-inside: avoid/);
+    expect(PRINT_CSS).toMatch(/max-height: 105mm/);
+  });
+  it('the header text is escaped', () => {
+    expect(howtoHtml([guide([step('a')])], new Map(), { date: '<b>x</b>' })).toContain('1 step · &lt;b&gt;x&lt;/b&gt;');
   });
   it('the outline stays inside the image', () => {
     expect(highlightRect({ x: 0, y: 0, w: 10, h: 10 }, 100, 100)).toEqual({ x: 0, y: 0, w: 14, h: 14 });
     expect(highlightRect({ x: 90, y: 95, w: 20, h: 20 }, 100, 100)).toEqual({ x: 86, y: 91, w: 14, h: 9 });
+  });
+});
+
+describe('migration: 0.5.0 close-ups (D196)', () => {
+  it('records without a version are old close-ups; new ones are whole pages', () => {
+    expect(SHOT_VERSION).toBe(2);
+    expect(isOldShot({})).toBe(true);
+    expect(isOldShot({ v: 2 })).toBe(false);
+  });
+});
+
+describe('the preview page address (D195)', () => {
+  it('carries only ids, removals and the file name, and reads back defensively', () => {
+    const path = previewPath({ ids: ['g1', 'g2'], drop: ['g1|s1|note'], name: 'My guide' });
+    expect(path.startsWith('howto.html?')).toBe(true);
+    expect(parsePreviewQuery(path.slice(path.indexOf('?')))).toEqual({ ids: ['g1', 'g2'], drop: ['g1|s1|note'], name: 'My guide' });
+    expect(parsePreviewQuery('?g=a,../x,b&drop=notjson')).toEqual({ ids: ['a', 'b'], drop: [], name: 'guides' });
+    expect(parsePreviewQuery('?drop=[1,"k"]').drop).toEqual(['k']);
   });
 });
 

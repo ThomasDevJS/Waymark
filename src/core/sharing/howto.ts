@@ -155,25 +155,44 @@ export function howtoMarkdown(guides: Guide[]): string {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
-const PRINT_CSS = `
-:root { color-scheme: light dark; }
-body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; color: #1b1f27; background: #fff; }
-h1 { font-size: 1.6rem; margin: 0 0 .5rem; }
+/** Rich text of a step title or note for the preview page (D195): addresses removed, links as text. */
+export const howtoInline = (src: string, origin: string): InlineToken[] => clean(parseInline(stripUrls(src, origin)));
+/** A plain-text field (guide title, description) for the preview page. */
+export const howtoPlain = (src: string, origin: string): string => stripUrls(src, origin);
+
+/** Steps in the how-to, for its header. */
+export const stepCount = (guides: Pick<Guide, 'steps'>[]) => guides.reduce((n, g) => n + g.steps.length, 0);
+export const stepsLabel = (n: number) => (n === 1 ? '1 step' : `${n} steps`);
+
+/**
+ * Print layout (D195): light only, a header with the date and the number of steps, a step never
+ * split across pages, and screenshots at most about 105 mm tall so two steps fit on a page.
+ */
+export const PRINT_CSS = `
+:root { color-scheme: light; }
+body { font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; color: #1b1f27; background: #fff; }
+h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
 h2 { font-size: 1.25rem; margin: 2rem 0 .5rem; }
+.meta { color: #4a5160; font-size: .9rem; margin: 0 0 1rem; }
 .desc { color: #4a5160; margin: 0 0 .5rem; }
 .start { color: #4a5160; font-size: .9rem; margin: 0 0 1rem; }
 ol { padding-left: 1.6rem; }
-li { margin: 0 0 .8rem; padding-left: .2rem; break-inside: avoid; }
+li { margin: 0 0 1.4rem; padding-left: .2rem; break-inside: avoid; page-break-inside: avoid; }
 li .title { font-weight: 600; }
 li .note { margin: .2rem 0 0; color: #4a5160; }
 li .shot { margin: .5rem 0 0; }
-li .shot img { display: block; max-width: 100%; height: auto; border: 1px solid #d5d9e0; border-radius: 6px; }
+li .shot img { display: block; width: auto; height: auto; max-width: 100%; border: 1px solid #d5d9e0; border-radius: 6px; }
 footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
-@media (prefers-color-scheme: dark) { @media screen { body { background: #15171c; color: #e5e7ec; } .desc, .start, li .note { color: #a9b0bd; } } }
-@media print { body { margin: 0; max-width: none; } footer { display: none; } }
+@page { margin: 14mm; }
+@media print {
+  body { margin: 0; max-width: none; padding: 0; font-size: 11pt; }
+  h1, h2 { break-after: avoid; page-break-after: avoid; }
+  li .shot img { max-height: 105mm; }
+  footer { display: none; }
+}
 `;
 
-/** A step's screenshot for the printable page, already marked (and blurred) by the export (D188). */
+/** A step's screenshot for the printable page, already drawn (highlight, blur, zoom) by the export (D193). */
 export interface HowtoImage {
   /** A `data:image/webp` or `data:image/png` URL; anything else is left out. */
   src: string;
@@ -189,22 +208,29 @@ function imageHtml(img: HowtoImage | undefined, n: number): string {
   if (!img || !DATA_IMAGE.test(img.src)) return '';
   const w = Math.max(1, Math.min(4000, Math.round(img.w)));
   const h = Math.max(1, Math.min(4000, Math.round(img.h)));
-  return `<figure class="shot"><img src="${img.src}" width="${w}" height="${h}" alt="Screenshot of step ${n}, with the element to use outlined"></figure>`;
+  return `<figure class="shot"><img src="${img.src}" width="${w}" height="${h}" alt="Screenshot of step ${n}, with the element to use highlighted"></figure>`;
+}
+
+export interface HowtoHtmlOptions {
+  /** The date shown under the title (already formatted); none: no date. */
+  date?: string;
 }
 
 /**
  * A standalone, printable HTML page: no scripts, no remote resources, every string escaped.
  * Screenshots, if any, are embedded as data URLs (keyed by howtoImageKey).
  */
-export function howtoHtml(guides: Guide[], images: ReadonlyMap<string, HowtoImage> = new Map()): string {
+export function howtoHtml(guides: Guide[], images: ReadonlyMap<string, HowtoImage> = new Map(), opts: HowtoHtmlOptions = {}): string {
   const many = guides.length > 1;
   const first = guides[0];
   const docTitle = many || !first ? 'Guides' : stripUrls(first.title, startOrigin(first));
+  const meta = [stepsLabel(stepCount(guides)), ...(opts.date ? [opts.date] : [])].join(' · ');
   const body: string[] = [];
   for (const g of guides) {
     const origin = startOrigin(g);
     const h = many ? 'h2' : 'h1';
     body.push(`<section>`, `<${h}>${plainHtml(g.title, origin)}</${h}>`);
+    if (!many) body.push(`<p class="meta">${escapeHtml(meta)}</p>`);
     if (g.description) body.push(`<p class="desc">${plainHtml(g.description, origin)}</p>`);
     if (origin) body.push(`<p class="start">Start at ${escapeHtml(origin)}</p>`);
     body.push('<ol>');
@@ -227,7 +253,7 @@ export function howtoHtml(guides: Guide[], images: ReadonlyMap<string, HowtoImag
     `<style>${PRINT_CSS}</style>`,
     '</head>',
     '<body>',
-    many ? '<h1>Guides</h1>' : '',
+    many ? `<h1>Guides</h1>\n<p class="meta">${escapeHtml(meta)}</p>` : '',
     ...body,
     '<footer>Made with Waymark</footer>',
     '</body>',

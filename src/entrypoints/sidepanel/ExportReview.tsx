@@ -6,63 +6,20 @@ import { signal } from '@preact/signals';
 import type { Guide } from '../../core/model/schema';
 import { makePack } from '../../core/sharing/pack';
 import { applyRemovals, packStrings, type StringKind } from '../../core/sharing/review';
-import { howtoHtml, howtoImageKey, howtoMarkdown, howtoStrings, looksLikeData, type HowtoImage } from '../../core/sharing/howto';
+import { howtoHtml, howtoMarkdown, howtoStrings, looksLikeData } from '../../core/sharing/howto';
+import { downloadText, safeFileName } from '../../core/sharing/file';
 import { Icon } from '../../ui/Icon';
-import { useEffect } from 'preact/hooks';
-import { shotsOf, type ShotRecord } from '../../core/shots/store';
-import { blobToDataUrl, renderShot } from '../../core/shots/render';
-import { shotFits, stepHashes } from '../../core/shots/lifecycle';
-import { send } from '../../core/messaging/client';
+import { previewPath } from '../howto/data';
 
 const removed = signal<Set<string>>(new Set());
 const fileName = signal('guides');
 /** What to export (D104): a pack to import elsewhere, or a how-to to read or print. */
 export type ExportFormat = 'pack' | 'markdown' | 'html';
 const format = signal<ExportFormat>('pack');
-/** Screenshots of the selected guides' steps (printable how-to only, D188), and their previews. */
-const shotList = signal<ShotRecord[]>([]);
-const previews = signal<Record<string, string>>({});
-/** Blur everything but the highlighted element: on unless the author turns it off (D188). */
-const blurShots = signal(true);
-const busy = signal(false);
-
-/** The review key of a step's screenshot: dropped like any removed row (`removed`). */
-export const shotRowKey = (guideId: string, stepId: string) => `${guideId}|${stepId}|screenshot`;
-
-/**
- * Screenshots that go into the printable how-to: of steps still in the guide that still point at
- * the element the image shows (D185), and not left out by the author.
- */
-export function keptShots(guides: Guide[], shots: ShotRecord[], drop: Set<string>): ShotRecord[] {
-  const steps = new Map(guides.map((g) => [g.id, stepHashes(g)]));
-  return shots.filter((x) => shotFits(x, steps.get(x.guideId)) && !drop.has(shotRowKey(x.guideId, x.stepId)));
-}
-
-/** A guide's screenshots, if screenshots are on for it (an image left from a guide turned off is not offered). */
-async function guideShots(g: Guide): Promise<ShotRecord[]> {
-  const status = await send('shots.get', { guideId: g.id });
-  if (!status.on || !status.stepIds.length) return [];
-  const ids = new Set(status.stepIds);
-  return (await shotsOf(g.id)).filter((x) => ids.has(x.stepId));
-}
-
-/** The printable how-to with its screenshots, marked (and blurred) now. */
-export async function exportHowtoHtml(guides: Guide[], drop: Set<string>, shots: ShotRecord[], blur: boolean): Promise<string> {
-  const images = new Map<string, HowtoImage>();
-  for (const x of keptShots(guides, shots, drop)) {
-    try {
-      images.set(howtoImageKey(x.guideId, x.stepId), { src: await blobToDataUrl(await renderShot(x, { blur })), w: x.w, h: x.h });
-    } catch {
-      // an image that can't be drawn is left out; the step stays as text
-    }
-  }
-  return howtoHtml(applyRemovals(guides, drop), images);
-}
-
 const FORMATS: { value: ExportFormat; label: string; hint: string; ext: string; type: string }[] = [
   { value: 'pack', label: 'Waymark guide file', hint: 'Someone imports it into their Waymark, or your team publishes it as a team library.', ext: '.waymark.json', type: 'application/json' },
   { value: 'markdown', label: 'How-to text (Markdown)', hint: 'Numbered steps to paste into a wiki or document.', ext: '.md', type: 'text/markdown' },
-  { value: 'html', label: 'Printable how-to', hint: 'A page to print or save as PDF.', ext: '.html', type: 'text/html' },
+  { value: 'html', label: 'Printable how-to', hint: 'A preview with any screenshots, then Save as PDF or Download HTML.', ext: '.html', type: 'text/html' },
 ];
 
 const KIND: Record<StringKind, string> = {
@@ -94,65 +51,29 @@ export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat):
   return f === 'markdown' ? howtoMarkdown(copy) : howtoHtml(copy);
 }
 
-export const safeFileName = (name: string) => name.replace(/[^\w.-]+/g, '-') || 'guides';
+export { safeFileName };
 
 function download(name: string, text: string, f: ExportFormat) {
   const spec = FORMATS.find((x) => x.value === f)!;
-  const blob = new Blob([text], { type: `${spec.type};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeFileName(name)}${spec.ext}`;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  downloadText(`${safeFileName(name)}${spec.ext}`, text, spec.type);
+}
+
+/**
+ * Opens the how-to preview (D195) in a tab: the reviewed guides and their screenshots, where the
+ * author keeps, leaves out, blurs or zooms each one and then saves the file. Only ids, the
+ * removals and the file name go in its address.
+ */
+export function openPreview(guides: Guide[], drop: Set<string>, name: string): void {
+  const keys = new Set(howtoStrings(guides).map((x) => x.key));
+  const path = previewPath({ ids: guides.map((g) => g.id), drop: [...drop].filter((k) => keys.has(k)), name });
+  void chrome.tabs.create({ url: chrome.runtime.getURL(path) });
 }
 
 export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () => void }) {
   const f = format.value;
-  const guideIds = guides.map((g) => g.id).join(',');
-  // The screenshots are read only for the printable how-to (the extension's own IndexedDB).
-  useEffect(() => {
-    let live = true;
-    if (f !== 'html') {
-      shotList.value = [];
-      return;
-    }
-    void Promise.all(guides.map((g) => guideShots(g).catch(() => [] as ShotRecord[]))).then((all) => {
-      if (live) shotList.value = keptShots(guides, all.flat(), new Set());
-    });
-    return () => {
-      live = false;
-    };
-  }, [f, guideIds]);
-  // Previews show exactly what the file will have: marked, and blurred when blur is on.
-  useEffect(() => {
-    let live = true;
-    const urls: string[] = [];
-    void (async () => {
-      const next: Record<string, string> = {};
-      for (const x of shotList.value) {
-        try {
-          const url = URL.createObjectURL(await renderShot(x, { blur: blurShots.value }));
-          urls.push(url);
-          next[shotRowKey(x.guideId, x.stepId)] = url;
-        } catch {
-          // no preview: the row still shows, and the image is left out of the file
-        }
-      }
-      if (live) previews.value = next;
-      else urls.forEach((u) => URL.revokeObjectURL(u));
-    })();
-    return () => {
-      live = false;
-      urls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [shotList.value, blurShots.value]);
-  const shotsShown = f === 'html' ? shotList.value : [];
   const spec = FORMATS.find((x) => x.value === f)!;
   const strings = f === 'pack' ? packStrings(guides) : howtoStrings(guides);
-  const keys = new Set([...strings.map((x) => x.key), ...shotsShown.map((x) => shotRowKey(x.guideId, x.stepId))]);
+  const keys = new Set(strings.map((x) => x.key));
   const removedCount = [...removed.value].filter((k) => keys.has(k)).length;
   const flagged = strings.filter((x) => !removed.value.has(x.key) && looksLikeData(x)).length;
   const row = (s: (typeof strings)[number]) => {
@@ -196,46 +117,14 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
   const finish = () => {
     removed.value = new Set();
     format.value = 'pack';
-    blurShots.value = true;
-    shotList.value = [];
     onDone();
-  };
-  const stepIndex = (g: Guide, stepId: string) => g.steps.findIndex((x) => x.id === stepId);
-  const shotRow = (g: Guide, x: ShotRecord) => {
-    const key = shotRowKey(x.guideId, x.stepId);
-    const gone = removed.value.has(key);
-    const n = stepIndex(g, x.stepId) + 1;
-    return (
-      <li key={key} class={`list-item shot-row${gone ? ' removed' : ''}`} data-testid={`shot-${n}`}>
-        {previews.value[key] ? <img class="shot-thumb" src={previews.value[key]} alt={`Screenshot of step ${n}`} /> : <span class="shot-thumb" />}
-        <div class="grow">
-          <div class="xsmall muted">
-            Step {n} · Screenshot{gone && ' · left out'}
-          </div>
-        </div>
-        <button
-          type="button"
-          class="ghost sm"
-          data-testid={`remove-shot-${n}`}
-          aria-label={`${gone ? 'Keep' : 'Leave out'} the screenshot of step ${n}`}
-          onClick={() => {
-            const next = new Set(removed.value);
-            if (gone) next.delete(key);
-            else next.add(key);
-            removed.value = next;
-          }}
-        >
-          {gone ? 'Keep' : 'Leave out'}
-        </button>
-      </li>
-    );
   };
   return (
     <section class="stack export-review" aria-labelledby="export-title" data-testid="export-review">
       <div class="stack-sm">
         <h2 id="export-title">Review before export</h2>
         <p class="small muted">
-          This is everything the {f === 'pack' ? 'guide file' : 'how-to'} will contain, word for word{shotsShown.length ? ', and every screenshot' : ''}. Remove anything private, such as customer names, amounts or internal codes. To change a title, edit the guide.
+          This is everything the {f === 'pack' ? 'guide file' : 'how-to'} will contain, word for word. Remove anything private, such as customer names, amounts or internal codes. To change a title, edit the guide.
         </p>
       </div>
       <fieldset class="formats" data-testid="export-format">
@@ -258,18 +147,13 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
           </span>
         </p>
       )}
-      {shotsShown.length > 0 && (
-        <label class="check small">
-          <input type="checkbox" role="switch" class="switch" data-testid="export-blur" checked={blurShots.value} onChange={(e) => (blurShots.value = (e.target as HTMLInputElement).checked)} />
-          <span>
-            Blur everything except the highlighted element
-            <span class="hint block">On: names, amounts and other text around the element can’t be read in the file. Check each screenshot below either way.</span>
-          </span>
-        </label>
+      {f === 'html' && (
+        <p class="small muted" data-testid="export-preview-hint">
+          Next, a preview shows the how-to as it will be saved, with any step screenshots: keep, leave out, blur or zoom each one, then save it as a PDF or download it.
+        </p>
       )}
       {guides.map((g) => {
         const own = strings.filter((s) => s.guideId === g.id);
-        const ownShots = shotsShown.filter((x) => x.guideId === g.id).sort((a, b) => stepIndex(g, a.stepId) - stepIndex(g, b.stepId));
         const words = own.filter((s) => !TECHNICAL.has(s.kind));
         const tech = own.filter((s) => TECHNICAL.has(s.kind));
         return (
@@ -279,12 +163,6 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
               {g.title}
             </h3>
             <ul class="list divided review-list">{words.map(row)}</ul>
-            {ownShots.length > 0 && (
-              <div class="stack-sm" data-testid={`export-shots-${g.id}`}>
-                <h4 class="small">Screenshots ({ownShots.length})</h4>
-                <ul class="list divided review-list">{ownShots.map((x) => shotRow(g, x))}</ul>
-              </div>
-            )}
             {tech.length > 0 && (
               <details class="technical" data-testid={`export-technical-${g.id}`}>
                 <summary class="small">
@@ -302,34 +180,38 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
           <span class="label">File name</span>
           <input value={fileName.value} aria-describedby="export-file-hint" onInput={(e) => (fileName.value = (e.target as HTMLInputElement).value)} />
           <span class="hint" id="export-file-hint">
-            Saved as {safeFileName(fileName.value) + spec.ext}
+            {f === 'html' ? 'Saved from the preview as' : 'Saved as'} {safeFileName(fileName.value) + spec.ext}
             {removedCount ? ` · ${removedCount} ${removedCount === 1 ? 'item' : 'items'} removed` : ''}
           </span>
         </label>
         <div class="row">
-          <button
-            type="button"
-            class="primary"
-            data-testid={f === 'pack' ? 'download-pack' : 'download-howto'}
-            disabled={busy.value}
-            onClick={() => {
-              if (f === 'html' && shotsShown.length) {
-                busy.value = true;
-                void exportHowtoHtml(guides, removed.value, shotsShown, blurShots.value)
-                  .then((html) => {
-                    download(fileName.value, html, f);
-                    finish();
-                  })
-                  .finally(() => (busy.value = false));
-                return;
-              }
-              download(fileName.value, exportText(guides, removed.value, f), f);
-              finish();
-            }}
-          >
-            <Icon name="download" />
-            {f === 'pack' ? 'Download guide file' : 'Download how-to'}
-          </button>
+          {f === 'html' ? (
+            <button
+              type="button"
+              class="primary"
+              data-testid="open-preview"
+              onClick={() => {
+                openPreview(guides, removed.value, fileName.value);
+                finish();
+              }}
+            >
+              <Icon name="book" />
+              Preview how-to
+            </button>
+          ) : (
+            <button
+              type="button"
+              class="primary"
+              data-testid={f === 'pack' ? 'download-pack' : 'download-howto'}
+              onClick={() => {
+                download(fileName.value, exportText(guides, removed.value, f), f);
+                finish();
+              }}
+            >
+              <Icon name="download" />
+              {f === 'pack' ? 'Download guide file' : 'Download how-to'}
+            </button>
+          )}
           <button type="button" class="ghost" onClick={finish}>
             Cancel
           </button>

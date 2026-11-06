@@ -168,7 +168,8 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     testMark('tested', 'found');
     const out: TestResult = { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: strong.length <= 1 };
     // For the step's screenshot (D187): the service worker measures this element at capture time.
-    if (wantShot && isTop) rememberShotTarget(step.id, target);
+    // In frames too (D191): the service worker places it through its frames.
+    if (wantShot) rememberShotTarget(step.id, target);
     return out;
   }
 

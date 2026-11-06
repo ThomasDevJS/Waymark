@@ -66,7 +66,7 @@ export interface TestResult {
   fragile: boolean;
   reason?: string;
   /** In a guide with screenshots on: what happened to this step's screenshot (D187). */
-  shot?: ShotOutcome | 'frame';
+  shot?: ShotOutcome;
 }
 
 export const editorHandlers: Handlers = {
@@ -116,11 +116,8 @@ export const editorHandlers: Handlers = {
       // The page's answer is untrusted: only these fields go back to the panel.
       const out: TestResult = { found: !!r.found, score: Number(r.score) || 0, margin: Number(r.margin) || 0, matched: Array.isArray(r.matched) ? r.matched.filter((x) => typeof x === 'string').slice(0, 30) : [], fragile: !!r.fragile, ...(typeof r.reason === 'string' ? { reason: r.reason.slice(0, 500) } : {}) };
       if (capture && out.found) {
-        // Only the top page can be placed in the tab's picture (D181).
-        out.shot =
-          frameId !== 0
-            ? 'frame'
-            : await queueShot({ tabId, origin: new URL(url).origin, guideId: guideId!, step, page: url, stillWanted: () => shotsOn(guideId!) });
+        // In a frame too: the element is placed through its frames (D191).
+        out.shot = await queueShot({ tabId, origin: new URL(url).origin, guideId: guideId!, step, frameId, page: url, stillWanted: () => shotsOn(guideId!) });
       }
       return out;
     }

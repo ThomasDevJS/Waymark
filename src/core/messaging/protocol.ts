@@ -272,6 +272,8 @@ export interface ResponseMap {
 export interface ShotsStatus {
   on: boolean;
   stepIds: string[];
+  /** Steps whose image is a 0.5.0 close-up rather than the whole page (D196). */
+  old: string[];
 }
 
 export interface DebugStatus {
@@ -392,7 +394,7 @@ export type ContentPush =
   | { type: 'test.step'; payload: { step: Step; shot?: boolean } }
   // step screenshots (D183): hide Waymark's UI and field text for a capture, then show it again;
   // the hint when Chrome refused one (D186). No image or setting ever goes to a page.
-  | { type: 'shot.hide'; payload: { stepId: string } }
+  | { type: 'shot.hide'; payload: { stepId?: string } }
   | { type: 'shot.show' }
   | { type: 'shot.hint' }
   | { type: 'pick.start' }
