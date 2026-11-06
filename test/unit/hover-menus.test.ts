@@ -77,6 +77,18 @@ describe('isReveal (D204)', () => {
     expect(isReveal(rec('class', 'menu d-none'), el({ class: 'menu' }))).toBe(true);
     expect(isReveal(rec('class', 'tick-1'), el({ class: 'tick-2' }))).toBe(false);
     expect(isReveal(rec('class', 'menu is-open'), el({ class: 'menu' }))).toBe(false);
+    expect(isReveal(rec('class', 'menu'), el({ class: 'menu menu--open' }))).toBe(true);
+    expect(isReveal(rec('class', 'menu d-none'), el({ class: 'menu' }))).toBe(true);
+  });
+
+  it('review fix: class words match whole, not inside other words', () => {
+    expect(isReveal(rec('class', 'a'), el({ class: 'a invisible' }))).toBe(false);
+    expect(isReveal(rec('class', 'a'), el({ class: 'a focus-visible' }))).toBe(false);
+    expect(isReveal(rec('class', 'a'), el({ class: 'a text-center' }))).toBe(false);
+    expect(isReveal(rec('class', 'a'), el({ class: 'a inactive' }))).toBe(false);
+    expect(isReveal(rec('class', 'a shadow-none'), el({ class: 'a' }))).toBe(false);
+    // a carousel moving "active" along every few seconds restyles itself; it reveals nothing
+    expect(isReveal(rec('class', 'slide'), el({ class: 'slide active' }))).toBe(false);
   });
 });
 
@@ -86,7 +98,7 @@ describe('createHoverTracker (D204)', () => {
     for (let n: Element | null = e; n; n = n.parentElement) p.push(n);
     return [...p, document];
   };
-  const added = (n: Element) => [{ type: 'childList', addedNodes: [n] as unknown as NodeList, target: n.parentNode! } as unknown as MutationRecord];
+  const added = (n: Element) => [{ type: 'childList', addedNodes: [n] as unknown as NodeList, removedNodes: [] as unknown as NodeList, target: n.parentNode! } as unknown as MutationRecord];
   const setup = () => {
     const beta = Object.assign(document.createElement('button'), { textContent: 'Beta' });
     const menu = document.createElement('div');
@@ -110,6 +122,26 @@ describe('createHoverTracker (D204)', () => {
     const t = createHoverTracker();
     t.mutated(added(menu), 10_000);
     t.over(pathOf(beta), 10_012); // Chrome's boundary event once the inserted content moved Beta under the pointer
+    t.over(pathOf(item), 10_300);
+    expect(t.triggerFor(item, 10_400, 0)).toBeNull();
+  });
+
+  it('review fix: a pointerover right after a scroll is the page moving, not a trigger', () => {
+    const { beta, menu, item } = setup();
+    const t = createHoverTracker();
+    t.scrolled(9_900);
+    t.over(pathOf(beta), 9_950);
+    t.mutated(added(menu), 10_000);
+    t.over(pathOf(item), 10_300);
+    expect(t.triggerFor(item, 10_400, 0)).toBeNull();
+  });
+
+  it('review fix: a record that also removes elements is a re-render, not a reveal', () => {
+    const { beta, menu, item } = setup();
+    const t = createHoverTracker();
+    t.over(pathOf(beta), 10_000);
+    const old = document.createElement('div');
+    t.mutated([{ type: 'childList', addedNodes: [menu] as unknown as NodeList, removedNodes: [old] as unknown as NodeList, target: document.body } as unknown as MutationRecord], 10_000);
     t.over(pathOf(item), 10_300);
     expect(t.triggerFor(item, 10_400, 0)).toBeNull();
   });

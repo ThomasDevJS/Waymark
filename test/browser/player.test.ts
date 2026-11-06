@@ -162,6 +162,29 @@ describe('hover steps (D204)', () => {
     expect(advanced).toBe(1);
   });
 
+  it('review fix: focus given back to the target by a script (not keyboard focus) does not advance', async () => {
+    const b = q('tb-import');
+    await userEvent.click(q('tb-export'));
+    watch('hover', [b]);
+    b.focus(); // a menu library returning focus to its trigger after the previous step
+    await new Promise((r) => setTimeout(r, 20));
+    expect(advanced).toBe(0);
+  });
+
+  it('review fix: Next is offered when the trigger cannot take keyboard focus', () => {
+    const handlers = { next() {}, back() {}, skip() {}, exit() {}, retry() {}, report() {}, goBack() {}, mute() {} };
+    const div = document.createElement('div');
+    div.textContent = 'Reports';
+    document.body.append(div);
+    const ui = new PlayerUI(handlers);
+    const view = (step: Step): RunView => ({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Demo', stepIndex: 0, total: 2, step, stepToken: 't' });
+    ui.showStep(view(stepFor('hover', div)), div);
+    expect(overlayHost()!.shadowRoot!.querySelector('[data-action="next"]')).not.toBeNull();
+    ui.showStep(view(stepFor('hover', q('tb-import'))), q('tb-import'));
+    expect(overlayHost()!.shadowRoot!.querySelector('[data-action="next"]')).toBeNull();
+    div.remove();
+  });
+
   it('advance at once when the pointer already rests on the target as the step is drawn', async () => {
     await userEvent.hover(q('tb-import'));
     watch('hover', [q('tb-import')]);

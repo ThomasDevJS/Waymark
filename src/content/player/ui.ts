@@ -332,7 +332,9 @@ export class PlayerUI {
     if (view.stepIndex > 0) buttons.append(this.button('Back', 'back', this.h.back, 'ghost', ChevronLeft));
     buttons.append(el('span', 'spacer'));
     if (step.optional) buttons.append(this.button('Skip', 'skip', this.h.skip, 'ghost'));
-    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next') {
+    // A hover step whose trigger can't take keyboard focus: Next, so keyboard users are not stuck (D204).
+    const unfocusable = step.kind === 'hover' && !(target instanceof HTMLElement && target.tabIndex >= 0);
+    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable) {
       const last = view.stepIndex === view.total - 1;
       buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
     }

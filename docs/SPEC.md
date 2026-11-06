@@ -317,7 +317,7 @@ The player draws on top of the real app without touching its styles, and the lea
 | submit | The form's `submit` event, or the page navigates away within 1.5 s of the click |
 | navigate | The URL matches the step's URL rule |
 | note | Next |
-| hover | A trusted `pointerover` or `focusin` on the target, a click on it, or the pointer or focus already there (D204) |
+| hover | A trusted `pointerover` on the target, keyboard focus (`:focus-visible`) reaching it, a click on it, or the pointer already there; Next when it can't take focus (D204) |
 
 Optional steps also show Skip. After any action, wait 300 ms before searching for the next target.
 

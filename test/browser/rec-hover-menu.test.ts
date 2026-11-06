@@ -205,18 +205,124 @@ describe('hover menus (D204)', () => {
     expect(titles()).toEqual(['click: Click **Details**', 'click: Click **Close details**']);
   });
 
-  it('a trigger that announces its popup may open it later, even right after a step', async () => {
+  /** #more gets a menu that is shown `delay` ms after the pointer comes onto it. */
+  const lateMenu = (delay: number, expandOnOpen = false) => {
     const more = q('#more');
-    more.setAttribute('aria-haspopup', 'menu');
-    more.addEventListener('mouseenter', () => setTimeout(() => q('#portal').firstElementChild?.removeAttribute('hidden'), 900), { once: true });
-    // the menu is inserted hidden at once, then shown 900 ms later
+    more.addEventListener(
+      'mouseenter',
+      () =>
+        setTimeout(() => {
+          q('#portal').firstElementChild?.removeAttribute('hidden');
+          if (expandOnOpen) more.setAttribute('aria-expanded', 'true');
+        }, delay),
+      { once: true },
+    );
     q('#portal').append(el('div', { role: 'menu', hidden: '' }, el('button', { role: 'menuitem', id: 'dup2' }, 'Rename')));
+    return more;
+  };
+
+  it('a trigger with aria-haspopup may open its menu up to 2 s later', async () => {
+    const more = lateMenu(900);
+    more.setAttribute('aria-haspopup', 'menu');
+    await userEvent.hover(more);
+    await settle(1000);
+    await userEvent.click(q('#dup2'));
+    await settle();
+    expect(titles()).toEqual(['hover: Point at **More actions**', 'click: Click **Rename**']);
+  });
+
+  it('a trigger whose aria-expanded turns true with the menu may open it up to 2 s later', async () => {
+    const more = lateMenu(900, true);
+    more.setAttribute('aria-expanded', 'false');
+    await userEvent.hover(more);
+    await settle(1000);
+    await userEvent.click(q('#dup2'));
+    await settle();
+    expect(steps().map((s) => s.kind)).toEqual(['hover', 'click']);
+  });
+
+  it('review fix: an aria-expanded that stays "true" does not stretch the window', async () => {
+    const more = lateMenu(900);
+    more.setAttribute('aria-expanded', 'true'); // an expanded nav group, always
+    await userEvent.hover(more);
+    await settle(1000);
+    await userEvent.click(q('#dup2'));
+    await settle();
+    expect(steps().map((s) => s.kind)).toEqual(['click']);
+  });
+
+  it('review fix: even with aria-haspopup, a menu shown within 1.5 s of a step is that step\'s doing', async () => {
+    const more = lateMenu(900);
+    more.setAttribute('aria-haspopup', 'menu');
     await userEvent.click(q('#settings'));
     await userEvent.hover(more);
     await settle(1000);
     await userEvent.click(q('#dup2'));
     await settle();
-    expect(titles()).toEqual(['click: Click **Settings**', 'hover: Point at **More actions**', 'click: Click **Rename**']);
+    expect(titles()).toEqual(['click: Click **Settings**', 'click: Click **Rename**']);
+  });
+
+  it('review fix: a polled table replacing its rows is not a menu', async () => {
+    const tbody = q('#r1').parentElement!;
+    await userEvent.hover(q('#settings'));
+    await settle(100);
+    tbody.replaceChildren(el('tr', {}, el('td', {}, el('a', { href: '#t3', id: 'truck3' }, 'Truck 3'))));
+    await settle(50);
+    await userEvent.click(q('#truck3'));
+    await settle();
+    expect(steps().map((s) => s.kind)).toEqual(['click']);
+  });
+
+  it('review fix: plain content the pointer rested on is not a trigger', async () => {
+    const panel = el('div', { id: 'plain-panel', hidden: '' }, el('button', { id: 'plain-item' }, 'Open file'));
+    root.append(panel);
+    q('#start').addEventListener('mouseenter', () => panel.removeAttribute('hidden'));
+    await userEvent.hover(q('#start'));
+    await settle();
+    await userEvent.click(q('#plain-item'));
+    await settle();
+    expect(steps().map((s) => s.kind)).toEqual(['click']);
+  });
+
+  it('review fix: a submenu records each trigger, outermost first', async () => {
+    const sub = el('div', { id: 'fuel-sub', style: 'display: none' }, el('a', { href: '#log', id: 'fuel-log' }, 'Fuel log'));
+    const subTrigger = el('button', { id: 'fuel-more' }, 'Fuel reports');
+    const wrap = el('div', {}, subTrigger, sub);
+    q('#reports-flyout').append(wrap);
+    wrap.addEventListener('mouseenter', () => (sub.style.display = 'block'));
+    await userEvent.hover(q('#reports'));
+    await settle();
+    await userEvent.hover(subTrigger);
+    await settle();
+    await userEvent.click(q('#fuel-log'));
+    await settle();
+    expect(titles()).toEqual(['hover: Point at **Reports**', 'hover: Point at **Fuel reports**', 'click: Click **Fuel log**']);
+  });
+
+  it('review fix: no hover step before a click that is not recorded (nothing to find it by)', async () => {
+    const blank = el('span', { style: 'cursor:pointer;display:inline-block;width:20px;height:20px' });
+    q('#reports-flyout').append(blank);
+    await userEvent.hover(q('#reports'));
+    await settle();
+    await userEvent.click(blank);
+    await settle();
+    expect(steps()).toEqual([]);
+  });
+
+  it('review fix: suggestions for what is being typed are not a hover menu', async () => {
+    const field = el('input', { id: 'search', 'aria-label': 'Search' }) as HTMLInputElement;
+    root.prepend(field);
+    await userEvent.click(field);
+    await userEvent.keyboard('f');
+    await settle(1100);
+    await userEvent.hover(q('#settings'));
+    await userEvent.keyboard('u');
+    await settle(450);
+    root.append(el('div', { role: 'listbox' }, el('a', { href: '#fuel-s', id: 'suggest' }, 'Fuel report')));
+    await settle(50);
+    await userEvent.click(q('#suggest'));
+    await settle();
+    expect(steps().map((s) => s.kind)).toEqual(['input', 'click']);
   });
 
   it('no hover when a step was recorded after the pointer reached the trigger', async () => {

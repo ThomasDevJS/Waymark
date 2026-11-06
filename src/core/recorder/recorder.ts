@@ -196,7 +196,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     ? new MO((records) => hover.mutated(records, now()))
     : null;
   const observe = (n: Node) =>
-    observer?.observe(n, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'hidden', 'aria-hidden', 'open', 'data-state'] });
+    observer?.observe(n, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'hidden', 'aria-hidden', 'open', 'data-state', 'aria-expanded'] });
   observe(doc.documentElement ?? doc);
   const onOver = (e: Event) => {
     if (!trusted(e)) return;
@@ -204,16 +204,30 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     watchRoots(path);
     hover.over(path, now());
   };
+  const onScroll = () => hover.scrolled(now());
+  // Typing counts as activity: suggestions that appear for it are not a hover menu.
+  let typedAt = 0;
+  /**
+   * The "Point at" steps a click on `el` needs first (D204), outermost first: a submenu's trigger
+   * was itself revealed by pointing at the menu's trigger (at most 3 levels).
+   */
   const maybeHover = (el: Element) => {
-    const h = hover.triggerFor(el, now(), last?.time ?? 0);
-    if (!h) return;
-    const hfp = fpOf(h);
-    if (!hasStrongSignal(hfp)) {
-      dbg('hover.skipped', () => ({ why: 'the menu opened on hover, but its trigger has nothing to find it by again (D47)', ...fpFacts(hfp) }));
-      return;
+    const at = now();
+    const since = Math.max(last?.time ?? 0, typedAt);
+    const chain: Element[] = [];
+    for (let h = hover.triggerFor(el, at, since); h && chain.length < 3 && !chain.includes(h); h = hover.triggerFor(h, at, since)) chain.unshift(h);
+    for (const h of chain) {
+      const hfp = fpOf(h);
+      if (!hasStrongSignal(hfp)) {
+        dbg('hover.skipped', () => ({ why: 'the menu opened on hover, but its trigger has nothing to find it by again (D47)', ...fpFacts(hfp) }));
+        return;
+      }
     }
-    dbg('hover', () => ({ why: 'the clicked item appeared after the pointer rested on another element (D204)', ...fpFacts(hfp) }));
-    add('hover', h, hfp, stepTitle('hover', { name: nameFor(h, hfp) }, lang));
+    for (const h of chain) {
+      const hfp = fpOf(h);
+      dbg('hover', () => ({ why: 'the clicked item appeared after the pointer rested on another element (D204)', ...fpFacts(hfp) }));
+      add('hover', h, hfp, stepTitle('hover', { name: nameFor(h, hfp) }, lang));
+    }
   };
 
   const onPointerDown = (e: Event) => {
@@ -317,7 +331,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       add('select', el, fp, chooseOptionTitle(fp.text ?? fp.accessibleName ?? 'the option'));
       return;
     }
-    maybeHover(el);
+    // Only before a click that is recorded: a hover step alone would point at a menu for nothing.
+    if (hasStrongSignal(fp)) maybeHover(el);
     add('click', el, fp, stepTitle('click', { name: hint ?? nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
   };
 
@@ -331,6 +346,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     // (`change` does not). See D35.
     if (isNativeSelect(el)) return recordSelect(el);
     if (!isTextField(el)) return; // checkboxes and radios are handled by click/change
+    typedAt = now();
     if (last && last.kind === 'input' && last.el === el) {
       if (fieldClick?.el === el) fieldClick = null;
       return; // many input events, one step
@@ -431,6 +447,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     ['keydown', onKeyDown],
     ['submit', onSubmit],
     ['pointerover', onOver],
+    ['scroll', onScroll],
+    ['wheel', onScroll],
   ];
   for (const [type, fn] of listeners) doc.addEventListener(type, fn, { capture: true });
 
