@@ -14,7 +14,7 @@
 - Never put user strings in `innerHTML` (ESLint enforces it). Never store typed field values.
 - Test-only behavior goes behind `__WAYMARK_TEST__` (true only in `pnpm build:test` and Vitest). Test markers are `data-waymark-test-*` attributes on `<html>`.
 - Commits: small and logical, clear messages, on branch `waymark-v1`. No PRs unless asked (a parent session opens and merges them).
-- **Push only green commits**: `pnpm check` must pass locally, plus `pnpm test:e2e:xvfb` when the change touches anything e2e covers. CI on pull requests and `main` runs only `check`; the e2e suite runs on GitHub only by hand and in the Release workflow (D161), so the local e2e run is the e2e gate for every change. Every failed CI run emails the repo owner. Keep work-in-progress commits local until they are green.
+- **Push only green commits**: `pnpm check` must pass locally, plus `pnpm test:e2e:xvfb` when the change touches anything e2e covers. CI on pull requests and `main` runs `check` and both e2e shards (D162); the Release workflow runs e2e again on the release commit (D161). Every failed CI run emails the repo owner. Keep work-in-progress commits local until they are green.
 - Every milestone gets an independent review (a subagent that does not see your reasoning); fix findings with regression tests that fail on the old code.
 
 ## Testing

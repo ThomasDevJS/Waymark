@@ -130,7 +130,7 @@ Notes:
 - Edge Add-ons, a free separate listing, can reuse this text.
 
 ## Hosting the privacy policy
-The Chrome Web Store needs `docs/PRIVACY.md` at a public URL. GitHub Pages isn't available for this repository, which is private on the GitHub Free plan. Free alternatives:
+The Chrome Web Store needs `docs/PRIVACY.md` at a public URL. The repository is public since 6 November 2026, so **GitHub Pages** on this repository can serve it for free (Settings → Pages; the owner turns it on). Other free options:
 - **A separate public repository with GitHub Pages** (for example `waymark-privacy`) holding only this page. Free on the Free plan, stays on GitHub, and is easy to update.
 - **A public GitHub Gist** with the policy. Free, renders Markdown, and keeps a stable URL across edits. Plainer, but needs no setup.
 - **Cloudflare Pages** or **Netlify** (free tiers): deploy a single static page; both can build from a private repository.
