@@ -9,13 +9,14 @@ import { send } from '../../core/messaging/client';
 import type { Guide } from '../../core/model/schema';
 import type { GuideIndexEntry } from '../../core/storage/guides';
 import { guideMatchesUrl } from '../../core/discovery/match';
-import { buildSearch, searchGuides } from '../../core/discovery/search';
+import { buildSearch, searchGuides, searchPage } from '../../core/discovery/search';
 import type { Choice, Conflict } from '../../core/sharing/pack';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
 import { useFlipList } from '../../ui/useMotion';
 import { stepChoices, tagChips, withTags } from '../../core/discovery/tags';
+import { fold, pageTagChips, showsPageSearch } from '../../core/discovery/page-search';
 import { showToast, ToastSlot, toast } from './Toast';
 import { UNDO_MS } from '../../core/storage/trash';
 import { HelpTip } from './Help';
@@ -37,6 +38,11 @@ const completed = signal<Record<string, string>>({});
 let completedAtOpen: Set<string> | null = null;
 /** Selected tag chips (D102): a guide must carry all of them. */
 const tagFilter = signal<string[]>([]);
+/** The "For this page" filter, shown from PAGE_SEARCH_FROM guides for the page (D170). */
+const pageQuery = signal('');
+const pageTags = signal<string[]>([]);
+/** The page those filters were typed on: another page starts unfiltered. */
+let pageFilterUrl: string | null = null;
 /** The guide whose "More" actions are open. */
 const moreOpen = signal<string | null>(null);
 /** Export picks guides with checkboxes, shown only while choosing (D124). */
@@ -218,10 +224,25 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     ids.map((id) => byId.get(id)).filter((g): g is GuideIndexEntry => !!g),
     activeTags,
   );
-  // "Select all" picks the guides on screen, never ones hidden by search or tags.
-  const allShown = results.length > 0 && results.every((g) => selected.value.has(g.id));
-  const forPage = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
-  const others = results.filter((g) => !forPage.includes(g));
+  const forPageAll = tabUrl ? results.filter((g) => guideMatchesUrl(g, tabUrl)) : [];
+  const others = results.filter((g) => !forPageAll.includes(g));
+  // Many guides for this page (D170): a box and up to three chips narrow that section only, with
+  // the library's own search index and tag rule. The count is of the page's guides, not of the
+  // guides the main search left.
+  if (pageFilterUrl !== tabUrl) {
+    pageFilterUrl = tabUrl;
+    pageQuery.value = '';
+    pageTags.value = [];
+  }
+  const pageCount = tabUrl ? all.value.filter((g) => guideMatchesUrl(g, tabUrl)).length : 0;
+  const pageSearch = showsPageSearch(pageCount);
+  const pageChips = useMemo(() => (tabUrl ? pageTagChips(all.value.filter((g) => guideMatchesUrl(g, tabUrl))) : []), [all.value, tabUrl]);
+  const pageActiveTags = pageSearch ? pageTags.value.filter((t) => pageChips.some((c) => fold(c) === fold(t))) : [];
+  const pageFiltering = pageSearch && (!!pageQuery.value.trim() || pageActiveTags.length > 0);
+  const forPage = pageFiltering ? searchPage(index, forPageAll, pageQuery.value, pageActiveTags) : forPageAll;
+  // "Select all" picks the guides on screen, never ones hidden by search, tags or the page filter.
+  const onScreen = [...forPage, ...others];
+  const allShown = onScreen.length > 0 && onScreen.every((g) => selected.value.has(g.id));
   // Rows that appear (Undo, a filter) rise in (D131). They never glide: search results are
   // sorted by score, so the order changes as you type, and rows must not slide under the cursor.
   const pageFlip = useFlipList<HTMLUListElement>(forPage.map((g) => g.id), { glide: false });
@@ -529,22 +550,71 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
           )}
         </div>
       )}
-      {forPage.length > 0 && (
+      {forPageAll.length > 0 && (
         <section class="stack-sm" aria-labelledby="for-page-label">
           <h2 class="section-label" id="for-page-label" tabIndex={-1}>
             <Icon name="pin" />
-            For this page <span class="badge accent">{forPage.length}</span>
+            For this page <span class="badge accent">{forPageAll.length}</span>
           </h2>
-          <ul class="guide-list" data-testid="for-this-page" ref={pageFlip.ref}>
+          {pageSearch && (
+            <div class="stack-sm page-filter">
+              <div class="search">
+                <Icon name="search" />
+                <input
+                  type="search"
+                  data-testid="page-search"
+                  aria-label="Search the guides for this page"
+                  aria-controls="for-this-page-list"
+                  placeholder="Search the guides for this page"
+                  value={pageQuery.value}
+                  onInput={(e) => (pageQuery.value = (e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => {
+                    // Esc clears first (the box's own clear), and only then goes on to the panel.
+                    if (e.key === 'Escape' && (pageQuery.value || pageTags.value.length)) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      pageQuery.value = '';
+                      pageTags.value = [];
+                    }
+                  }}
+                />
+              </div>
+              {pageChips.length > 0 && (
+                <div class="chips" role="group" aria-label="Filter the guides for this page by tag" data-testid="page-tag-chips">
+                  <Icon name="tag" />
+                  {pageChips.map((tag) => {
+                    const on = pageActiveTags.some((t) => fold(t) === fold(tag));
+                    return (
+                      <button
+                        type="button"
+                        key={tag}
+                        class={`chip${on ? ' on' : ''}`}
+                        aria-pressed={on}
+                        data-testid={`page-tag-${tag}`}
+                        onClick={() => (pageTags.value = on ? pageActiveTags.filter((t) => fold(t) !== fold(tag)) : [...pageActiveTags, tag])}
+                      >
+                        {on && <Icon name="check" />}
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <p class={forPage.length ? 'visually-hidden' : 'small muted'} role="status" data-testid="page-search-status">
+                {!pageFiltering ? '' : forPage.length ? `${forPage.length} of ${forPageAll.length} guides for this page` : 'No guides match'}
+              </p>
+            </div>
+          )}
+          <ul class="guide-list" id="for-this-page-list" data-testid="for-this-page" ref={pageFlip.ref} hidden={!forPage.length}>
             {forPage.map((g) => item(g, pageFlip))}
           </ul>
         </section>
       )}
-      {(others.length > 0 || !forPage.length) && (
+      {(others.length > 0 || !forPageAll.length) && (
         <section class="stack-sm" aria-labelledby="all-label">
           <h2 class="section-label" id="all-label" tabIndex={-1}>
             <Icon name="library" />
-            {forPage.length ? 'Other guides' : 'All guides'}
+            {forPageAll.length ? 'Other guides' : 'All guides'}
             {others.length > 0 && <span class="badge">{others.length}</span>}
           </h2>
           {others.length ? (
@@ -585,9 +655,9 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                 type="button"
                 class="ghost sm"
                 data-testid="select-all"
-                onClick={() => (selected.value = allShown ? new Set() : new Set(results.map((g) => g.id)))}
+                onClick={() => (selected.value = allShown ? new Set() : new Set(onScreen.map((g) => g.id)))}
               >
-                {allShown ? 'Select none' : results.length === all.value.length ? 'Select all' : `Select all ${results.length} shown`}
+                {allShown ? 'Select none' : onScreen.length === all.value.length ? 'Select all' : `Select all ${onScreen.length} shown`}
               </button>
               <button
                 type="button"
