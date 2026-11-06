@@ -483,10 +483,15 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
   } catch {
     return;
   }
+  let hadFix = false;
   const moved = await enqueue(async () => {
     const run = await getRun(opener);
     if (!run || (await getRun(newId)) || !url || !newTabContinuesRun(run, url)) return false;
     const carried: Run = { ...run, cause: 'resume', rev: run.rev + 1 };
+    // No picker runs in the new tab: a pick under way ends with the move (review of D210).
+    hadFix = !!run.fix;
+    delete carried.fix;
+    delete run.fix;
     run.status = 'paused';
     run.movedTo = newId;
     run.rev += 1;
@@ -494,6 +499,7 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
     await chrome.storage.session.remove(boardKey(opener));
     return true;
   });
+  if (hadFix) await stopPicker(opener);
   if (moved) {
     dlog('run', 'run.moved', { tab: newId, o: originOf(url) }, { from: opener, url: redactUrl(url) });
     await broadcast(opener);
@@ -558,7 +564,8 @@ export async function dropRun(tabId: number): Promise<void> {
     stopSpeech('tab closed');
     dlog('run', 'run.end', { tab: tabId }, { why: 'tab closed' });
   }
-  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId)]);
+  // A closed tab's Undo toast can't be used any more: its copy of the guide goes (review of D210).
+  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId), `runFix:${tabId}`]);
 }
 
 /** chrome.commands: Next, Back and Exit shortcuts the user can change (SPEC: Accessibility). */

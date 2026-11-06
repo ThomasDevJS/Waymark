@@ -28,6 +28,13 @@ const NOT_FOUND_WHY: Record<string, string> = {
   lookalike: 'the best candidate matched nothing a look-alike seen at record time lacked (D64)',
 };
 
+/** Why Pick the right element did not start, in words (D210). */
+export const FIX_REFUSED: Record<'step' | 'guide' | 'page', string> = {
+  step: 'This step changed in the meantime. Press Retry, then try again.',
+  guide: 'Only your own guides can be fixed here. Use Duplicate in the side panel to make your own copy.',
+  page: 'Waymark can’t pick an element on this page. Reload it and try again.',
+};
+
 /** Writes text to the clipboard from a click in the page; false when the page does not allow it. */
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -46,6 +53,8 @@ export const OFF_TRACK_MS = 3000;
 export interface PlayerDeps {
   frameToken: string;
   framePath: () => string[];
+  /** Tests only: browser-mode Vitest runs inside an iframe, so it says it is the top frame. */
+  isTop?: boolean;
 }
 
 /**
@@ -73,7 +82,7 @@ function speakFallback(p: { text: string; lang: string; rate: number }, retried 
 }
 
 export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): void; onRoute(url: string): void; dispose(): void } {
-  const isTop = window === window.top;
+  const isTop = deps.isTop ?? window === window.top;
   let view: RunView | null = null;
   let stepToken: string | null = null;
   let abort: AbortController | null = null;
@@ -125,7 +134,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       dlog('play', 'fix.ask', { step: v.stepIndex + 1 });
       send('run.fix.start', { stepId: v.step.id })
         .then((r) => {
-          if (!r.ok) ui.flash('Waymark can’t pick an element on this page. Reload it and try again.', 'warn');
+          if (!r.ok) ui.flash(FIX_REFUSED[r.why ?? 'page'], 'warn');
         })
         .catch(() => undefined);
     },

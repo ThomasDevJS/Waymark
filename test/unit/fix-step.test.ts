@@ -143,6 +143,7 @@ function fakeChrome() {
     runtime: { id: 'ext', getURL: (p: string) => `chrome-extension://ext/${p}` },
     permissions: { getAll: vi.fn(async () => ({ origins: [] })) },
     windows: { getLastFocused: vi.fn(async () => ({ id: 1 })) },
+    alarms: { create: vi.fn(async () => undefined) },
   };
 }
 
@@ -191,11 +192,11 @@ describe('run.fix.start (D210)', () => {
   it('is refused for a library guide, another step, or a tab on another site', async () => {
     seed({ source: 'library' });
     let { h } = await load();
-    expect(await h['run.fix.start']!({ stepId: 's2' }, ctx())).toEqual({ ok: false });
+    expect((await h['run.fix.start']!({ stepId: 's2' }, ctx())).ok).toBe(false);
     seed();
     ({ h } = await load());
-    expect(await h['run.fix.start']!({ stepId: 's1' }, ctx())).toEqual({ ok: false });
-    expect(await h['run.fix.start']!({ stepId: 's2' }, ctx('https://evil.test/'))).toEqual({ ok: false });
+    expect((await h['run.fix.start']!({ stepId: 's1' }, ctx())).ok).toBe(false);
+    expect((await h['run.fix.start']!({ stepId: 's2' }, ctx('https://evil.test/'))).ok).toBe(false);
     expect(run().fix).toBeUndefined();
     expect(pushes.some((p) => p.msg.type === 'pick.start')).toBe(false);
   });
@@ -204,7 +205,7 @@ describe('run.fix.start (D210)', () => {
     seed();
     (local['guide:g1'] as Guide).source = 'library';
     const { h } = await load();
-    expect(await h['run.fix.start']!({ stepId: 's2' }, ctx())).toEqual({ ok: false });
+    expect(await h['run.fix.start']!({ stepId: 's2' }, ctx())).toEqual({ ok: false, why: 'guide' });
   });
 });
 
@@ -331,5 +332,132 @@ describe('the pick ends with its page or its step (D210)', () => {
     expect(await runOp(7, 'back', 's2')).toBe(true);
     expect(run().fix).toBeUndefined();
     expect(pushes.some((p) => p.msg.type === 'pick.stop')).toBe(true);
+  });
+});
+
+// Fixes from the independent review (D210). Each test fails on the first version.
+const frameCtx = (origin: string, frameId: number) => ({ tabId: 7, frameId, sender: { id: 'ext', tab: { id: 7, url: 'https://app.test/' }, url: `${origin}/frame`, origin } }) as never;
+
+describe('review fixes (D210)', () => {
+  it('a frame of another site cannot start or answer a pick, unless it is the step’s own frame', async () => {
+    seed();
+    const { h } = await load();
+    // Frame 3 is a granted ad frame on another site; it is not where step 2's element lives.
+    session['frames:7'] = { '3': { parentFrameId: 0, selector: 'iframe.ad' } };
+    expect(await h['run.fix.start']!({ stepId: 's2' }, frameCtx('https://ads.test', 3))).toEqual({ ok: false, why: 'page' });
+    // The author started the pick from the top frame; the ad frame answers with its own element.
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    expect(await h['pick.result']!({ target: fp('Buy', { framePath: ['iframe.ad'] }), title: '' }, frameCtx('https://ads.test', 3))).toEqual({ ok: false });
+    expect(stored().revisionId).toBe('r1');
+  });
+
+  it('an answer whose frame path is not its frame’s is refused (a frame cannot point into the top page)', async () => {
+    seed();
+    const { h } = await load();
+    session['frames:7'] = { '3': { parentFrameId: 0, selector: 'iframe.same' } };
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    expect(await h['pick.result']!({ target: fp('Download', { framePath: [] }), title: '' }, frameCtx('https://app.test', 3))).toEqual({ ok: false });
+    expect(stored().revisionId).toBe('r1');
+  });
+
+  it('the step’s own partner frame may answer with an element in itself', async () => {
+    const g = makeGuide();
+    g.steps[1] = { ...g.steps[1]!, target: fp('Export', { framePath: ['iframe.partner'] }) };
+    local['guide:g1'] = g;
+    session['run:7'] = startRun(g, Date.now(), 1);
+    session['frames:7'] = { '4': { parentFrameId: 0, selector: 'iframe.partner' } };
+    const { h } = await load();
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    expect(await h['pick.result']!({ target: fp('Send', { framePath: ['iframe.partner'] }), title: '' }, frameCtx('https://partner.test', 4))).toEqual({ ok: true });
+    expect(stored().steps[1]!.target!.framePath).toEqual(['iframe.partner']);
+  });
+
+  it('a fix keeps the step’s screenshot for Undo and sweeps later, instead of deleting it at once', async () => {
+    const prune = vi.fn(async () => undefined);
+    const sweep = vi.fn(async () => undefined);
+    vi.doMock('../../src/background/shots', async (orig) => ({ ...(await orig<object>()), pruneAfterSave: prune, scheduleShotSweep: sweep }));
+    seed();
+    const { h } = await load();
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    await h['pick.result']!({ target: fp('Download'), title: '' }, ctx());
+    expect(prune).not.toHaveBeenCalled();
+    expect(sweep).toHaveBeenCalled();
+    vi.doUnmock('../../src/background/shots');
+  });
+
+  it('a run carried to a new tab during a pick leaves the pick behind (no hidden player there)', async () => {
+    vi.useFakeTimers();
+    try {
+      seed();
+      const { h } = await load();
+      await h['run.fix.start']!({ stepId: 's2' }, ctx());
+      pushes = [];
+      const { carryRunToNewTab } = await import('../../src/background/runs');
+      const done = carryRunToNewTab({ id: 9, openerTabId: 7, url: 'https://app.test/' } as chrome.tabs.Tab);
+      await vi.advanceTimersByTimeAsync(400);
+      await done;
+      expect((session['run:9'] as Run).fix).toBeUndefined();
+      expect((session['run:7'] as Run).fix).toBeUndefined();
+      expect(pushes.some((p) => p.tabId === 7 && p.msg.type === 'pick.stop')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a refused element puts the frame that sent it back into pick mode', async () => {
+    seed();
+    const { h } = await load();
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    const send = (chrome.tabs.sendMessage as unknown as ReturnType<typeof vi.fn>);
+    send.mockClear();
+    await h['pick.result']!({ target: nameless(), title: '' }, ctx());
+    expect(send).toHaveBeenCalledWith(7, { type: 'pick.start' }, { frameId: 0 });
+  });
+
+  it('Undo of one step leaves a pick for another step going, and reaches the copy of the run in a new tab', async () => {
+    seed();
+    const { h } = await load();
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    await h['pick.result']!({ target: fp('Download'), title: '' }, ctx());
+    // The run moved to tab 9 (the opener keeps a paused copy) and is back on step 1, picking.
+    const moved: Run = { ...structuredClone(run()), stepIndex: 0, stepToken: 't0' };
+    moved.fix = { stepToken: 't0', at: Date.now() };
+    session['run:9'] = moved;
+    session['run:7'] = { ...run(), status: 'paused', movedTo: 9 };
+    expect(await h['run.fix.undo']!({ tabId: 7 }, {})).toEqual({ ok: true });
+    const r9 = session['run:9'] as Run;
+    expect(r9.fix).toBeDefined();
+    expect(r9.stepToken).toBe('t0');
+    expect(r9.guideSnapshot.steps[1]!.target!.text).toBe('Export');
+    expect((session['run:7'] as Run).guideSnapshot.steps[1]!.target!.text).toBe('Export');
+  });
+
+  it('a refused start does not cancel the panel’s Re-pick', async () => {
+    seed();
+    session['pick:7'] = Date.now();
+    const { h } = await load();
+    expect(await h['run.fix.start']!({ stepId: 's1' }, ctx())).toEqual({ ok: false, why: 'step' });
+    expect(session['pick:7']).toBeDefined();
+    expect(session['pickResult:7']).toBeUndefined();
+  });
+
+  it('says why it refused: a library guide, a changed step', async () => {
+    seed({ source: 'library' });
+    let { h } = await load();
+    expect(await h['run.fix.start']!({ stepId: 's2' }, ctx())).toEqual({ ok: false, why: 'guide' });
+    seed();
+    ({ h } = await load());
+    expect(await h['run.fix.start']!({ stepId: 'old' }, ctx())).toEqual({ ok: false, why: 'step' });
+  });
+
+  it('closing the tab drops its fix record (a full copy of the guide)', async () => {
+    seed();
+    const { h } = await load();
+    await h['run.fix.start']!({ stepId: 's2' }, ctx());
+    await h['pick.result']!({ target: fp('Download'), title: '' }, ctx());
+    expect(session['runFix:7']).toBeDefined();
+    const { dropRun } = await import('../../src/background/runs');
+    await dropRun(7);
+    expect(session['runFix:7']).toBeUndefined();
   });
 });

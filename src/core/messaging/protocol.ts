@@ -256,7 +256,7 @@ export interface ResponseMap {
   'pick.cancel': { ok: boolean };
   'pick.result': { ok: boolean };
   'pick.abort': { ok: boolean };
-  'run.fix.start': { ok: boolean };
+  'run.fix.start': { ok: boolean; why?: 'step' | 'guide' | 'page' };
   'run.fix.undo': { ok: boolean };
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;

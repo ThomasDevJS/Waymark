@@ -218,8 +218,9 @@ export function applyRunStep(run: Run, step: Step): boolean {
   const next = withStep(run.guideSnapshot, step);
   if (!next) return false;
   run.guideSnapshot = next;
-  delete run.fix;
   if (currentStep(run)?.id === step.id) {
+    // Only a pick for this step ends: one for another step goes on (review of D210).
+    delete run.fix;
     const spoken = run.spokenToken === run.stepToken;
     run.stepToken = token();
     if (spoken) run.spokenToken = run.stepToken;
