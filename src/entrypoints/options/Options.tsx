@@ -7,6 +7,7 @@ import { originToMatchPattern } from '../../core/url/url';
 import type { LibraryState } from '../../background/discovery';
 import type { Problem } from '../../core/storage/problems';
 import { libraryUrlAllowed } from '../../core/sharing/library';
+import { isDriveAddress, libraryAddress } from '../../core/sharing/drive';
 import { useHd } from '../../core/voice/hd';
 import { HdVoice, hdStatus } from './HdVoice';
 import type { ComponentChildren } from 'preact';
@@ -130,7 +131,9 @@ async function subscribe() {
   libraryError.value = null;
   let url: URL;
   try {
-    url = new URL(libraryUrl.value.trim());
+    // A Google Drive share link becomes Drive's direct download, so the access asked for below is
+    // for that address (D157).
+    url = new URL(libraryAddress(libraryUrl.value));
   } catch {
     libraryError.value = 'Enter the full address of the guide file, starting with https://';
     return;
@@ -471,7 +474,7 @@ export function Options() {
             badge={lib?.url ? <span class={`badge ${lib.lastError ? 'danger' : 'success'}`}>{lib.lastError ? 'Refresh failed' : 'Subscribed'}</span> : undefined}
           >
             <p class="small muted">
-              For teams: one person exports a Waymark guide file and puts it at a web address (for example a file in a shared repository). Everyone else pastes that address here. Their side panel then shows the team’s guides, read-only, and checks for updates every 6 hours. Anyone with the address can read the file.
+              For teams: one person exports a Waymark guide file and puts it at a web address, for example in Google Drive (shared as “Anyone with the link”) or a shared repository. Everyone else pastes that address or Drive link here. Their side panel then shows the team’s guides, read-only, and checks for updates every 6 hours. Anyone with the address can read the file.
             </p>
             <label class="field">
               <span class="label">Address of the team’s guide file</span>
@@ -503,6 +506,11 @@ export function Options() {
                 </>
               )}
             </div>
+            {lib?.url && isDriveAddress(lib.url) && (
+              <p class="hint" data-testid="library-drive">
+                Google Drive file. To update it, open it in Drive and use <strong>Manage versions → Upload new version</strong>, so the link stays the same.
+              </p>
+            )}
             {lib?.url && (
               <p class={`status-text${lib.lastError ? ' warn' : ''}`} role="status" data-testid="library-status">
                 {lib.lastError

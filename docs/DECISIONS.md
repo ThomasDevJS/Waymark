@@ -1363,6 +1363,21 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - The light fingerprint is never stored or sent: its paths are empty and its count and rect are placeholders.
 - **Tests**: `test/browser/rec-hover-perf.test.ts` sets a 20 ms budget per check on a 1,500-row table; it fails on the old code at about 310 ms. The recorder parity test in `rec-hover.test.ts` still passes.
 
+### D157. A Google Drive file can be the team library
+*6 Nov 2026 · SPEC: Sharing ("v1: library URL"); issue #83*
+
+- **Why**: Thomas's team keeps files in Google Drive and wants the guide file there, at $0 and with no backend. "Anyone with the link" sharing is fine for him (asked and answered). Anyone who gets the link can read the guides.
+- **Change**:
+  - Settings → Team library accepts a Drive file's normal share link: `/file/d/<id>/view`, `/file/u/0/d/<id>/…`, `open?id=`, `uc?id=` on drive.google.com or docs.google.com, or a `drive.usercontent.google.com/download` link.
+  - `libraryAddress` turns it once, on subscribe (in Settings and again in `library.set`), into Google's direct download: `https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t`. `confirm=t` skips the "can't scan this file" page.
+  - From then on it is an ordinary https library. The access asked for is to that one host, fetch-only (D80); D48's limits apply (5 MB, 30 s, redirects must stay https); and the 6-hour refresh is unchanged.
+  - Folder links and anything not on these exact hosts stay as typed, so they fail as before.
+- **Clearer errors** (for every library, not only Drive): an answer that is a web page (`text/html`, or a body starting with `<`), such as a sign-in, sharing or scan page, now says so instead of failing to parse JSON. For Drive it says to share the file as "Anyone with the link"; elsewhere it asks for the file's own address. A Drive 403 or 404 says the file is not there or not shared.
+- **Settings**: the team library text mentions Drive. A Drive library shows how to update the file without changing its link (Manage versions → Upload new version).
+- **Risk**: Google does not document this address; it moved from `drive.google.com/uc` to `drive.usercontent.google.com` in 2024, and the old address now redirects to it (checked). If Google changes it again, only `driveDownloadUrl` changes. Verified here only up to Drive's answers for missing files (404, `text/html`). A real shared file is to be confirmed by Thomas.
+- **Not done**: private, domain-only Drive files. Using the user's Google sign-in ("A+" in #83) and OAuth ("B") are left for later, at Thomas's call.
+- **Tests**: `test/unit/drive-library.test.ts`: every link shape, links that must not match (http, look-alike hosts, folders, bad ids), the download address, and the web-page and 404 errors through `fetchLibraryText`.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

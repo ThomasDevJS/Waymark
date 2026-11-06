@@ -6,6 +6,12 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- The team library can be a Google Drive file shared as “Anyone with the link”: paste its share link in Settings → Team library (D157, #83).
+
+### Changed
+- A team library address that answers with a web page (a sign-in or sharing page) now says so plainly (D157).
+
 ## [0.6.0] - 2026-11-06
 
 ### Added
