@@ -1464,14 +1464,14 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 ### D203. "Open start page" fills the page's ids in from the page the learner is on
 *6 Nov 2026 · SPEC: Player (start page); amends D36*
 
-- **Finding**: on Samsara, Thomas's guide starts on `/o/<org id>/fleet/list`. The guide keeps no ids (D33), so Start on another page showed "This guide starts on a page like `/o/:id/fleet/list`. Open that page, then press Start." That pattern is useless to a learner.
+- **Finding**: on Samsara, the owner's guide starts on `/o/<org id>/fleet/list`. The guide keeps no ids (D33), so Start on another page showed "This guide starts on a page like `/o/:id/fleet/list`. Open that page, then press Start." That pattern is useless to a learner.
 - **Change**:
   - `fillRule` (pure, `src/core/url/fill.ts`) builds the address from the step's rule, taking each `:stand-in` from the same place in the current address on the same site, but only when every fixed part before it matches (`/o/12345/dashboard` → `/o/12345/fleet/list`). Otherwise it doesn't guess.
   - `run.start` uses it for the first step and for "Start from step N". With it, the panel offers **Open start page** (or **Open that page**), which opens the page and starts.
   - Without it (not on that site yet), the panel says "Open <site> in this tab and sign in if needed, then press Start again", with the site as a link and no pattern.
 - **Also**: the record card's screenshot hint still described 0.5.0's close-up ("Only a small picture around each clicked element"). It now reads "A picture of the page at each step, with the step highlighted" (D190).
 - **Tests**:
-  - `test/unit/fill-rule.test.ts`: Thomas's case, several stand-ins, no guessing (another site, a different fixed part, a missing segment, stand-ins outside the path).
+  - `test/unit/fill-rule.test.ts`: the owner's case, several stand-ins, no guessing (another site, a different fixed part, a missing segment, stand-ins outside the path).
   - `test/e2e/r5-start-page.spec.ts`: an id in the start address, Open start page from another page of the account opens it with the id and plays; without the id, plain words and no `:id`.
 
 ### D204. Menus that open on hover: a "Point at" step

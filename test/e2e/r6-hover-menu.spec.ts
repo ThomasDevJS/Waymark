@@ -1,5 +1,5 @@
 /**
- * D204 (#94): a side nav whose item opens a flyout while the pointer rests on it (Thomas: the
+ * D204 (#94): a side nav whose item opens a flyout while the pointer rests on it (the owner's case: the
  * Samsara side nav). Recording records "Point at" the item before the click on the flyout's
  * link; playing it, pointing at the item moves on, and a keyboard user completes it with Tab.
  */

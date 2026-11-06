@@ -5,7 +5,7 @@ import { fillRule } from '../../src/core/url/fill';
 const O = 'https://cloud.samsara.test';
 
 describe('fillRule (D203)', () => {
-  it('fills a stand-in from the same place in the current address (Thomas: /o/:id/fleet/list)', () => {
+  it('fills a stand-in from the same place in the current address (the owner case: /o/:id/fleet/list)', () => {
     expect(fillRule('/o/:id/fleet/list', O, `${O}/o/12345/dashboard?x=1`)).toBe(`${O}/o/12345/fleet/list`);
     expect(fillRule('/o/:org/fleet/:vehicle/edit', O, `${O}/o/7/fleet/99/view`)).toBe(`${O}/o/7/fleet/99/edit`);
   });
