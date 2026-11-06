@@ -58,7 +58,8 @@ async function load() {
     pending.value = (await send('allow.pending', {})).origins;
     completed.value = (await send('completions.list', {})).completed;
     completedAtOpen ??= new Set(Object.keys(completed.value));
-    mayBreak.value = (await send('stats.summary', { ids: all.value.map((g) => g.id) })).counts;
+    // A hint only: the library works without it.
+    mayBreak.value = (await send('stats.summary', { ids: all.value.map((g) => g.id) }).catch(() => null))?.counts ?? {};
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }

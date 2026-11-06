@@ -41,7 +41,7 @@ const plays = signal<Record<string, { t: string; reasons: Reason[] }>>({});
 async function loadPlays(guideId: string) {
   try {
     const r = await send('stats.guide', { guideId });
-    if (draft.value?.id === guideId || !draft.value) plays.value = r.steps;
+    if (draft.value?.id === guideId || !draft.value) plays.value = r?.steps ?? {};
   } catch {
     plays.value = {};
   }
