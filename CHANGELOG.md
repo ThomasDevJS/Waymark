@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- Starting a guide from another page of its site: **Open start page** fills in ids such as the organisation number from the page you are on, instead of showing a pattern (D203).
+
 ## [0.7.0] - 2026-11-06
 
 ### Added

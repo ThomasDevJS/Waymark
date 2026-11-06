@@ -7,6 +7,7 @@ import { Markdown } from './Markdown';
 import { Editor, editorHasUnsavedEdits } from './Editor';
 import { Library } from './Library';
 import { Icon } from '../../ui/Icon';
+import { siteLabel } from '../../core/text/names';
 import { HdOffer } from '../../ui/HdOffer';
 import { FLAG_HELP, FlagNotes } from './steps';
 import type { ShortcutOutcome } from '../../core/storage/shortcut';
@@ -219,15 +220,27 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             <Icon name="info" />
             {needsStart.value.reachable ? (
               <div class="row grow">
-                <span class="grow">This guide starts on another page.</span>
-                <button type="button" class="primary sm" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true)}>
-                  Open start page
+                <span class="grow">{needsStart.value.stepIndex ? `Step ${needsStart.value.stepIndex + 1} is on another page.` : 'This guide starts on another page.'}</span>
+                <button type="button" class="primary sm" data-testid="open-start" onClick={() => void startGuide(tabId, needsStart.value!.guideId, true, needsStart.value!.stepIndex)}>
+                  {needsStart.value.stepIndex ? 'Open that page' : 'Open start page'}
                 </button>
               </div>
             ) : (
+              // Its address needs an id Waymark doesn't keep (D33): from any page of the site, the
+              // button above can fill it in (D203). Plain words, no pattern.
               <span class="grow" data-testid="start-hint">
-                {needsStart.value.stepIndex ? `Step ${needsStart.value.stepIndex + 1} is on a page like ` : 'This guide starts on a page like '}
-                <code>{needsStart.value.pattern}</code>. Open that page, then press {needsStart.value.stepIndex ? `Start from step ${needsStart.value.stepIndex + 1}` : 'Start'}.
+                {(() => {
+                  const site = new URL(needsStart.value.startUrl).origin;
+                  return (
+                    <>
+                      Open{' '}
+                      <a href={site} target="_blank" rel="noopener noreferrer" onClick={(e) => (e.preventDefault(), void chrome.tabs.update(tabId, { url: site }))}>
+                        {siteLabel(site)}
+                      </a>{' '}
+                      in this tab and sign in if needed, then press {needsStart.value.stepIndex ? `Start from step ${needsStart.value.stepIndex + 1}` : 'Start'} again: Waymark opens the right page.
+                    </>
+                  );
+                })()}
               </span>
             )}
           </div>
@@ -261,7 +274,7 @@ export function Recorder({ tabId, tabUrl, initialEdit }: { tabId: number | null;
             </button>
           </form>
           <p class="hint">Then do the task on the page. Each click becomes a step. What you type is never saved.</p>
-          <ShotsSwitch testid="record-shots" on={recShots.value} onChange={(on) => (recShots.value = on)} hint="Off by default. Only a small picture around each clicked element, kept on this computer." />
+          <ShotsSwitch testid="record-shots" on={recShots.value} onChange={(on) => (recShots.value = on)} hint="Off by default. A picture of the page at each step, with the step highlighted, kept on this computer." />
           {errorBox}
         </section>
         )}
