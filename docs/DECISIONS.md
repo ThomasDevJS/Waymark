@@ -1309,3 +1309,9 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - the outline re-attaches when the page drops Waymark's overlay host.
 - **Frames**: each granted frame's content script draws its own outline, so recording now mounts an overlay host in subframes too (the pill stays top-frame only).
 
+### D154. Content scripts see only the hover switch of the recording settings
+*6 Nov 2026 · SPEC: Security (content scripts are untrusted); follow-up to D153*
+
+- **Change**: `recorder.settings.get` is the one settings read open to content scripts (D153). It returned the whole `RecorderSettings`, so any setting added later would have reached every granted page. The handler now passes the result through `recorderSettingsFor(settings, ctx.kind)`, which gives content senders `{ hover }` only. Extension pages still get everything.
+- **Tests**: `test/unit/recorder-settings.test.ts`: with an extra future field, a content sender gets `{ hover }` only; the default is on, and a bad stored value falls back to on.
+

@@ -19,7 +19,7 @@ import type { Conflict } from '../sharing/pack';
 import { ContentEntrySchema, MAX_BATCH } from '../debug/log';
 import { LEARNER_SHADES } from '../player/shade';
 import type { PlayerSettings } from '../player/settings';
-import type { RecorderSettings } from '../recorder/settings';
+import type { ContentRecorderSettings, RecorderSettings } from '../recorder/settings';
 
 const url = z.string().max(4096);
 
@@ -191,7 +191,7 @@ export interface ResponseMap {
   'voice.settings.set': VoiceSettings;
   'player.settings.get': PlayerSettings;
   'player.settings.set': PlayerSettings;
-  'recorder.settings.get': RecorderSettings;
+  'recorder.settings.get': RecorderSettings | ContentRecorderSettings; // content senders get only the hover switch (D154)
   'recorder.settings.set': RecorderSettings;
   'hd.status': HdStatus;
   'hd.enable': HdStatus;

@@ -7,3 +7,9 @@ export const RecorderSettingsSchema = z.object({
 });
 export type RecorderSettings = z.infer<typeof RecorderSettingsSchema>;
 export const DEFAULT_RECORDER_SETTINGS: RecorderSettings = RecorderSettingsSchema.parse({});
+
+/** What a content script sees of the settings: the hover switch only, so a later setting can never reach a page (D154). */
+export type ContentRecorderSettings = Pick<RecorderSettings, 'hover'>;
+export function recorderSettingsFor(settings: RecorderSettings, kind: 'extension' | 'content'): RecorderSettings | ContentRecorderSettings {
+  return kind === 'content' ? { hover: settings.hover } : settings;
+}
