@@ -1,5 +1,5 @@
 /**
- * D203: a guide whose first page has an id in its address (Thomas: /o/:id/fleet/list). From
+ * D203: a guide whose first page has an id in its address (the owner's case: /o/:id/fleet/list). From
  * another page of the site, the panel opens the start page with the id filled in from that page;
  * from a page without it, plain words and a link to the site, never a pattern.
  */

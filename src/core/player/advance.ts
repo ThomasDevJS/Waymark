@@ -8,6 +8,7 @@
  * | submit   | the form's submit event, or the page navigates away within 1.5 s of the click  |
  * | navigate | the URL matches the step's URL rule (handled by the controller)                |
  * | note     | Next                                                                            |
+ * | hover    | the pointer is on the target, keyboard focus reaches it, or a click on it (D204) |
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
@@ -86,6 +87,30 @@ export function watchAdvance(w: AdvanceWatch): () => void {
   const trusted = (e: Event) => e.isTrusted && !own(e.composedPath());
   const kind = w.step.kind;
   const primary = w.targets[0];
+
+  // A menu that opens while the pointer rests on its trigger (D204): pointing at it is the action.
+  // Keyboard users reach it with Tab (focus opens such menus too), and a tap or click counts.
+  // Focus counts only when it is keyboard focus (`:focus-visible`): menus and dialogs often give
+  // focus back to their trigger by script after the previous step, with the menu closed.
+  if (kind === 'hover') {
+    const onTarget = (why: string, keyboard = false) => (e: Event) => {
+      if (!trusted(e) || !hits(e.composedPath(), w.targets)) return;
+      const focused = e.composedPath()[0];
+      if (keyboard && !(focused instanceof Element && focused.matches(':focus-visible'))) return;
+      advance(why);
+    };
+    on(doc, 'pointerover', onTarget('the pointer is on the target'));
+    on(doc, 'focusin', onTarget('the target has keyboard focus', true));
+    on(doc, 'click', onTarget('a click on the target'));
+    // The pointer already there when the step is drawn: no event will come, and the menu is open.
+    const already = setTimeout(() => {
+      if (w.targets.some((t) => t.matches(':hover'))) advance('the pointer was already on the target');
+    }, 0);
+    return () => {
+      clearTimeout(already);
+      for (const [t, type, fn] of listeners) t.removeEventListener(type, fn, { capture: true });
+    };
+  }
 
   if (kind === 'click' || (kind === 'select' && primary && !isNativeSelect(primary)) || (kind === 'check' && primary && !isNativeCheck(primary))) {
     // A control that opens something over itself on mousedown (MUI's select and its backdrop)

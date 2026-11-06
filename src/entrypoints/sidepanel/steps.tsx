@@ -20,6 +20,7 @@ export const KIND: Record<Step['kind'], { label: string; icon: IconName }> = {
   submit: { label: 'Submit', icon: 'upload' },
   navigate: { label: 'Go to page', icon: 'globe' },
   note: { label: 'Note', icon: 'note' },
+  hover: { label: 'Point at', icon: 'crosshair' },
 };
 
 /** Warning badges with their explanation inline, so authors don't need to hover. */

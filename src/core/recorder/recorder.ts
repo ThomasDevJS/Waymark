@@ -5,6 +5,7 @@
  * Emits operations rather than final steps, because some merges are only known later:
  * a click on a submit button becomes a submit step when the form's submit event follows.
  */
+import { createHoverTracker } from './hover';
 import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
@@ -187,6 +188,48 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
 
+  // Menus that open while the pointer rests on their trigger (D204): what changed in the page,
+  // and where the pointer rested, so a click on such a menu's item gets a "Point at" step first.
+  const hover = createHoverTracker();
+  const MO = doc.defaultView?.MutationObserver;
+  const observer = MO
+    ? new MO((records) => hover.mutated(records, now()))
+    : null;
+  const observe = (n: Node) =>
+    observer?.observe(n, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'hidden', 'aria-hidden', 'open', 'data-state', 'aria-expanded'] });
+  observe(doc.documentElement ?? doc);
+  const onOver = (e: Event) => {
+    if (!trusted(e)) return;
+    const path = e.composedPath();
+    watchRoots(path);
+    hover.over(path, now());
+  };
+  const onScroll = () => hover.scrolled(now());
+  // Typing counts as activity: suggestions that appear for it are not a hover menu.
+  let typedAt = 0;
+  /**
+   * The "Point at" steps a click on `el` needs first (D204), outermost first: a submenu's trigger
+   * was itself revealed by pointing at the menu's trigger (at most 3 levels).
+   */
+  const maybeHover = (el: Element) => {
+    const at = now();
+    const since = Math.max(last?.time ?? 0, typedAt);
+    const chain: Element[] = [];
+    for (let h = hover.triggerFor(el, at, since); h && chain.length < 3 && !chain.includes(h); h = hover.triggerFor(h, at, since)) chain.unshift(h);
+    for (const h of chain) {
+      const hfp = fpOf(h);
+      if (!hasStrongSignal(hfp)) {
+        dbg('hover.skipped', () => ({ why: 'the menu opened on hover, but its trigger has nothing to find it by again (D47)', ...fpFacts(hfp) }));
+        return;
+      }
+    }
+    for (const h of chain) {
+      const hfp = fpOf(h);
+      dbg('hover', () => ({ why: 'the clicked item appeared after the pointer rested on another element (D204)', ...fpFacts(hfp) }));
+      add('hover', h, hfp, stepTitle('hover', { name: nameFor(h, hfp) }, lang));
+    }
+  };
+
   const onPointerDown = (e: Event) => {
     if (!trusted(e)) return;
     const path = e.composedPath();
@@ -288,6 +331,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       add('select', el, fp, chooseOptionTitle(fp.text ?? fp.accessibleName ?? 'the option'));
       return;
     }
+    // Only before a click that is recorded: a hover step alone would point at a menu for nothing.
+    if (hasStrongSignal(fp)) maybeHover(el);
     add('click', el, fp, stepTitle('click', { name: hint ?? nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
   };
 
@@ -301,6 +346,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     // (`change` does not). See D35.
     if (isNativeSelect(el)) return recordSelect(el);
     if (!isTextField(el)) return; // checkboxes and radios are handled by click/change
+    typedAt = now();
     if (last && last.kind === 'input' && last.el === el) {
       if (fieldClick?.el === el) fieldClick = null;
       return; // many input events, one step
@@ -338,6 +384,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         shadowRoots.add(n);
         n.addEventListener('change', onChange, { capture: true });
         n.addEventListener('submit', onSubmit, { capture: true });
+        observe(n);
       }
     }
   };
@@ -399,6 +446,9 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     ['change', onChange],
     ['keydown', onKeyDown],
     ['submit', onSubmit],
+    ['pointerover', onOver],
+    ['scroll', onScroll],
+    ['wheel', onScroll],
   ];
   for (const [type, fn] of listeners) doc.addEventListener(type, fn, { capture: true });
 
@@ -410,6 +460,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         r.removeEventListener('submit', onSubmit, { capture: true });
       }
       shadowRoots.clear();
+      observer?.disconnect();
       timers.forEach(clearTimeout);
       timers.clear();
     },

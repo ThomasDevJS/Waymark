@@ -24,6 +24,8 @@ const en: Templates = {
   check: (v) => `${v.checked === false ? 'Uncheck' : v.checked === true ? 'Check' : 'Check (or uncheck)'} **${v.name}**`,
   submit: () => 'Submit the form',
   navigate: (v) => `Go to ${v.pageTitle ?? 'the next page'}`,
+  // A menu that opens when the pointer rests on its trigger (D204).
+  hover: (v) => `Point at **${v.name}**`,
 };
 
 const TEMPLATES: Record<string, Templates> = { en };

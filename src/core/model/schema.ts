@@ -8,7 +8,13 @@ import { SHADES } from '../player/shade';
  */
 
 export const SCHEMA_VERSION = 1 as const;
-export const FORMAT_VERSION = 1 as const;
+/**
+ * Pack format. 2 since hover steps (D204): a pack with one is written as 2, so an older Waymark
+ * says it was made by a newer version instead of failing on the unknown step kind. Packs without
+ * hover steps are still written as 1, which every version reads.
+ */
+export const FORMAT_VERSION = 2 as const;
+export const BASE_FORMAT_VERSION = 1 as const;
 export const MAX_STEPS_PER_GUIDE = 500;
 
 const shortStr = (max = 2000) => z.string().max(max);
@@ -99,7 +105,7 @@ export const ElementFingerprintSchema = z.object({
 });
 export type ElementFingerprint = z.infer<typeof ElementFingerprintSchema>;
 
-export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note']);
+export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note', 'hover']);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
 export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas']);
@@ -156,7 +162,7 @@ export type RunState = z.infer<typeof RunStateSchema>;
 
 export const GuidePackSchema = z.object({
   format: z.literal('waymark-pack'),
-  formatVersion: z.literal(FORMAT_VERSION),
+  formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
   exportedAt: shortStr(64),
   guides: z.array(GuideSchema),
 });

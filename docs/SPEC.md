@@ -139,7 +139,7 @@ interface UrlRule { kind: 'prefix' | 'pattern'; value: string } // pattern: /ord
 
 interface Step {
   id: string;
-  kind: 'click' | 'input' | 'select' | 'check' | 'submit' | 'navigate' | 'note';
+  kind: 'click' | 'input' | 'select' | 'check' | 'submit' | 'navigate' | 'note' | 'hover'; // hover: D204
   title: string;              // "Click **Save**"
   note?: string;              // limited markdown
   voiceText?: string;         // default: title + note
@@ -181,7 +181,7 @@ interface RunState {          // chrome.storage.session, key run:<tabId>
 
 interface GuidePack {         // export / import / library file
   format: 'waymark-pack';
-  formatVersion: 1;
+  formatVersion: 1 | 2; // 2 only when a guide has a hover step (D204)
   exportedAt: string;
   guides: Guide[];
 }
@@ -262,6 +262,7 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 - A double-click becomes one click step.
 - A custom dropdown stays two steps: open it, then "Choose **{option}**". Options rendered in a portal are matched by role and name, not position.
 - A click on a non-interactive area is kept only if it has no interactive ancestor, and it is flagged low-confidence in the editor.
+- A click on an item of a menu that opened while the pointer rested on another element gets a hover step ("Point at **{trigger}**") before it, under the strict rules of D204. Menus shown by CSS `:hover` alone are not detected.
 
 **Navigation**
 
@@ -316,6 +317,7 @@ The player draws on top of the real app without touching its styles, and the lea
 | submit | The form's `submit` event, or the page navigates away within 1.5 s of the click |
 | navigate | The URL matches the step's URL rule |
 | note | Next |
+| hover | A trusted `pointerover` on the target, keyboard focus (`:focus-visible`) reaching it, a click on it, or the pointer already there; Next when it can't take focus (D204) |
 
 Optional steps also show Skip. After any action, wait 300 ms before searching for the next target.
 
@@ -365,6 +367,7 @@ Voice and step text are free: the browser's on-device voices read each step, and
 | check | Check (or uncheck) **{name}** |
 | submit | Submit the form |
 | navigate | Go to {page title} |
+| hover | Point at **{name}** |
 
 `{name}` falls back in order: accessible name, own text, placeholder, `name` attribute, `title` attribute, then a role word such as "the button". Templates are keyed by the guide's `lang`; v1 ships English, and other languages fall back to it.
 
