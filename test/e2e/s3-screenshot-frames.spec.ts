@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { BrowserContext, Frame, Page, Worker } from '@playwright/test';
 import { canGrant, expect, KEYS_SCRIPT, launch, marker, test as base, type ExtensionHelper } from './fixtures';
+import { largestBlob } from './helpers/pixels';
 
 /** The real window, not an emulated viewport: the page's measurements must match the capture. */
 const test = base.extend({
@@ -117,9 +118,13 @@ function controlDark(sw: Worker, tabId: number, areas: Box[], dpr: number): Prom
   );
 }
 
-/** Where a colour is in a stored image: the bounding box of its pixels (the ground truth for a button). */
-function colorBox(sw: Worker, stepId: string, rgb: [number, number, number]): Promise<Box | null> {
-  return sw.evaluate(
+/**
+ * Where a colour is in a stored image: the largest connected group of its pixels, the ground
+ * truth for a solid button. Anti-aliased text nearby can leave scattered pixels of a similar
+ * colour (coloured subpixel fringes on CI's Chrome), so a plain bounding box is not enough.
+ */
+async function colorBox(sw: Worker, stepId: string, rgb: [number, number, number]): Promise<Box | null> {
+  const points = await sw.evaluate(
     async ({ stepId, rgb }) => {
       const db = await new Promise<IDBDatabase>((resolve) => {
         const r = indexedDB.open('waymark-shots');
@@ -135,24 +140,29 @@ function colorBox(sw: Worker, stepId: string, rgb: [number, number, number]): Pr
       const ctx = c.getContext('2d')!;
       ctx.drawImage(bmp, 0, 0);
       const d = ctx.getImageData(0, 0, c.width, c.height).data;
-      let x0 = Infinity;
-      let y0 = Infinity;
-      let x1 = -1;
-      let y1 = -1;
+      const out: [number, number][] = [];
       for (let y = 0; y < c.height; y++)
         for (let x = 0; x < c.width; x++) {
           const i = (y * c.width + x) * 4;
-          if (Math.abs(d[i]! - rgb[0]) < 24 && Math.abs(d[i + 1]! - rgb[1]) < 24 && Math.abs(d[i + 2]! - rgb[2]) < 24) {
-            x0 = Math.min(x0, x);
-            x1 = Math.max(x1, x);
-            y0 = Math.min(y0, y);
-            y1 = Math.max(y1, y);
-          }
+          if (Math.abs(d[i]! - rgb[0]) < 24 && Math.abs(d[i + 1]! - rgb[1]) < 24 && Math.abs(d[i + 2]! - rgb[2]) < 24) out.push([x, y]);
+          if (out.length > 200_000) return out;
         }
-      return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+      return out;
     },
     { stepId, rgb },
   );
+  return largestBlob(points);
+}
+
+/**
+ * Each edge of the stored box within 2 px of the button's solid pixels. Edges, not width: a
+ * button at a fractional position has an anti-aliased column on each side that is not solid.
+ */
+function expectEdgesNear(box: Box, seen: Box, what: string) {
+  const edges = (b: Box) => ({ left: b.x, top: b.y, right: b.x + b.w, bottom: b.y + b.h });
+  const a = edges(box);
+  const b = edges(seen);
+  for (const k of ['left', 'top', 'right', 'bottom'] as const) expect(Math.abs(a[k] - b[k]), `${what}: ${k} edge`).toBeLessThanOrEqual(2);
 }
 
 async function tabIdFor(ext: ExtensionHelper, page: Page): Promise<number> {
@@ -291,7 +301,7 @@ test('3 steps in the top page, a same-origin frame and a cross-origin frame: one
     // The box is where the element is in the top viewport (frame offsets, borders and padding
     // added): where the button's own colour is in the image.
     const seen = (await colorBox(sw, s.id, COLORS[i]!))!;
-    for (const k of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(x.box[k] - seen[k]), `step ${i + 1} box.${k} vs the button's pixels`).toBeLessThanOrEqual(2);
+    expectEdgesNear(x.box, seen, `step ${i + 1} vs the button's pixels`);
     // And where Playwright puts the element. Its boxes inside an out-of-process (cross-origin) frame
     // leave out that iframe's border and padding (2 + 3 px here), so only steps 1 and 2 compare.
     if (i < 2) {
@@ -485,6 +495,6 @@ test('quick steps on a slow CPU while the page scrolls: every stored box is wher
   for (const r of rows) {
     if (!r.stored) continue;
     expect(r.seen, `step ${r.step}: its button is in the image`).not.toBeNull();
-    for (const k of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(r.stored.box[k] - r.seen![k]), `step ${r.step} box.${k} ${JSON.stringify(diag)}`).toBeLessThanOrEqual(2);
+    expectEdgesNear(r.stored.box, r.seen!, `step ${r.step} ${JSON.stringify(diag)}`);
   }
 });
