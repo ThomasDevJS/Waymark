@@ -10,7 +10,9 @@ import { enqueue } from '../core/storage/queue';
 import { originToMatchPattern } from '../core/url/url';
 import { listGuides } from '../core/storage/guides';
 import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHandlers } from '../background/recording';
-import { editorHandlers, endPick } from '../background/editor';
+import { editorHandlers } from '../background/editor';
+import { endPick } from '../background/pick';
+import { fixHandlers } from '../background/fix';
 import { discoveryHandlers, purgeTrash, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site-access';
 import { isSiteOrigin } from '../core/model/schema';
@@ -57,6 +59,7 @@ async function tabInfo(windowId?: number, tabId?: number) {
 const handlers: Handlers = {
   ...recordingHandlers,
   ...runHandlers,
+  ...fixHandlers,
   ...editorHandlers,
   ...discoveryHandlers,
   ...debugHandlers,

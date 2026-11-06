@@ -3,7 +3,7 @@
  * (key run:<tabId>) with a snapshot of the guide, so a run continues on the copy it started
  * with even if the guide is edited. Pure functions; the service worker persists them.
  */
-import type { Guide, RunState, Step } from '../model/schema';
+import type { ElementFingerprint, Guide, RunState, Step } from '../model/schema';
 import { matchPath, routedPath, urlMatches } from '../url/url';
 import type { Shade } from './shade';
 
@@ -22,6 +22,11 @@ export interface Run extends RunState {
   /** The step token last read aloud: each step is spoken once, whatever path changed it (D41). */
   spokenToken?: string;
   cause: StepCause;
+  /**
+   * The author is picking the right element for the current step (issue #95, D210): set by
+   * "Pick the right element", for this step token only. Content scripts hide the player meanwhile.
+   */
+  fix?: { stepToken: string; at: number };
 }
 
 export function startRun(guide: Guide, now = Date.now(), startIndex = 0): Run {
@@ -125,6 +130,10 @@ export interface RunView {
   phase: 'searching' | 'found' | 'not-found';
   /** The board for this step, or null before any report (#36). */
   boardId: string | null;
+  /** The guide is the author's own (`source: 'local'`): the player offers Pick the right element (D210). */
+  fixable?: boolean;
+  /** A pick for the current step is under way: the player hides until it ends (D210). */
+  fixing?: boolean;
 }
 
 export const NO_RUN: RunView = {
@@ -168,7 +177,57 @@ export function runView(run: Run | null | undefined, match?: MatchBoard): RunVie
     winner: board?.winner ?? null,
     phase: board?.winner ? 'found' : board?.topGaveUp ? 'not-found' : 'searching',
     boardId: board?.id ?? null,
+    fixable: run.guideSnapshot.source === 'local',
+    fixing: fixPending(run),
   };
+}
+
+/** How long a pick from the player may take; the service worker refuses a later answer (D210). */
+export const FIX_TTL_MS = 120_000;
+
+/** True while a pick for the run's current step is under way and not timed out (D210). */
+export function fixPending(run: Run, now = Date.now()): boolean {
+  return run.status === 'running' && !!run.fix && run.fix.stepToken === run.stepToken && now - run.fix.at >= 0 && now - run.fix.at <= FIX_TTL_MS;
+}
+
+/** The guide with one step replaced (matched by id); null when the step is gone (D210). */
+export function withStep(guide: Guide, step: Step): Guide | null {
+  const i = guide.steps.findIndex((s) => s.id === step.id);
+  if (i < 0) return null;
+  const steps = guide.steps.slice();
+  steps[i] = step;
+  return { ...guide, steps };
+}
+
+/** The guide's step with its element replaced by a picked one; null when the step is gone or has no element (D210). */
+export function fixedStep(guide: Guide, stepId: string, target: ElementFingerprint): Step | null {
+  const step = guide.steps.find((s) => s.id === stepId);
+  if (!step?.target) return null;
+  // An element the author chose: the recorder's warnings about the old one no longer apply.
+  const { flags: _flags, ...rest } = step;
+  return { ...rest, target };
+}
+
+/**
+ * Moves the run onto a changed step (D210, a fix or its Undo): the snapshot gets that step, and
+ * when it is the current step, the step starts again (a new token, so every frame searches for
+ * the new element). Other steps stay as they were when the run started. A step already read
+ * aloud is not read again.
+ */
+export function applyRunStep(run: Run, step: Step): boolean {
+  const next = withStep(run.guideSnapshot, step);
+  if (!next) return false;
+  run.guideSnapshot = next;
+  if (currentStep(run)?.id === step.id) {
+    // Only a pick for this step ends: one for another step goes on (review of D210).
+    delete run.fix;
+    const spoken = run.spokenToken === run.stepToken;
+    run.stepToken = token();
+    if (spoken) run.spokenToken = run.stepToken;
+    run.cause = 'resume';
+  }
+  run.rev = (run.rev ?? 0) + 1;
+  return true;
 }
 
 /** Per-step match reports from every frame (SPEC: Element targeting, playback step 8). */

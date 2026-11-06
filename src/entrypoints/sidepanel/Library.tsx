@@ -98,6 +98,36 @@ function undoToast(id: string, title: string, until: number, focus: boolean, del
   });
 }
 
+/** Fixes this panel already showed a toast for (D210). */
+const shownFix = new Set<string>();
+
+/**
+ * The player fixed a step in this panel's tab (D210): the guide was saved, and Undo puts the old
+ * element back. The record lives in chrome.storage.session; the panel is a trusted context.
+ */
+function fixToast(tabId: number, rec: { guideId?: unknown; stepIndex?: unknown; at?: unknown; until?: unknown } | undefined) {
+  if (!rec || typeof rec.until !== 'number' || rec.until <= Date.now() || typeof rec.stepIndex !== 'number') return;
+  const mark = `${tabId}@${String(rec.at)}`;
+  if (shownFix.has(mark)) return;
+  shownFix.add(mark);
+  const title = all.value.find((g) => g.id === rec.guideId)?.title;
+  showToast({
+    scope: 'library',
+    text: `Fixed step ${rec.stepIndex + 1}${title ? ` of “${title}”` : ''}. Saved.`,
+    until: rec.until,
+    focus: false,
+    testid: 'fix-undo-toast',
+    fallbackFocus: () => document.getElementById('all-label') ?? document.getElementById('for-page-label'),
+    action: {
+      label: 'Undo',
+      run: async () => {
+        const r = await attempt(() => send('run.fix.undo', { tabId }));
+        if (r?.ok) message.value = `Step ${(rec.stepIndex as number) + 1} is as it was before the fix.`;
+      },
+    },
+  });
+}
+
 /** Deletes at once; the guide waits in the trash for Undo (D100). */
 async function deleteGuide(g: Pick<GuideIndexEntry, 'id' | 'title'>) {
   const r = await attempt(() => send('guide.delete', { id: g.id }));
@@ -214,6 +244,17 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
+  // A step fixed from the player in this tab (D210): the toast offers Undo, also to a panel opened just after.
+  useEffect(() => {
+    if (tabId === null) return;
+    const key = `runFix:${tabId}`;
+    void chrome.storage.session.get(key).then((r) => fixToast(tabId, r[key] as Parameters<typeof fixToast>[1]));
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && key in changes) fixToast(tabId, changes[key]!.newValue as Parameters<typeof fixToast>[1]);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [tabId]);
   const index = useMemo(() => buildSearch(all.value), [all.value]);
   const chips = useMemo(() => tagChips(all.value), [all.value]);
   // A chip whose last guide went away stops filtering.

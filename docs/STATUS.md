@@ -63,6 +63,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - Needs activeTab (Alt+W, Alt+R or the toolbar icon on that tab): a site permission alone is refused (D181).
 - Tests: `test/unit/shots.test.ts`, `test/browser/shots.test.ts`, `test/browser/howto-preview.test.ts`, e2e `test/e2e/s2-screenshots.spec.ts` and `s3-screenshot-frames.spec.ts` (fixture `test/fixtures/site/shots/`; both run with `viewport: null`; test hook `data-waymark-test-shot-hidden`). Playwright's `boundingBox()` inside a cross-origin iframe leaves out that iframe's border and padding (D199).
 
+## Fix a step during playback (D210, issue #95)
+- On the author's own guide, the not-found card and the tooltip's crosshair button start **Pick the right element**: `run.fix.start` → `Run.fix` → the view's `fixing` hides the player and every frame enters the editor's pick mode. The answer (`pick.result` with no editor pick pending) saves the guide and moves the run onto the fixed step (`fixPicked`, `src/background/fix.ts`; pure parts `fixedStep`, `applyRunStep`, `fixPending` in `src/core/player/run.ts`). The panel's Undo toast reads `runFix:<tabId>` (`Library.tsx`) and sends `run.fix.undo`.
+- Tests: `test/unit/fix-step.test.ts`, e2e `test/e2e/f1-fix-step.spec.ts` (test hook `player=fixing:N`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

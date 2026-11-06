@@ -372,7 +372,9 @@ export async function sweepShots(): Promise<void> {
       const trash = liveTrash((await chrome.storage.local.get(TRASH_KEY))[TRASH_KEY], Date.now());
       // A recording's guide is not stored yet; its images are kept (session storage, see recording.ts).
       const rec = (await chrome.storage.session.get('recording'))['recording'] as { guideId?: unknown } | undefined;
-      const keep = new Set([...trash.map((e) => e.guide.id), ...(typeof rec?.guideId === 'string' ? [rec.guideId] : [])]);
+      // A step fixed from the player keeps its old image while Undo can bring the old element back (D210).
+      const fixes = await guidesWithLiveFix();
+      const keep = new Set([...trash.map((e) => e.guide.id), ...(typeof rec?.guideId === 'string' ? [rec.guideId] : []), ...fixes]);
       return { stale: staleShots(refs, { guides, on: new Set(on), keep }), flags: staleFlags(on, exists, keep) };
     });
     if (!decision) return;
@@ -383,7 +385,20 @@ export async function sweepShots(): Promise<void> {
   }
 }
 
+/** Guides whose fix from the player can still be undone (D210): runFix:<tabId> records in session storage. */
+async function guidesWithLiveFix(now = Date.now()): Promise<string[]> {
+  const all = await chrome.storage.session.get(null);
+  return Object.entries(all)
+    .filter(([k]) => k.startsWith('runFix:'))
+    .map(([, v]) => v as { guideId?: unknown; until?: unknown })
+    .filter((r) => typeof r.until === 'number' && now <= r.until + FIX_UNDO_GRACE_MS && typeof r.guideId === 'string')
+    .map((r) => r.guideId as string);
+}
+
 /** After a delete: sweep once the Undo window (plus slack) is over. Alarms fire after 30 s at the soonest. */
+/** The fix's Undo is accepted this long after its toast goes (D210; the same value as fix.ts). */
+export const FIX_UNDO_GRACE_MS = 2000;
+
 export async function scheduleShotSweep(): Promise<void> {
   if (!(await onList()).length) return;
   await chrome.alarms.create(SHOTS_ALARM, { delayInMinutes: Math.max(0.5, (UNDO_MS + RESTORE_GRACE_MS) / 60_000) });

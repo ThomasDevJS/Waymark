@@ -9,7 +9,7 @@ import type { ContentPush } from '../../core/messaging/protocol';
 import { waitForMatch, type MatchResult } from '../../core/matcher';
 import { isVisible } from '../../core/fingerprint/dom';
 import { watchAdvance } from '../../core/player/advance';
-import type { RunOp, RunView } from '../../core/player/run';
+import { FIX_TTL_MS, type RunOp, type RunView } from '../../core/player/run';
 import { urlMatches } from '../../core/url/url';
 import { isOverlayPath, onOverlayReleased } from '../overlay/host';
 import { testMark, testSpot } from '../test-hooks';
@@ -26,6 +26,13 @@ const NOT_FOUND_WHY: Record<string, string> = {
   'below-threshold': 'the best score is below 60',
   ambiguous: 'two candidates are too close (under 15 points apart, or only position differs)',
   lookalike: 'the best candidate matched nothing a look-alike seen at record time lacked (D64)',
+};
+
+/** Why Pick the right element did not start, in words (D210). */
+export const FIX_REFUSED: Record<'step' | 'guide' | 'page', string> = {
+  step: 'This step changed in the meantime. Press Retry, then try again.',
+  guide: 'Only your own guides can be fixed here. Use Duplicate in the side panel to make your own copy.',
+  page: 'Waymark can’t pick an element on this page. Reload it and try again.',
 };
 
 /** Writes text to the clipboard from a click in the page; false when the page does not allow it. */
@@ -46,6 +53,8 @@ export const OFF_TRACK_MS = 3000;
 export interface PlayerDeps {
   frameToken: string;
   framePath: () => string[];
+  /** Tests only: browser-mode Vitest runs inside an iframe, so it says it is the top frame. */
+  isTop?: boolean;
 }
 
 /**
@@ -73,7 +82,7 @@ function speakFallback(p: { text: string; lang: string; rate: number }, retried 
 }
 
 export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): void; onRoute(url: string): void; dispose(): void } {
-  const isTop = window === window.top;
+  const isTop = deps.isTop ?? window === window.top;
   let view: RunView | null = null;
   let stepToken: string | null = null;
   let abort: AbortController | null = null;
@@ -81,6 +90,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   let searchDone = false;
   let stopAdvance: (() => void) | null = null;
   let drawnFor: string | null = null;
+  /** The step token a pick from the player is under way for (D210); the player hides meanwhile. */
+  let fixingFor: string | null = null;
+  let fixTimer: ReturnType<typeof setTimeout> | undefined;
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
   const later = (fn: () => void, ms: number) => {
@@ -114,6 +126,18 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
         .catch(() => undefined);
     },
     goBack: () => history.back(),
+    // Pick the right element (D210): the service worker checks it is the author's own guide and
+    // the current step, then every frame enters pick mode and the player hides.
+    fix: () => {
+      const v = view;
+      if (!v?.step || v.status !== 'running') return;
+      dlog('play', 'fix.ask', { step: v.stepIndex + 1 });
+      send('run.fix.start', { stepId: v.step.id })
+        .then((r) => {
+          if (!r.ok) ui.flash(FIX_REFUSED[r.why ?? 'page'], 'warn');
+        })
+        .catch(() => undefined);
+    },
     mute: (muted) => {
       send('run.mute', { muted }).catch(() => undefined);
     },
@@ -320,12 +344,42 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     }
   }
 
+  const endFixing = () => {
+    fixingFor = null;
+    clearTimeout(fixTimer);
+  };
+
   const apply = (next: RunView) => {
     // Views can arrive out of order (a reply to a page-load report vs. a push): keep the newest.
     if (view && next.runId && view.runId === next.runId && next.rev < view.rev) return;
     view = next;
     ui.setMuted(next.muted);
     ui.setShade(next.shade);
+    if (next.fixing && next.status === 'running' && next.stepToken) {
+      // The author is picking the right element (D210): nothing of the player covers the page.
+      if (fixingFor !== next.stepToken) {
+        clearStep();
+        stepToken = next.stepToken;
+        fixingFor = next.stepToken;
+        clearTimeout(fixTimer);
+        // The service worker stops accepting the pick then: leave pick mode with it.
+        if (isTop) fixTimer = setTimeout(() => send('pick.abort', {}).catch(() => undefined), FIX_TTL_MS);
+        dlog('play', 'fix.picking', { step: next.stepIndex + 1 });
+        testMark('player', `fixing:${next.stepIndex}`);
+      }
+      return;
+    }
+    if (fixingFor) {
+      const was = fixingFor;
+      endFixing();
+      // Cancelled (Esc, a refused element, a timeout): the same step is searched for again, so the
+      // card or the highlight comes back. A fix gives the step a new token (handled below).
+      if (next.status === 'running' && next.stepToken === was) {
+        stepToken = next.stepToken;
+        startSearch(next);
+        return;
+      }
+    }
     if (!next.active || next.status === 'none' || next.status === 'paused') {
       clearStep();
       stepToken = null;
@@ -390,6 +444,11 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     onRoute(url: string) {
       const v = view;
       if (!v?.step || v.status !== 'running') return;
+      // An in-app route change ends the player's pick; the usual off-track rules apply (D210).
+      if (fixingFor) {
+        if (isTop) send('pick.abort', {}).catch(() => undefined);
+        return;
+      }
       // A route change re-runs a search that already gave up (SPEC: playback step 6); a search
       // still running listens to route changes itself.
       if (v.step.target && searchDone && drawnFor !== v.stepToken) {
@@ -401,6 +460,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     },
     dispose() {
       offReleased();
+      endFixing();
       clearStep();
       removeEventListener('pagehide', onHide);
       try {
