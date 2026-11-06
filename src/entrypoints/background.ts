@@ -26,6 +26,7 @@ import { redactUrl } from '../core/debug/log';
 import { getPlayerSettings, setPlayerSettings } from '../background/player-settings';
 import { getRecorderSettings, setRecorderSettings } from '../background/recorder-settings';
 import { SHOTS_ALARM, sweepShots } from '../background/shots';
+import { recorderSettingsFor } from '../core/recorder/settings';
 
 const sync = () => enqueue(async () => syncRegistrations(chrome, await fetchOnlyPatterns()));
 
@@ -75,7 +76,7 @@ const handlers: Handlers = {
     await broadcastAllRuns();
     return next;
   },
-  'recorder.settings.get': () => getRecorderSettings(),
+  'recorder.settings.get': async (_p, ctx) => recorderSettingsFor(await getRecorderSettings(), ctx.kind),
   'recorder.settings.set': ({ patch }) => setRecorderSettings(patch),
   'hd.status': () => hdStatusForSettings(),
   'hd.enable': ({ added }) => hdEnable(added),
