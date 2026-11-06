@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-06
+
 ### Added
 - While recording, an outline shows what a click will record, with a warning when it would be hard to find or not recorded. On by default; Settings → Highlight turns it off (D153, #70).
 - When a page has 6 or more guides, the on-page **?** menu and the side panel's **For this page** list get a search box and up to three tag chips. In the menu, type to filter, use the arrow keys and press Enter to start a guide; Esc clears the search, a second Esc closes the menu (D170, D171, #69).
@@ -18,6 +20,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ### Fixed
 - **Test step** works on apps that rebuild their frames: it no longer says "Waymark is not running on this page" for a step in a frame the app replaced (D152).
+
+### Security
+- Pages can read only the on/off switch of the recording outline, never any other recording setting (D154, #74).
 
 ## [0.4.1] - 2026-11-05
 
@@ -186,7 +191,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.5.0
 [0.4.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.4.0
 [0.3.2]: https://github.com/ThomasDevJS/Waymark/pull/13
