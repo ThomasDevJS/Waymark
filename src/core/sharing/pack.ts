@@ -3,7 +3,7 @@
  * untrusted input: capped at 5 MB and 500 steps per guide, validated with the Zod schema, and
  * newer schema or format versions are rejected with a message, never silently trimmed.
  */
-import { FORMAT_VERSION, GuidePackSchema, SCHEMA_VERSION, type Guide, type GuidePack } from '../model/schema';
+import { BASE_FORMAT_VERSION, FORMAT_VERSION, GuidePackSchema, SCHEMA_VERSION, type Guide, type GuidePack } from '../model/schema';
 import { newId } from '../model/ids';
 
 export const MAX_PACK_BYTES = 5 * 1024 * 1024;
@@ -40,8 +40,13 @@ export function parsePack(text: string): ParseResult {
   return { ok: true, pack: parsed.data };
 }
 
+/** The oldest format that can hold these guides (D204): 2 only with a hover step. */
+export function packFormatFor(guides: Pick<Guide, 'steps'>[]): GuidePack['formatVersion'] {
+  return guides.some((g) => g.steps.some((s) => s.kind === 'hover')) ? FORMAT_VERSION : BASE_FORMAT_VERSION;
+}
+
 export function makePack(guides: Guide[], now = new Date()): GuidePack {
-  return { format: 'waymark-pack', formatVersion: FORMAT_VERSION, exportedAt: now.toISOString(), guides };
+  return { format: 'waymark-pack', formatVersion: packFormatFor(guides), exportedAt: now.toISOString(), guides };
 }
 
 export type Choice = 'keep' | 'replace' | 'both';

@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Menus that open when you point at them (such as a side nav's flyout): recording adds a **Point at** step before the click on the menu's item, and playing it moves on when you point at the item or Tab to it. Guide files with such steps need this version of Waymark (D204, #94).
+
 ### Changed
 - Starting a guide from another page of its site: **Open start page** fills in ids such as the organisation number from the page you are on, instead of showing a pattern (D203).
 

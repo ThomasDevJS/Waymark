@@ -1474,6 +1474,26 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - `test/unit/fill-rule.test.ts`: Thomas's case, several stand-ins, no guessing (another site, a different fixed part, a missing segment, stand-ins outside the path).
   - `test/e2e/r5-start-page.spec.ts`: an id in the start address, Open start page from another page of the account opens it with the id and plays; without the id, plain words and no `:id`.
 
+### D204. Menus that open on hover: a "Point at" step
+*6 Nov 2026 · SPEC: Data model (step kinds, pack format), Recorder (merge rules), Player (advancing), Voiceover and AI text (templates); issue #94*
+
+- **Finding**: on Samsara, an icon in the side nav opens a list of links while the pointer rests on it. The recorder records clicks only, so the guide had "Click **Fuel**" with no step before it, and when it played, the link was hidden: not found.
+- **Step kind `hover`** ("Point at **{name}**"): its target is the trigger, matched by the same matcher and rules as any step (no matcher change). The player advances when the pointer comes onto the target (`pointerover`), when it gets keyboard focus (`focusin`, so Tab completes it; focus opens such menus in accessible apps), on a click on it, or at once when the pointer or focus is already there as the step is drawn. Trusted events only, never Waymark's own UI. Its hint says "Point at the highlighted item (or Tab to it) to continue."
+- **Recording** (`src/core/recorder/hover.ts`, pure apart from DOM reads): during a recording, a `MutationObserver` (with old values; the document and each open shadow root seen on a pointer path) and `pointerover` keep the last 100 places the pointer rested and when elements were revealed. A click gets a hover step before it only when all hold:
+  - the clicked item or a container of it (10 levels at most, not `<body>`) was revealed within 20 s: inserted, or shown by `hidden`, `aria-hidden`, `open`, `data-state`, an inline style that was `display:none`, `visibility:hidden` or `opacity:0`, or a class that gained an "open/show/visible/expand/active/hover" token or lost a "hidden/closed/collapsed" one. Other changes (a live page restyling itself) never count;
+  - the element the pointer last came onto before the reveal is outside that container, and got there at most 600 ms before it, or 2 s when it says it opens a popup (`aria-haspopup`, `aria-expanded="true"`);
+  - without that popup attribute, the reveal came 1.5 s or more after the last recorded step (else the step loaded it: a panel after a click);
+  - from the trigger to the click, the pointer stayed on the trigger, in the container, or on something around them (the menu stayed in use), and no step was recorded since the trigger;
+  - the trigger is not the clicked item, inside it, or around it, and has something to find it by (D47); else `hover.skipped` in the debug log.
+- **Not detected** (stated in the code and here): menus shown by CSS `:hover` alone (nothing changes in the page); a menu marked open on an element that also holds its trigger, such as row actions shown on a row's hover (it cannot be told from a row that highlights); a non-ARIA menu opened within 1.5 s of the previous step. For these, the not-found card now adds "If it's in a menu, open the menu first (point at it or click it), then press Retry."
+- **Pack format**: `formatVersion` 2 means "may contain hover steps". `makePack` writes 2 only when a guide has one, so other packs stay 1 and older Waymark keeps reading them; an older Waymark given a version-2 pack says "This pack was made by a newer version of Waymark" instead of failing on the unknown kind. Guides' `schemaVersion` stays 1; old guides are unchanged.
+- **Tests**:
+  - `test/unit/hover-menus.test.ts`: pack format 1 without hover, 2 with it and round-trip; the title; what counts as a reveal (old and new values).
+  - `test/browser/rec-hover-menu.test.ts`: a mouseenter flyout and a portal menu record hover + click; a second click in the open menu adds no hover; no hover for a tooltip, a `title`, a row highlight, a click-opened menu, a container restyled while the pointer rests elsewhere, a pointer that wandered off the menu, a panel a click loaded while the pointer drifted, or a step recorded after the trigger; an `aria-haspopup` trigger that opens later, right after a step, does record.
+  - `test/browser/player.test.ts` ("hover steps"): pointer (not an untrusted event, not elsewhere), Tab, already there.
+  - `test/unit/hover-menus.test.ts` ("review fix"): the first version also took a `pointerover` up to 50 ms after the reveal as the trigger. When content is inserted, Chrome fires `pointerover` on whatever moved under a still pointer about 12 ms later (measured), so a click in a newly inserted panel got a "Point at" step on an unrelated button (`debug-log.test.ts` caught it). The trigger's `pointerover` is always handled before the reveal it causes, so only those count now.
+  - `test/e2e/r6-hover-menu.spec.ts` (`menu.html`, a class-toggled flyout that also opens on focus): records "Point at **Reports**" then "Click **Fuel**", plays by pointer in a closed overlay root, and by keyboard only (Tab, Tab, Enter).
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

@@ -71,7 +71,7 @@ async function tabUrl(tabId: number): Promise<string | undefined> {
   }
 }
 
-const RECORDER_KINDS = new Set<Step['kind']>(['click', 'input', 'select', 'check', 'submit']);
+const RECORDER_KINDS = new Set<Step['kind']>(['hover', 'click', 'input', 'select', 'check', 'submit']);
 
 /** Keeps only what the recorder produces: no notes, voice text or placement from a page. */
 export function recorderStep(step: Step): Step | null {

@@ -46,7 +46,8 @@ describe('schemas', () => {
   });
   it('rejects newer schema and format versions', () => {
     expect(GuideSchema.safeParse({ ...guide(), schemaVersion: 2 }).success).toBe(false);
-    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 2, exportedAt: '', guides: [] }).success).toBe(false);
+    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 2, exportedAt: '', guides: [] }).success).toBe(true);
+    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 3, exportedAt: '', guides: [] }).success).toBe(false);
   });
   it('keeps look-alike profiles (D64) and caps their size', () => {
     const g = guide();

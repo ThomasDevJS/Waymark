@@ -77,6 +77,7 @@ const CSS = `
 [data-card='not-found'] .badge-icon { background: var(--wm-warn-soft); color: var(--wm-warn); }
 .title { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
 .title strong { font-weight: 700; }
+.menu-hint { display: block; margin-top: 4px; }
 .note { margin: 6px 0 0; color: var(--wm-fg-muted); font-size: 13.5px; overflow-wrap: anywhere; }
 .hint { margin: 8px 0 0; display: flex; gap: 6px; align-items: center; color: var(--wm-accent-text); font-size: 12.5px; font-weight: 500; }
 .hint::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--wm-accent); }
@@ -211,6 +212,8 @@ export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'ad
       return 'Send the form to continue.';
     case 'navigate':
       return 'Go to that page to continue.';
+    case 'hover':
+      return 'Point at the highlighted item (or Tab to it) to continue.';
     default:
       return null;
   }
@@ -439,6 +442,8 @@ export class PlayerUI {
       icon.append(buildSvg(TriangleAlert));
       title.textContent = 'Waymark can’t find this step on the page.';
       note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
+      // Items in a menu are hidden until it opens, often by pointing at it (D204).
+      note.append(el('span', 'menu-hint', ' If it’s in a menu, open the menu first (point at it or click it), then press Retry.'));
       buttons.append(this.button('Report broken step', 'report', this.h.report));
       // A compact icon button, so the card's row still fits on one line (D111).
       if (this.h.copyLog && this.h.debugOn?.()) buttons.append(this.iconButton(Copy, 'copy-log', 'Copy debug log', this.h.copyLog));

@@ -152,6 +152,41 @@ describe('advance rules', () => {
   });
 });
 
+describe('hover steps (D204)', () => {
+  it('advance when the pointer is on the target, not elsewhere and not on a script event', async () => {
+    watch('hover', [q('tb-import')]);
+    q('tb-import').dispatchEvent(new PointerEvent('pointerover', { bubbles: true, composed: true })); // untrusted
+    await userEvent.hover(q('tb-export'));
+    expect(advanced).toBe(0);
+    await userEvent.hover(q('tb-import'));
+    expect(advanced).toBe(1);
+  });
+
+  it('advance at once when the pointer already rests on the target as the step is drawn', async () => {
+    await userEvent.hover(q('tb-import'));
+    watch('hover', [q('tb-import')]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(advanced).toBe(1);
+  });
+
+  it('advance when keyboard focus reaches the target (Tab), so keyboard users can complete it', async () => {
+    const box = document.createElement('div');
+    const before = document.createElement('button');
+    const trigger = document.createElement('button');
+    before.textContent = 'Before';
+    trigger.textContent = 'Reports';
+    box.append(before, trigger);
+    document.body.append(box);
+    watch('hover', [trigger]);
+    before.focus();
+    expect(advanced).toBe(0);
+    await userEvent.keyboard('{Tab}');
+    expect(document.activeElement).toBe(trigger);
+    expect(advanced).toBe(1);
+    box.remove();
+  });
+});
+
 describe('overlay drawing', () => {
   const handlers = { next() {}, back() {}, skip() {}, exit() {}, retry() {}, report() {}, goBack() {}, mute() {} };
   const view = (step: Step, extra: Partial<RunView> = {}): RunView => ({ ...NO_RUN, active: true, status: 'running', guideTitle: 'Demo', stepIndex: 1, total: 4, step, stepToken: 't', ...extra });

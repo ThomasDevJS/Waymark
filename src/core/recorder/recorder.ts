@@ -5,6 +5,7 @@
  * Emits operations rather than final steps, because some merges are only known later:
  * a click on a submit button becomes a submit step when the form's submit event follows.
  */
+import { createHoverTracker } from './hover';
 import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
@@ -187,6 +188,34 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
 
+  // Menus that open while the pointer rests on their trigger (D204): what changed in the page,
+  // and where the pointer rested, so a click on such a menu's item gets a "Point at" step first.
+  const hover = createHoverTracker();
+  const MO = doc.defaultView?.MutationObserver;
+  const observer = MO
+    ? new MO((records) => hover.mutated(records, now()))
+    : null;
+  const observe = (n: Node) =>
+    observer?.observe(n, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'hidden', 'aria-hidden', 'open', 'data-state'] });
+  observe(doc.documentElement ?? doc);
+  const onOver = (e: Event) => {
+    if (!trusted(e)) return;
+    const path = e.composedPath();
+    watchRoots(path);
+    hover.over(path, now());
+  };
+  const maybeHover = (el: Element) => {
+    const h = hover.triggerFor(el, now(), last?.time ?? 0);
+    if (!h) return;
+    const hfp = fpOf(h);
+    if (!hasStrongSignal(hfp)) {
+      dbg('hover.skipped', () => ({ why: 'the menu opened on hover, but its trigger has nothing to find it by again (D47)', ...fpFacts(hfp) }));
+      return;
+    }
+    dbg('hover', () => ({ why: 'the clicked item appeared after the pointer rested on another element (D204)', ...fpFacts(hfp) }));
+    add('hover', h, hfp, stepTitle('hover', { name: nameFor(h, hfp) }, lang));
+  };
+
   const onPointerDown = (e: Event) => {
     if (!trusted(e)) return;
     const path = e.composedPath();
@@ -288,6 +317,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       add('select', el, fp, chooseOptionTitle(fp.text ?? fp.accessibleName ?? 'the option'));
       return;
     }
+    maybeHover(el);
     add('click', el, fp, stepTitle('click', { name: hint ?? nameFor(el, fp) }, lang), flagsFor(el, t.lowConfidence));
   };
 
@@ -338,6 +368,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         shadowRoots.add(n);
         n.addEventListener('change', onChange, { capture: true });
         n.addEventListener('submit', onSubmit, { capture: true });
+        observe(n);
       }
     }
   };
@@ -399,6 +430,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     ['change', onChange],
     ['keydown', onKeyDown],
     ['submit', onSubmit],
+    ['pointerover', onOver],
   ];
   for (const [type, fn] of listeners) doc.addEventListener(type, fn, { capture: true });
 
@@ -410,6 +442,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         r.removeEventListener('submit', onSubmit, { capture: true });
       }
       shadowRoots.clear();
+      observer?.disconnect();
       timers.forEach(clearTimeout);
       timers.clear();
     },

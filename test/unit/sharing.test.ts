@@ -32,7 +32,7 @@ describe('packs', () => {
     expect(parsePack(text)).toMatchObject({ ok: true });
     expect(parsePack('{nope')).toEqual({ ok: false, error: expect.stringContaining('not valid JSON') });
     expect(parsePack('{"format":"other"}')).toMatchObject({ ok: false });
-    expect(parsePack(JSON.stringify({ ...makePack([guide('a')]), formatVersion: 2 }))).toEqual({ ok: false, error: expect.stringContaining('newer version') });
+    expect(parsePack(JSON.stringify({ ...makePack([guide('a')]), formatVersion: 3 }))).toEqual({ ok: false, error: expect.stringContaining('newer version') });
     expect(parsePack(JSON.stringify(makePack([{ ...guide('a'), schemaVersion: 2 as 1 }])))).toEqual({ ok: false, error: expect.stringContaining('newer version') });
     expect(parsePack(JSON.stringify(makePack([guide('a'), guide('a')])))).toMatchObject({ ok: false, error: expect.stringContaining('twice') });
     expect(parsePack('x'.repeat(5 * 1024 * 1024 + 1))).toEqual({ ok: false, error: expect.stringContaining('5 MB') });
