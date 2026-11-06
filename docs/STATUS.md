@@ -52,6 +52,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - Levels and precedence: `src/core/player/shade.ts` (no Zod, the content script imports it); learner setting: `src/core/player/settings.ts`, `src/background/player-settings.ts` (`player.settings.get/set`); the guide's optional `shade` in `GuideSchema`. The resolved level goes out in `viewFor` (`RunView.shade`). Drawing: `.spot[data-shade]` and the `--wm-scrim-lighter/-darker` tokens. UI: `options/Shade.tsx`, the editor's "Shade around the highlight". The Practice page follows Settings (`PracticePlayer.setShade`).
 - Tests: `test/unit/shade.test.ts`, `test/browser/shade.test.ts` (open and closed root), e2e `test/e2e/h2-shade.spec.ts` (test hook `data-waymark-test-shade` = `level|computed box-shadow`).
 
+## Search among a page's guides (D170–D172, issue #69)
+- From 6 guides for a page (`PAGE_SEARCH_FROM`): the `?` menu becomes a combobox with a box, up to 3 tag chips and a listbox (`searchList` in `src/content/launcher.ts`); the panel's "For this page" gets its own box and chips (`Library.tsx`). Pure matching, chips and caps: `src/core/discovery/page-search.ts`. `guide.forPage` sends `{ id, title, tags }`, capped and parsed with `ForPageResponseSchema`.
+- Tests: `test/unit/page-search.test.ts`, `test/browser/launcher-search.test.ts` (closed root, real keys), e2e `test/e2e/s1-page-search.spec.ts` (test hooks `launcher-menu`, `launcher-results`, `launcher-active`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

@@ -381,7 +381,7 @@ In v1, a learner discovers guides by the page they are on and by search; automat
 
 - **Toolbar badge**: the service worker matches the tab URL against every guide's URL rules and sets that tab's badge count. It learns the URL from `tabs.onUpdated` and from route reports sent by the content script. The REC badge takes precedence.
 - **Side panel**: "For this page" first, then all guides with search over title, description, tags and step titles. Search is client-side (MiniSearch).
-- **On-page launcher**: a small "?" button in the overlay, bottom right, listing matching guides. On by default where a page has guides; can be turned off per site (D150).
+- **On-page launcher**: a small "?" button in the overlay, bottom right, listing matching guides. On by default where a page has guides; can be turned off per site (D150). From 6 guides for the page, the menu and the panel's "For this page" list get a search box over titles and tags, with up to 3 tag chips (D170).
 - **First-run access**: a new learner has no sites granted, so nothing would show. When a pack is imported or a library is subscribed, the panel offers one Allow request covering every site in its `appOrigins`.
 - **Deep link**: `waymark=<guideId>` in the URL hash or query string offers to start that guide. The content script reads it at `document_start`, passes it to the service worker, and removes it with `history.replaceState`, so hash-routed apps are not disturbed.
 - **Later**: rage clicks, repeated form errors or long idle time on a form suggest a matching guide. Off by default, and never more than once per page visit.

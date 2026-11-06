@@ -5,6 +5,8 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { Guide } from '../core/model/schema';
 import { badgeText, guideMatchesUrl, guidesForUrl } from '../core/discovery/match';
+import { forPageEntry, MAX_FOR_PAGE } from '../core/discovery/page-search';
+import { ForPageResponseSchema } from '../core/messaging/protocol';
 import { duplicateGuide, findConflicts, packOrigins, parsePack, planImport, type Choice } from '../core/sharing/pack';
 import { getGuides, guideKey, listGuides, writeGuides, type GuideIndexEntry } from '../core/storage/guides';
 import { enqueue } from '../core/storage/queue';
@@ -403,9 +405,14 @@ export const discoveryHandlers: Handlers = {
     const url = ctx.sender.tab?.url;
     const origin = ctx.sender.origin;
     if (!url || !origin || ctx.frameId !== 0) return { guides: [], launcher: false };
-    const guides = (await listGuides()).filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url)).map((g) => ({ id: g.id, title: g.title }));
+    // Only this origin's guides that match this page, with their tags for the ? menu's search,
+    // capped and checked against the schema (D171).
+    const guides = (await listGuides())
+      .filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url))
+      .slice(0, MAX_FOR_PAGE)
+      .map(forPageEntry);
     const launcher = ownSetting(await siteSettings(), origin)?.launcher ?? true; // on unless turned off (D150)
-    return { guides, launcher };
+    return ForPageResponseSchema.parse({ guides, launcher });
   },
   'launcher.start': async ({ guideId, openStart }, ctx: HandlerContext) => {
     if (ctx.tabId === undefined || ctx.frameId !== 0 || !(await guideForSender(guideId, ctx))) throw new Error('Guide not available here.');
