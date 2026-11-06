@@ -1378,6 +1378,30 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Not done**: private, domain-only Drive files. Using the user's Google sign-in ("A+" in #83) and OAuth ("B") are left for later, at Thomas's call.
 - **Tests**: `test/unit/drive-library.test.ts`: every link shape, links that must not match (http, look-alike hosts, folders, bad ids), the download address, and the web-page and 404 errors through `fetchLibraryText`.
 
+### D158. The step badge sits beside the element, never on it; a flaky preview test made deterministic
+*6 Nov 2026 · SPEC: Sharing (printable how-to); issue #87; follow-up to D193*
+
+- **Finding**: in Thomas's export the round step number was drawn at the highlight's top-left corner, kept inside the image. On a small tab at the top edge it moved onto the tab and hid the start of its label ("Safety" read "afety").
+- **Change** (`badgeSpot`, `src/core/shots/render.ts`, pure):
+  - the badge is placed outside the highlight and its ring. Spots are tried in order: the top-left corner as before, then the other corners, the sides, and off-centre along the sides (a long bar at the top of the image). The first spot that lies wholly in the image and clear of the ring wins;
+  - if none fits, a smaller badge (9 units) is tried, and only then the inside of the box, for an element that fills the image;
+  - the badge is sized to the target: about three quarters of a small element's height, 9 to 13 units (units scale with the image). Its number scales with it.
+- **Flaky test** (`howto-preview.test.ts`, "Zoom draws only the part around the element"): it read the second image's `naturalWidth` without waiting for it to decode, and once under full `pnpm check` load it read 0. It now waits for each image to decode, polls for the zoomed drawing instead of a time, and the other test that read a width directly does the same. It passed 20 of 20 runs of the whole file with every CPU busy.
+- **Tests**: `test/unit/badge-spot.test.ts`: Thomas's case (a small tab at the top edge), an element in each corner, a full-width bar at the top, the usual top-left spot, sizes, and an element filling the image.
+
+### D159. Links and zoom in the printable how-to
+*6 Nov 2026 · SPEC: Sharing (printable how-to); issues #85, #86; amends D104*
+
+- **Why**: Thomas wants readers of the exported PDF or HTML to click straight to the app, and to enlarge a screenshot in the HTML file.
+- **Links** (HTML and the preview that Save as PDF prints; Markdown is unchanged and has none):
+  - **The start page**: "Start at" is a link to the start site (origin only, as D104 already showed).
+  - **A step's page**: an "Open this page" link where the page changes from the step before (`stepPageLinks`). Only a plain path from the step's own address rule on the start site is linked, never a rule with `:param` stand-ins for ids or a query. Steps inside a frame have their frame's address, so they get none.
+  - **Links the author wrote** in a title or note (`[text](https://…)`) stay links when they point to one of the guide's own sites (`appOrigins`), path only (`ownLink`): the query and fragment can carry data. Links to other sites, and bare addresses, are removed as before (D104); the leak tests still pass. Kept links are found before `stripUrls` and put back after parsing, using private-use markers that are removed from the input first.
+- **Zoom (HTML file)**: each screenshot is a `label` holding a visually hidden checkbox and the image. With the box checked (a click, or Space when focused), CSS shows the image fixed, full size in the window, over a dark backdrop; a click closes it. The file still runs no script, and the CSP is unchanged. Printing ignores the zoom.
+- **Tests**:
+  - `test/unit/qol-sharing.test.ts`: start link, page links (start page, same page twice, ids, query, frame, hash route), own-site and other-site note links, `ownLink` against look-alike hosts and `javascript:`, the zoom markup, and the base page linking only to its own site;
+  - `test/browser/howto-preview.test.ts`: the preview's links and the saved file's links and zoom.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

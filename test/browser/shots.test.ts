@@ -7,7 +7,7 @@ import { stepHashes } from '../../src/core/shots/lifecycle';
 import type { Guide } from '../../src/core/model/schema';
 import { answerShot, checkShot, settled, hideForShot, onTokenMessage, showAfterShot, TOKEN_MSG, unhideable } from '../../src/content/shots';
 import { overlayHost, overlayLayer, destroyOverlay } from '../../src/content/overlay/host';
-import { renderShot } from '../../src/core/shots/render';
+import { badgeSpot, highlightRect, renderShot, unitOf } from '../../src/core/shots/render';
 
 async function webp(w: number, h: number, paint: (ctx: OffscreenCanvasRenderingContext2D) => void): Promise<Blob> {
   const c = new OffscreenCanvas(w, h);
@@ -313,9 +313,19 @@ describe('export render (D193)', () => {
     });
     const shot = { blob: big, w: 1600, h: 900, box: { x: 800, y: 450, w: 60, h: 30 }, v: 2 };
     const numbered = await pixels(await renderShot(shot, { n: 3 }));
-    // The badge's orange disc sits on the highlight's top-left corner.
-    const [r, g, b] = numbered(800 - 6 - 8, 450 - 6);
+    // The badge's orange disc sits beside the highlight's top-left corner, outside it (D158).
+    const u = unitOf(1600);
+    const hl = highlightRect(shot.box, 1600, 900, 4 * u);
+    const spot = badgeSpot(hl, 1600, 900, u);
+    expect(spot.cx).toBeLessThan(hl.x);
+    expect(spot.cy).toBeLessThan(hl.y);
+    const [r, g, b] = numbered(Math.round(spot.cx - spot.r * 0.6), Math.round(spot.cy));
     expect([r! > 180, g! > 70 && g! < 160, b! < 80]).toEqual([true, true, true]);
+    // The element itself is not covered: its blue is still there, at its centre and its top-left.
+    for (const [x, y] of [[830, 465], [806, 456]] as const) {
+      const [er, eg, eb] = numbered(x, y);
+      expect([er! < 80, eg! < 80, eb! > 150], `${x},${y}: ${er},${eg},${eb}`).toEqual([true, true, true]);
+    }
     const zoomed = await renderShot(shot, { zoom: true });
     const bmp = await createImageBitmap(zoomed);
     expect(bmp.width).toBeLessThan(1600);

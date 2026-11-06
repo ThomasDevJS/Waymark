@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { memArea } from '../perf/fixtures';
 import type { Guide } from '../../src/core/model/schema';
-import { howtoHtml, howtoMarkdown, howtoStrings, looksLikeData, stripUrls } from '../../src/core/sharing/howto';
+import { howtoHtml, howtoImageKey, howtoMarkdown, howtoStrings, looksLikeData, ownLink, stepPageLinks, stripUrls } from '../../src/core/sharing/howto';
 import { applyRemovals, packStrings } from '../../src/core/sharing/review';
 import { exportText } from '../../src/entrypoints/sidepanel/ExportReview';
 import { CONTENT_ALLOWED, EXTENSION_ALLOWED, parseMessage } from '../../src/core/messaging/protocol';
@@ -55,7 +55,10 @@ describe('how-to export (D104)', () => {
     expect(html).toMatch(/^<!doctype html>/);
     expect(html).toContain('<title>Pay &lt;a contractor&gt; &amp; more</title>');
     expect(html).toContain('<strong>Save</strong> &lt;script&gt;x&lt;/script&gt;');
-    expect(html).not.toMatch(/<script|<a |href=|src=|@import|url\(/i);
+    expect(html).not.toMatch(/<script|@import|url\(/i);
+    // Links only to the guide's own site (D159); images only as embedded data (none here).
+    expect([...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1])).toEqual(['https://app.test']);
+    expect(html).not.toMatch(/src=/i);
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('@media print');
     expect(html).toContain('See the docs or https://app.test<br>then wait');
@@ -252,3 +255,52 @@ describe('recording shortcut (D105)', () => {
     expect((await toggleRecording(undefined)).kind).toBe('error');
   });
 });
+
+describe('links and zoom in the printable how-to (D159, #85, #86)', () => {
+  const base = { ...guide, startUrl: 'https://app.test/orders', appOrigins: ['https://app.test', 'https://frame.app.test'] };
+  const st = (id: string, value: string, extra: Partial<Guide['steps'][number]> = {}): Guide['steps'][number] => ({ id, kind: 'click', title: `Click **${id}**`, url: { kind: 'pattern', value }, target, advance: 'action', ...extra });
+
+  it('the start page is a link to its site', () => {
+    expect(howtoHtml([base])).toContain('Start at <a href="https://app.test">https://app.test</a>');
+  });
+
+  it('a step links to its page where the page changes: plain paths only, not ids, queries or frames', () => {
+    const g = {
+      ...base,
+      steps: [
+        st('a', '/orders'), // the start page: no link
+        st('b', '/orders/new'),
+        st('c', '/orders/new'), // same page again: no link
+        st('d', '/orders/:id'), // an id stand-in
+        st('e', '/search?q=x'), // a query
+        st('f', '/reports', { target: { ...target, framePath: ['iframe#app'] } }), // a frame's own address
+        st('g', '/#/settings'),
+      ],
+    };
+    expect(stepPageLinks(g)).toEqual([null, 'https://app.test/orders/new', null, null, null, null, 'https://app.test/#/settings']);
+    const html = howtoHtml([g]);
+    expect(html).toContain('<a class="page" href="https://app.test/orders/new">Open this page</a>');
+    expect(html).not.toMatch(/:id|q=x|\/reports/);
+  });
+
+  it('a link written in a note stays a link when it is on the guide’s own sites, path only; others go', () => {
+    const g = { ...base, steps: [st('a', '/x', { note: 'See [the run](https://app.test/payroll/run?id=77#top) and [frame](https://frame.app.test/a/b) or [docs](https://docs.example.com/x)' })] };
+    const html = howtoHtml([g]);
+    expect(html).toContain('<a href="https://app.test/payroll/run">the run</a>');
+    expect(html).toContain('<a href="https://frame.app.test/a/b">frame</a>');
+    expect(html).toContain('or docs');
+    expect(html).not.toMatch(/docs\.example|id=77|#top/);
+    expect(ownLink('javascript:alert(1)', ['https://app.test'])).toBeNull();
+    expect(ownLink('https://app.test.evil.com/x', ['https://app.test'])).toBeNull();
+    // Markdown has no links at all, as before (it is often pasted elsewhere).
+    expect(howtoMarkdown([g])).not.toMatch(/\]\(/);
+  });
+
+  it('a screenshot can be clicked to see it full size, with no script', () => {
+    const html = howtoHtml([base], new Map([[howtoImageKey(base.id, base.steps[0]!.id), { src: 'data:image/webp;base64,AAAA', w: 800, h: 450 }]]));
+    expect(html).toMatch(/<label class="zoom"[^>]*><input type="checkbox" aria-label="Enlarge the screenshot of step 1"><img src="data:image\/webp;base64,AAAA"/);
+    expect(html).toContain('.zoom input:checked + img');
+    expect(html).not.toMatch(/<script/i);
+  });
+});
+

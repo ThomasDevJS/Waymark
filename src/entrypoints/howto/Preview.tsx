@@ -8,7 +8,7 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Guide } from '../../core/model/schema';
 import type { InlineToken } from '../../core/text/markdown';
-import { howtoHtml, howtoImageKey, howtoInline, howtoPlain, PRINT_CSS, startOrigin, stepCount, stepsLabel, type HowtoImage } from '../../core/sharing/howto';
+import { howtoHtml, howtoImageKey, howtoInline, howtoPlain, PRINT_CSS, startOrigin, stepCount, stepPageLinks, stepsLabel, type HowtoImage } from '../../core/sharing/howto';
 import { blobToDataUrl, renderShot } from '../../core/shots/render';
 import { isOldShot, type ShotRecord } from '../../core/shots/store';
 import { downloadText, safeFileName } from '../../core/sharing/file';
@@ -62,7 +62,14 @@ function Tokens({ tokens }: { tokens: InlineToken[] }): ComponentChildren {
           </em>
         );
       case 'link':
-        return <Fragment key={i}>{t.text}</Fragment>;
+        // Kept only for addresses on the guide's own sites, path only (D159).
+        return /^https?:\/\//.test(t.href) ? (
+          <a key={i} href={t.href} target="_blank" rel="noopener noreferrer">
+            {t.text}
+          </a>
+        ) : (
+          <Fragment key={i}>{t.text}</Fragment>
+        );
     }
   });
 }
@@ -229,15 +236,24 @@ export function Preview({ guides, shots, shotsOn, name, date, onDownload, onPrin
         )}
         {guides.map((g) => {
           const origin = startOrigin(g);
+          const pages = stepPageLinks(g);
           const H = many ? 'h2' : 'h1';
           return (
             <section key={g.id}>
               <H>{howtoPlain(g.title, origin)}</H>
               {!many && <p class="meta">{meta}</p>}
               {g.description && <p class="desc">{howtoPlain(g.description, origin)}</p>}
-              {origin && <p class="start">Start at {origin}</p>}
+              {origin && (
+                <p class="start">
+                  Start at{' '}
+                  <a href={origin} target="_blank" rel="noopener noreferrer">
+                    {origin}
+                  </a>
+                </p>
+              )}
               <ol>
                 {g.steps.map((s, i) => {
+                  const page = pages[i];
                   const key = howtoImageKey(g.id, s.id);
                   const x = byKey.get(key);
                   const c = choice(key);
@@ -247,11 +263,16 @@ export function Preview({ guides, shots, shotsOn, name, date, onDownload, onPrin
                   return (
                     <li key={s.id} data-testid={`howto-step-${n}`}>
                       <div class="title">
-                        <Tokens tokens={howtoInline(s.title, origin)} />
+                        <Tokens tokens={howtoInline(s.title, origin, g.appOrigins)} />
                       </div>
+                      {page && (
+                        <a class="page" href={page} target="_blank" rel="noopener noreferrer" data-testid={`howto-page-${n}`}>
+                          Open this page
+                        </a>
+                      )}
                       {s.note && (
                         <p class="note">
-                          <Tokens tokens={howtoInline(s.note, origin)} />
+                          <Tokens tokens={howtoInline(s.note, origin, g.appOrigins)} />
                         </p>
                       )}
                       {x && c.keep && r?.url && (

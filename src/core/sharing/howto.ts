@@ -121,7 +121,8 @@ function toHtml(tokens: InlineToken[]): string {
         case 'italic':
           return `<em>${toHtml(t.children)}</em>`;
         case 'link':
-          return escapeHtml(t.text);
+          // Kept only by withOwnLinks: an http(s) address on the guide's own site, path only.
+          return /^https?:\/\//.test(t.href) ? `<a href="${escapeHtml(t.href)}">${escapeHtml(t.text)}</a>` : escapeHtml(t.text);
       }
     })
     .join('');
@@ -129,7 +130,7 @@ function toHtml(tokens: InlineToken[]): string {
 
 /** A markdown-subset field (step title, note) as safe Markdown or HTML: addresses go first. */
 const inlineMd = (src: string, origin: string) => mdLineStarts(toMd(clean(parseInline(stripUrls(src, origin)))));
-const inlineHtml = (src: string, origin: string) => toHtml(clean(parseInline(stripUrls(src, origin))));
+const inlineHtml = (src: string, origin: string, sites: readonly string[] = []) => toHtml(withOwnLinks(src, origin, sites));
 /** A plain-text field (guide title, description). */
 const plainMd = (src: string, origin: string) => mdLineStarts(mdText(stripUrls(src, origin)));
 const plainHtml = (src: string, origin: string) => escapeHtml(stripUrls(src, origin)).replace(/\n/g, '<br>');
@@ -156,7 +157,84 @@ export function howtoMarkdown(guides: Guide[]): string {
 }
 
 /** Rich text of a step title or note for the preview page (D195): addresses removed, links as text. */
-export const howtoInline = (src: string, origin: string): InlineToken[] => clean(parseInline(stripUrls(src, origin)));
+export const howtoInline = (src: string, origin: string, sites: readonly string[] = []): InlineToken[] => withOwnLinks(src, origin, sites);
+
+/**
+ * Links in an exported how-to (D159, #85): readers click straight to the app. Only addresses on
+ * the guide's own sites, and only their path: the query and fragment can carry data (D104), and
+ * links to other sites are still removed. Returns the address to link to, or null.
+ */
+export function ownLink(href: string, sites: readonly string[]): string | null {
+  try {
+    const u = new URL(href);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (!sites.includes(u.origin)) return null;
+    return u.origin + u.pathname;
+  } catch {
+    return null;
+  }
+}
+
+/** Markers for a kept link while the rest of the text is stripped and parsed (private-use characters). */
+const MARK_OPEN = '\uE000';
+const MARK_CLOSE = '\uE001';
+
+/**
+ * A title or note with its markdown links to the guide's own sites kept as links (path only);
+ * every other address goes as before (stripUrls). Without sites, no link is kept.
+ */
+function withOwnLinks(src: string, origin: string, sites: readonly string[]): InlineToken[] {
+  const text = src.replace(/[\uE000\uE001]/g, '');
+  const kept: { href: string; text: string }[] = [];
+  const marked = sites.length
+    ? text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label: string, href: string) => {
+        const to = ownLink(href, sites);
+        if (!to) return m;
+        kept.push({ href: to, text: stripUrls(label, origin) });
+        return `${MARK_OPEN}${kept.length - 1}${MARK_CLOSE}`;
+      })
+    : text;
+  const tokens = clean(parseInline(stripUrls(marked, origin)));
+  if (!kept.length) return tokens;
+  const relink = (ts: InlineToken[]): InlineToken[] =>
+    ts.flatMap((t): InlineToken[] => {
+      if (t.type === 'bold' || t.type === 'italic') return [{ ...t, children: relink(t.children) }];
+      if (t.type !== 'text' || !t.text.includes(MARK_OPEN)) return [t];
+      const out: InlineToken[] = [];
+      for (const part of t.text.split(new RegExp(`(${MARK_OPEN}\\d+${MARK_CLOSE})`))) {
+        const m = new RegExp(`^${MARK_OPEN}(\\d+)${MARK_CLOSE}$`).exec(part);
+        const link = m ? kept[Number(m[1])] : undefined;
+        if (link) out.push({ type: 'link', href: link.href, text: link.text });
+        else if (part) out.push({ type: 'text', text: part.replace(/[\uE000\uE001]/g, '') });
+      }
+      return out;
+    });
+  return relink(tokens);
+}
+
+/**
+ * The page a step happens on, as a link (D159): the step's own address rule on the guide's start
+ * site, when it is a plain path (no `:param` stand-ins for ids, no query). Steps inside frames
+ * have their frame's address, so they get none.
+ */
+export function stepPageHref(g: Pick<Guide, 'startUrl'>, step: Pick<Guide['steps'][number], 'url' | 'target'>): string | null {
+  const origin = startOrigin(g);
+  if (!origin || step.target?.framePath.length) return null;
+  const v = step.url.kind === 'pattern' ? step.url.value : null;
+  if (!v || !v.startsWith('/') || v.includes('?') || /(^|[/#]):/.test(v)) return null;
+  return origin + v;
+}
+
+/** Each step's page link, only where the page changes from the step before (a change of page). */
+export function stepPageLinks(g: Pick<Guide, 'startUrl' | 'steps'>): (string | null)[] {
+  let prev: string | null = startOrigin(g) ? new URL(g.startUrl).origin + new URL(g.startUrl).pathname : null;
+  return g.steps.map((s) => {
+    const href = stepPageHref(g, s);
+    if (!href || href === prev) return null;
+    prev = href;
+    return href;
+  });
+}
 /** A plain-text field (guide title, description) for the preview page. */
 export const howtoPlain = (src: string, origin: string): string => stripUrls(src, origin);
 
@@ -182,9 +260,18 @@ li .title { font-weight: 600; }
 li .note { margin: .2rem 0 0; color: #4a5160; }
 li .shot { margin: .5rem 0 0; }
 li .shot img { display: block; width: auto; height: auto; max-width: 100%; border: 1px solid #d5d9e0; border-radius: 6px; }
+a { color: #1a56db; }
+li a.page { display: inline-block; margin: .15rem 0 0; font-size: .85rem; }
+/* Click a screenshot to see it full size (D159, #86): CSS only, the file runs no script. */
+.zoom { display: block; position: relative; cursor: zoom-in; }
+.zoom input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; margin: 0; }
+.zoom input:focus-visible + img { outline: 3px solid #1a56db; outline-offset: 2px; }
+.zoom input:checked + img { position: fixed; inset: 0; margin: auto; max-width: 96vw; max-height: 96vh; z-index: 10; cursor: zoom-out; background: #fff; box-shadow: 0 0 0 100vmax rgba(10, 13, 20, .82); }
 footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
 @page { margin: 14mm; }
 @media print {
+  .zoom input:checked + img { position: static; max-width: 100%; max-height: 105mm; box-shadow: none; }
+  a { color: inherit; }
   body { margin: 0; max-width: none; padding: 0; font-size: 11pt; }
   h1, h2 { break-after: avoid; page-break-after: avoid; }
   li .shot img { max-height: 105mm; }
@@ -208,7 +295,8 @@ function imageHtml(img: HowtoImage | undefined, n: number): string {
   if (!img || !DATA_IMAGE.test(img.src)) return '';
   const w = Math.max(1, Math.min(4000, Math.round(img.w)));
   const h = Math.max(1, Math.min(4000, Math.round(img.h)));
-  return `<figure class="shot"><img src="${img.src}" width="${w}" height="${h}" alt="Screenshot of step ${n}, with the element to use highlighted"></figure>`;
+  // A checkbox with the image after it: checked, the image shows full size (CSS only, D159).
+  return `<figure class="shot"><label class="zoom" title="Click to enlarge"><input type="checkbox" aria-label="Enlarge the screenshot of step ${n}"><img src="${img.src}" width="${w}" height="${h}" alt="Screenshot of step ${n}, with the element to use highlighted"></label></figure>`;
 }
 
 export interface HowtoHtmlOptions {
@@ -232,11 +320,13 @@ export function howtoHtml(guides: Guide[], images: ReadonlyMap<string, HowtoImag
     body.push(`<section>`, `<${h}>${plainHtml(g.title, origin)}</${h}>`);
     if (!many) body.push(`<p class="meta">${escapeHtml(meta)}</p>`);
     if (g.description) body.push(`<p class="desc">${plainHtml(g.description, origin)}</p>`);
-    if (origin) body.push(`<p class="start">Start at ${escapeHtml(origin)}</p>`);
+    if (origin) body.push(`<p class="start">Start at <a href="${escapeHtml(origin)}">${escapeHtml(origin)}</a></p>`);
     body.push('<ol>');
+    const pages = stepPageLinks(g);
     g.steps.forEach((s, i) => {
       const img = imageHtml(images.get(howtoImageKey(g.id, s.id)), i + 1);
-      body.push(`<li><div class="title">${inlineHtml(s.title, origin)}</div>${s.note ? `<p class="note">${inlineHtml(s.note, origin)}</p>` : ''}${img}</li>`);
+      const page = pages[i] ? `<a class="page" href="${escapeHtml(pages[i]!)}">Open this page</a>` : '';
+      body.push(`<li><div class="title">${inlineHtml(s.title, origin, g.appOrigins)}</div>${page}${s.note ? `<p class="note">${inlineHtml(s.note, origin, g.appOrigins)}</p>` : ''}${img}</li>`);
     });
     body.push('</ol>', '</section>');
   }
