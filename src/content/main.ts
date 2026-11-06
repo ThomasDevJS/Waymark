@@ -6,6 +6,7 @@ import { startRecordingClient } from './recording';
 import { startPlayerClient } from './player/controller';
 import { startEditorClient } from './editor';
 import { startShotClient } from './shots';
+import { startEmbedReports } from './embeds';
 import { startLauncher, takeDeepLink } from './launcher';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
@@ -47,7 +48,8 @@ export function startContent(): void {
   const editor = startEditorClient(frames.framePath);
   const launcher = startLauncher();
   const shots = startShotClient();
-  disposers.push(recording.dispose, player.dispose, editor.dispose, launcher.dispose, shots.dispose, destroyOverlay);
+  const embeds = startEmbedReports();
+  disposers.push(recording.dispose, player.dispose, editor.dispose, launcher.dispose, shots.dispose, embeds.dispose, destroyOverlay);
   let firstReport = true;
   disposers.push(
     watchRoutes((change) => {
@@ -64,6 +66,8 @@ export function startContent(): void {
           setDebug(r.debug === true);
           recording.apply(r.recording);
           player.apply(r.run);
+          // An in-app route may show other frames: check again (D155).
+          embeds.refresh();
           if (window === window.top) {
             launcher.refresh(); // guides for this page change with in-app routes too
             if (firstReport && deepLink) launcher.offerDeepLink(deepLink);

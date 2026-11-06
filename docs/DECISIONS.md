@@ -1315,6 +1315,54 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Change**: `recorder.settings.get` is the one settings read open to content scripts (D153). It returned the whole `RecorderSettings`, so any setting added later would have reached every granted page. The handler now passes the result through `recorderSettingsFor(settings, ctx.kind)`, which gives content senders `{ hover }` only. Extension pages still get everything.
 - **Tests**: `test/unit/recorder-settings.test.ts`: with an extra future field, a content sender gets `{ hover }` only; the default is on, and a bad stored value falls back to on.
 
+### D155. Embedded sites: each frame reports its child frames' sites; the panel offers Allow
+*6 Nov 2026 · SPEC: Recorder ("Frames and shadow DOM"); Permissions; issue #77*
+
+- **Finding**: Thomas recorded on a Google Sites page that embeds a web app, and Waymark did nothing inside it. Google Sites shows an embed through a wrapper frame on `<n>-atari-embeds.googleusercontent.com`, with the app's own site inside it. Waymark runs per frame, only on allowed sites, and nothing told the user which sites to allow. SPEC said the panel offers Allow for a cross-origin frame's site; that was never built. Recording and playback across frames already worked once each site was allowed (nonce frame mapping; `appOrigins` grows per frame).
+- **Reports** (`src/content/embeds.ts`, `src/core/frames/embeds.ts`):
+  - every frame Waymark runs in sends `frame.embeds` with its **direct** child frames' origins, including frames in open shadow roots. These are http(s) origins only, never paths or queries; about:blank, srcdoc and other schemes are left out;
+  - it sends at start and after frames are added or change `src` (a MutationObserver, debounced 500 ms), and only when the list changed. It sends again after a route report, because the list is cleared on page changes.
+  - The message is content-allowed and Zod-validated, with at most 20 strings of 500 characters.
+- **Store** (`src/background/embeds.ts`):
+  - session storage `embeds:<tab>`, per frame, through `enqueue`;
+  - cleaned with `isSiteOrigin` (no wildcards), deduplicated and capped at 20 per frame and 50 frames per tab, written only when it changes;
+  - each frame's entry is replaced only by that frame. It sends an empty report on `pagehide` and reports again on a back/forward-cache `pageshow`. When the top frame loads a new page, reports older than that page's start are dropped (`reportsSince` with the page's `timeOrigin`), and the tab's list goes when the tab closes.
+- **Panel** (`App.tsx`, `EmbedsOffer`):
+  - under an allowed site: "This page shows content from other sites. Allow Waymark there too…", listing each site with `siteLabel`, and one **Allow** button;
+  - only that click calls `permissions.request`, for exactly the listed origins; content can never trigger a request, and nothing is granted automatically;
+  - origins that are granted only to fetch the library count as not allowed and become guide sites through `site.allowed` (D80);
+  - nested embeds unlock one level at a time: once the wrapper is allowed, its content script reports the app inside it.
+- **Injection after a grant** (`injectIntoFrames`): `permissions.onAdded` and `site.allowed` used to inject into tabs whose top page was on the new site. An embedded frame inside a page on another site never got the script until a reload. Now the frames of every tab Waymark can access are asked for their origin (only frames it may access answer), and the script goes only into frames on the newly granted sites. Frames where it already runs are normally not restarted; a frame that navigates during the grant may get a second instance, and the newest takes over. Install and update still use `injectIntoOpenTabs`. Patterns match like Chrome's: scheme `*`, host `*` and `*.domain`, any port (`originMatchesPattern`).
+- **Google Sites' wrapper changes address on every publish** (community reports; no Google documentation): after a republish the panel offers Allow for the new wrapper. A wildcard grant for `*.googleusercontent.com` is not part of this: it would also cover Drive and Docs previews, Apps Script apps and more, so it needs Thomas's explicit choice and its own switch. Guides keep playing after a republish: framePath is made of selectors, and the step is in the app frame, whose origin is stable. The wrapper frame is not a guide site, so it gets only the "run exists" view (D48), never guide data.
+- **Fixes from the independent review** (each test fails on the reviewed version where it can be reached):
+  - the list was cleared on every `tabs.onUpdated` "loading", which also fires when a frame inside the page navigates. Most frames never reported again, so the offer vanished. It is now pruned per frame, as above;
+  - frame injection matched only `http(s)://host/*`. Grants made through Chrome's own site access (`https://*/*`, `*://host/*`, `*.domain`) stopped reaching open tabs. It now matches real match patterns;
+  - a page could list hidden frames of any site (mail, bank) and have them all granted in one click. Only visible frames count (`frameShown`: a size, not hidden, not transparent), each site has its own tick box with "Allow only sites you recognise as part of this page", and Allow asks only for the ticked ones;
+  - a removed embed left its entry: frames now clear theirs on `pagehide`;
+  - a slower answer for a tab the panel had left could overwrite the current tab's list: answers for an older ask or another tab are dropped.
+- **Tests**:
+  - `test/unit/embeds.test.ts`: origin extraction, cleaning, per-frame store, pruning by page start, frame/pattern matching (Chrome's wildcard forms too);
+  - `test/browser/embeds.test.ts`: visible child frames only, shadow roots;
+  - `test/e2e/r2-embeds.spec.ts`, second test: a hidden frame is never offered, the offer survives a frame navigating inside the page, and removing the embed drops it;
+  - `test/e2e/r2-embeds.spec.ts`, a three-origin fixture (top → wrapper → app, `test/fixtures/site/embed/`) with the closed overlay root:
+    - Allow the wrapper from the panel, then the app;
+    - record a click in the innermost frame (framePath of 2);
+    - move the wrapper to another origin and Allow it again;
+    - play back in the app frame (the wrapper draws nothing), and the click finishes the guide.
+
+### D156. The recording outline's check is cheap: the element's own signals, no page scan
+*6 Nov 2026 · SPEC: Recorder; follow-up to D153*
+
+- **Finding**: Thomas found the recording outline slowed pages down. Each time the pointer settled on a new element, `previewClick` built a full fingerprint. That includes `recordTimeScan`, which scores every candidate on the page and measures their layout to count look-alikes, plus the CSS path and XPath. On a 1,500-row table that took about **320 ms per check**, blocking the page, and more on a large frame-based app.
+- **Why not a 2.5 s hover delay** (Thomas's idea): the outline would mostly appear after the click it was meant to inform, and the cost would still hit whenever the pointer paused. The cost was the scan, not how often it ran.
+- **Change**:
+  - `buildFingerprint(el, { light: true })` gives only the element's own signals: no scan, no paths, no layout. The verdict needs only whether there is something to find it by (`hasStrongSignal`), which never uses the look-alike count.
+  - The full fingerprint is still built for the clickable card of D82 (whether it is one of a kind), as the recorder does. `clickableRegion` returns before any fingerprint for content without a pointer cursor, the usual case.
+  - Now about **0.5 ms per check** on the same table.
+  - Rest before deciding: 100 ms, which reduces flicker while sweeping. Recent verdicts are kept per element for 3 s, so moving back and forth costs nothing; a press clears them.
+  - The light fingerprint is never stored or sent: its paths are empty and its count and rect are placeholders.
+- **Tests**: `test/browser/rec-hover-perf.test.ts` sets a 20 ms budget per check on a 1,500-row table; it fails on the old code at about 310 ms. The recorder parity test in `rec-hover.test.ts` still passes.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

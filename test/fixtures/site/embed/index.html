@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Team site</title>
+<style>body{margin:0;font:14px system-ui} header{padding:12px;background:#234;color:#fff} iframe{border:0;width:100%;height:420px;display:block}</style></head>
+<body>
+  <!-- Like a Google Sites page (D155): an app shown through a wrapper frame on another origin
+       (?wrap=<host>, as googleusercontent.com's per-publish hosts), with the app on a third. -->
+  <header><a href="#" id="home-link" style="color:#fff">Team home</a></header>
+  <main><h1>Shipping desk</h1></main>
+  <script>
+    const wrap = new URLSearchParams(location.search).get('wrap') ?? '127.0.0.2';
+    const f = document.createElement('iframe');
+    f.src = `${location.protocol}//${wrap}:${location.port}/embed/wrapper.html${location.search}`;
+    f.title = 'Embedded app';
+    f.className = 'embed-wrapper';
+    document.querySelector('main').append(f);
+    const q = new URLSearchParams(location.search);
+    // &inner=1: a visible same-site frame the test navigates; &hidden=1: a hidden frame of a fourth site.
+    if (q.has('inner')) {
+      const i = document.createElement('iframe');
+      i.src = '/frame.html?name=inner';
+      i.className = 'inner-frame';
+      i.style.height = '80px';
+      document.querySelector('main').append(i);
+    }
+    if (q.has('hidden')) {
+      const h = document.createElement('iframe');
+      h.src = `${location.protocol}//127.0.0.4:${location.port}/frame.html?name=hidden`;
+      h.style.display = 'none';
+      document.querySelector('main').append(h);
+    }
+    document.documentElement.setAttribute('data-waymark-test-loaded', 'yes');
+  </script>
+</body>
+</html>

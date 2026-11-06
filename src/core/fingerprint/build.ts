@@ -21,6 +21,12 @@ export interface BuildOptions {
   /** iframe selectors from the top frame down, resolved through the service worker. */
   framePath?: string[];
   isVisible?: (el: Element) => boolean;
+  /**
+   * Only the element's own signals (D156): no page scan for look-alikes, no paths, no layout. For
+   * the recording outline's verdict, which needs only whether there is something to find it by.
+   * Never stored: its paths are empty and its count and rect are placeholders.
+   */
+  light?: boolean;
 }
 
 /** Builds a fingerprint for an element that has already been resolved to its meaningful target. */
@@ -29,17 +35,18 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   const isVis = opts.isVisible ?? layoutVisible;
   const doc = el.ownerDocument;
   const tag = tagOf(el);
+  const light = opts.light === true;
   const fp: ElementFingerprint = {
     instance: 'unique',
     matchCount: 1,
     tag,
-    cssPath: buildCssPath(el, profile),
-    xpath: buildXPath(el),
-    ancestors: buildAncestors(el),
-    shadowPath: buildShadowPath(el, profile),
+    cssPath: light ? '' : buildCssPath(el, profile),
+    xpath: light ? '' : buildXPath(el),
+    ancestors: light ? [] : buildAncestors(el),
+    shadowPath: light ? [] : buildShadowPath(el, profile),
     framePath: opts.framePath ?? [],
     // A visually hidden control is on screen as its label (custom checkboxes; DECISIONS R7).
-    rect: docRect(displayBox(el, isVis) ?? el),
+    rect: light ? { x: 0, y: 0, w: 0, h: 0, vw: 0, vh: 0 } : docRect(displayBox(el, isVis) ?? el),
   };
   const guideId = stableGuideId(el);
   if (guideId) fp.guideId = guideId;
@@ -77,6 +84,7 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
     const p = linkPath(href, doc.URL);
     if (p && !(p.length > 200)) fp.hrefPath = p;
   }
+  if (light) return fp;
   const scan = recordTimeScan(doc, fp, el, { profile, isVisible: isVis });
   const count = scan.count;
   fp.matchCount = Math.max(1, count);
