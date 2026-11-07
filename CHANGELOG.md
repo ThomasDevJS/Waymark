@@ -6,6 +6,14 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-07
+
+### Added
+- **Pick the right element** while playing your own guide: on the not-found card, or with the crosshair in a step's tooltip. The picked element replaces the step's element, the guide is saved, and the panel offers Undo (D210, #95, #103).
+- Steps that may break: the library and the editor flag steps that were not found in recent plays, were found by one signal only, or were barely ahead of a look-alike. The results stay on this device and hold only numbers, ids and dates (D211, #96, #104).
+- A copied broken-step report has a **Fix it** link under each problem. Opened by the guide's author, it offers **Fix step N**; for a team guide it offers **Start from step N** (D212, #98, #105).
+- Site options → **Advanced matching**: per site, stable `data-` attributes (with Find candidates on the page), ignore patterns such as `id=gen-*`, hash routing and query keys to keep. Save tests the site's steps before and after. Site profiles travel in guide files and the team library (D213, #97, #106).
+
 ## [0.8.0] - 2026-11-06
 
 ### Added
@@ -239,7 +247,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.9.0
 [0.8.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.8.0
 [0.7.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.7.0
 [0.6.1]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.6.1
