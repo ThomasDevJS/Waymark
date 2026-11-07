@@ -443,6 +443,17 @@ button.record .rec-dot {
 .edit-step {
   gap: var(--wm-space-3);
 }
+/* A narrow panel: the badges give way (ellipsis) before the step's buttons leave the card (D88, D205). */
+.step-head > .badge {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-head > .badge > .wm-icon,
+.step-head > button {
+  flex-shrink: 0;
+}
 /* Reordering by drag or keyboard (D205). */
 .step-head .grip {
   cursor: grab;
