@@ -102,6 +102,8 @@ export const RequestSchemas = {
   'shots.set': z.object({ guideId: z.string().max(64), on: z.boolean() }),
   'pick.start': z.object({ tabId: z.number().int(), origins: z.array(z.string().max(500)).max(50) }),
   'pick.cancel': z.object({ tabId: z.number().int() }),
+  // The panel's Fix step N for a report link opened in that tab (D212).
+  'linkOffer.fix': z.object({ tabId: z.number().int(), guideId: z.string().max(64), stepIndex: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE - 1) }),
   // The panel's Undo after the player fixed a step (D210): that tab's last fix only.
   'run.fix.undo': z.object({ tabId: z.number().int() }),
   // Steps that may break, from plays on this device (D211): counts per guide, and one guide's steps.
@@ -162,8 +164,12 @@ export const RequestSchemas = {
     at: z.number().optional(),
   }),
   'guide.forPage': z.object({ url }),
-  'launcher.start': z.object({ guideId: z.string().max(64), openStart: z.boolean().optional() }),
-  'deeplink.check': z.object({ guideId: z.string().max(64) }),
+  // stepIndex: Start from step N from a broken-step report link (D212).
+  'launcher.start': z.object({ guideId: z.string().max(64), openStart: z.boolean().optional(), stepIndex: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE - 1).optional() }),
+  // step: the 1-based step of a broken-step report link (D212).
+  'deeplink.check': z.object({ guideId: z.string().max(64), step: z.number().int().min(1).max(1000).optional() }),
+  // Fix step N from a report link (D212): the launcher, or the panel for its tab.
+  'launcher.fix': z.object({ guideId: z.string().max(64), stepIndex: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE - 1) }),
   'frame.nonce': z.object({ selector: z.string().max(2000) }),
   'frame.claim': z.object({ nonce: z.string().max(100) }),
   'frame.path': z.object({}),
@@ -268,7 +274,9 @@ export interface ResponseMap {
   'stats.guide': { steps: Record<string, { t: string; reasons: Reason[] }> };
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
-  'deeplink.check': { guide: { id: string; title: string } | null };
+  'deeplink.check': { guide: { id: string; title: string } | null; offer?: 'fix' | 'start' | 'no-step'; stepIndex?: number; notInLibrary?: boolean };
+  'launcher.fix': StartResult & { fixing?: 'when-found' };
+  'linkOffer.fix': StartResult & { fixing?: 'when-found' };
   'guide.many': { guides: Guide[] };
   'guide.delete': { ok: boolean; undoUntil: number | null };
   'guide.duplicate': Guide;
@@ -341,6 +349,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.fix.start', // Pick the right element: the sender tab's current step, the author's own guide (D210)
   'launcher.start', // on-page launcher and deep link: only guides of the sender's origin (D42)
   'deeplink.check',
+  'launcher.fix', // Fix step N from a report link: a guide of the sender's site, top frame (D212)
   'route.report',
   'guide.forPage',
   // Frame nonce mapping (SPEC: Recorder, "Frames and shadow DOM"); see docs/DECISIONS.md.
@@ -400,6 +409,7 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'run.fix.undo',
   'stats.summary',
   'stats.guide',
+  'linkOffer.fix',
   'voice.list',
   'voice.test',
   'voice.settings.get',

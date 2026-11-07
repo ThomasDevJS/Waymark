@@ -71,6 +71,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - `run.match` records one result per step token (`recordPlay`, `src/background/stats.ts`) into `stats:<guideId>`; reasons and thresholds are in `src/core/stats/plays.ts`, with the shared fragile rule (`isFragile(matchStrength(r))`) Test step uses too. `writeGuides` prunes results of changed or deleted steps and keeps `statsIndex` (flagged steps per guide) for the library row. The editor reads `stats.guide`.
 - Tests: `test/unit/play-stats.test.ts`, e2e `test/e2e/f2-play-stats.spec.ts`; `pnpm bench` has the worst case.
 
+## Report links (D212, issue #98)
+- The copied Problems report has `Fix it: <page>?waymark=<id>&waymark-step=<N>` (`reportLink`, `Options.tsx`). The content script reads it with `takeDeepLinkWithStep` (`launcher.ts`); `deeplink.check` returns the offer (`linkOffer`, `src/background/report-link.ts`) and keeps it for the panel (`linkOffer:<tabId>`); Fix runs `launcher.fix` / `linkOffer.fix` → `fixFromLink` → `startRunInTab` + `beginFix` (D210).
+- Tests: `test/unit/report-link.test.ts`, e2e `test/e2e/f3-report-link.spec.ts` (test hook `deeplink-offer` = `fix`, `start`, `no-step`, `not-in-library`, `plain`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

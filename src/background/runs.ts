@@ -96,6 +96,7 @@ async function pruneGoneFrames(tabId: number, stepToken: string, tied: { key: st
 async function afterPrune(tabId: number): Promise<void> {
   await broadcast(tabId);
   if ((await getBoard(tabId))?.winner) await voiceSync(tabId);
+  for (const hook of boardHooks) await hook(tabId);
 }
 
 /**
@@ -171,6 +172,12 @@ export async function broadcastAllRuns(): Promise<void> {
   const all = await chrome.storage.session.get(null);
   for (const key of Object.keys(all)) if (key.startsWith('run:')) await broadcast(Number(key.slice(4)));
 }
+
+/**
+ * Called after a change of a tab's board (a frame found the step, or the top frame gave up).
+ * Modules register at load; no state is kept here (D212).
+ */
+export const boardHooks: ((tabId: number) => Promise<void>)[] = [];
 
 /** Read-modify-write of one tab's run, serialized through the write queue. */
 function mutateRun<T>(tabId: number, fn: (run: Run | null) => T): Promise<{ run: Run | null; out: T }> {
@@ -292,7 +299,7 @@ function onStepPage(guide: Guide, index: number, url: string): boolean {
  * `stepIndex`, the run starts at that step ("Start from step N", D101); the learner must be on
  * that step's page, because only the start page can be opened for them.
  */
-export async function startRunInTab(tabId: number, guideId: string, openStart: boolean, stepIndex = 0): Promise<StartResult> {
+export async function startRunInTab(tabId: number, guideId: string, openStart: boolean, stepIndex = 0, prep?: (run: Run) => void): Promise<StartResult> {
   const guide = await loadGuide(guideId);
   const url = await tabUrl(tabId);
   const origin = new URL(guide.startUrl).origin;
@@ -310,8 +317,10 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
     }
     const run = startRun(guide, Date.now(), stepIndex);
     dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url) }));
+    prep?.(run);
     await enqueue(async () => {
-      await chrome.storage.session.remove(boardKey(tabId));
+      // A run started in this tab answers a report link's offer (D212).
+      await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
       await chrome.storage.session.set({ [runKey(tabId)]: run });
     });
     await broadcast(tabId);
@@ -329,8 +338,9 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
   }
   const run = startRun(guide);
   dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url) }));
+  prep?.(run);
   await enqueue(async () => {
-    await chrome.storage.session.remove(boardKey(tabId));
+    await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
     await chrome.storage.session.set({ [runKey(tabId)]: run });
   });
   await broadcast(tabId);
@@ -442,6 +452,8 @@ export const runHandlers: Handlers = {
     // Found: read the step now (D83). Idempotent (spokenToken), so a report after a service worker
     // restart that interrupted the first read still gets it read.
     if (changed.found) await voiceSync(tabId);
+    // A report link's Fix step N waits for this (D212).
+    if (changed.changed) for (const hook of boardHooks) await hook(tabId);
     // Last: the statistics never hold up the spotlight or the voice, and never fail the report.
     await recordPlay(changed.play);
     return { ok: true, ...(changed.boardId ? { boardId: changed.boardId } : {}) };
@@ -562,7 +574,8 @@ export async function resumeRunsMovedTo(closedTabId: number): Promise<void> {
 
 export async function onTopFrameLoad(tabId: number, url: string): Promise<void> {
   await enqueue(async () => {
-    await chrome.storage.session.remove(boardKey(tabId));
+    // A report link's offer is for the page it opened (D212); the next page's link sets its own.
+    await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
     const run = await getRun(tabId);
     // A new page has no picker running: the player's pick ends and the step shows again (D210).
     if (run?.fix) {
@@ -588,7 +601,8 @@ export async function dropRun(tabId: number): Promise<void> {
     dlog('run', 'run.end', { tab: tabId }, { why: 'tab closed' });
   }
   // A closed tab's Undo toast can't be used any more: its copy of the guide goes (review of D210).
-  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId), `runFix:${tabId}`]);
+  // Its report-link offer goes too (D212).
+  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId), `runFix:${tabId}`, `linkOffer:${tabId}`]);
 }
 
 /** chrome.commands: Next, Back and Exit shortcuts the user can change (SPEC: Accessibility). */

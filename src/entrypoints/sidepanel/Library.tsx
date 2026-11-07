@@ -102,6 +102,30 @@ function undoToast(id: string, title: string, until: number, focus: boolean, del
   });
 }
 
+/** A broken-step report link opened in this panel's tab (D212): the same offer as on the page. */
+interface LinkOffer {
+  guideId: string;
+  title: string;
+  offer: 'fix' | 'start' | 'no-step';
+  stepIndex: number;
+  origin: string;
+}
+const linkOffer = signal<LinkOffer | null>(null);
+
+function originOfUrl(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function readLinkOffer(raw: unknown): LinkOffer | null {
+  const r = raw as Partial<LinkOffer> | undefined;
+  if (!r || typeof r.guideId !== 'string' || typeof r.title !== 'string' || typeof r.stepIndex !== 'number' || typeof r.origin !== 'string' || !['fix', 'start', 'no-step'].includes(r.offer as string)) return null;
+  return { guideId: r.guideId, title: r.title, offer: r.offer as LinkOffer['offer'], stepIndex: r.stepIndex, origin: r.origin };
+}
+
 /** Fixes this panel already showed a toast for (D210). */
 const shownFix = new Set<string>();
 
@@ -255,6 +279,18 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
     void chrome.storage.session.get(key).then((r) => fixToast(tabId, r[key] as Parameters<typeof fixToast>[1]));
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'session' && key in changes) fixToast(tabId, changes[key]!.newValue as Parameters<typeof fixToast>[1]);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [tabId]);
+  // A report link opened in this tab (D212): the offer stays while that page is open.
+  useEffect(() => {
+    linkOffer.value = null;
+    if (tabId === null) return;
+    const key = `linkOffer:${tabId}`;
+    void chrome.storage.session.get(key).then((r) => (linkOffer.value = readLinkOffer(r[key])));
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'session' && key in changes) linkOffer.value = readLinkOffer(changes[key]!.newValue);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -471,8 +507,58 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   };
 
   const imp = importState.value;
+  // Only while the tab still shows the link's site: it may have left for a site without Waymark (review of D212).
+  const lo = linkOffer.value && tabUrl && originOfUrl(tabUrl) === linkOffer.value.origin ? linkOffer.value : null;
+  const endOffer = () => {
+    linkOffer.value = null;
+    if (tabId !== null) void chrome.storage.session.remove(`linkOffer:${tabId}`);
+  };
   return (
     <>
+      {lo && tabId !== null && (
+        <div class="banner" role="status" data-testid="link-offer">
+          <Icon name="warn" />
+          <div class="grow stack-sm">
+            <span>
+              {lo.offer === 'fix'
+                ? `A report points at step ${lo.stepIndex + 1} of “${lo.title}”. Fix it: the guide starts at that step; then click the right element on the page.`
+                : lo.offer === 'start'
+                  ? `A report points at step ${lo.stepIndex + 1} of “${lo.title}”.`
+                  : `That step no longer exists in your copy of “${lo.title}”.`}
+            </span>
+            <div class="row">
+              {lo.offer === 'fix' ? (
+                <button
+                  type="button"
+                  class="primary sm"
+                  data-testid="link-offer-fix"
+                  onClick={() =>
+                    void attempt(async () => {
+                      const r = await send('linkOffer.fix', { tabId, guideId: lo.guideId, stepIndex: lo.stepIndex });
+                      if (r.status !== 'started') error.value = `This step is on a page like ${r.pattern}. Open that page, then try again.`;
+                    })
+                  }
+                >
+                  Fix step {lo.stepIndex + 1}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  class="primary sm"
+                  data-testid="link-offer-start"
+                  // The offer goes once the run has started (the service worker clears it then).
+                  onClick={() => onStart(lo.guideId, lo.offer === 'start' ? lo.stepIndex : 0)}
+                >
+                  {lo.offer === 'start' ? `Start from step ${lo.stepIndex + 1}` : 'Start from step 1'}
+                </button>
+              )}
+              <button type="button" class="ghost sm" onClick={endOffer}>
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {pending.value.length > 0 && (
         <div class="banner" role="status" data-testid="allow-banner">
           <Icon name="shield" />

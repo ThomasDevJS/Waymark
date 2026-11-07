@@ -1826,3 +1826,29 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
   - `test/e2e/f2-play-stats.spec.ts`: two plays of a guide where step 1 is found by its text alone and step 3 is gone. The library says "2 steps may break" and the editor gives both reasons; a step found by its test id is not flagged; Re-pick clears the flag before and after Save.
   - `t1-tutorials.spec.ts`: a tutorial writes no results.
   - `pnpm bench`: summary, one guide's results, and a save with results.
+
+## 2026-11-07 — Broken-step report links straight to the step (issue #98)
+
+### D212. "Fix it:" links in the copied report; Fix step N, Start from step N
+*7 Nov 2026 · SPEC: Sharing and storage ("Report broken step"), Discovery and hints (deep links); issue #98, builds on D210*
+
+- **The report**: Settings → Problems → Copy as text adds `Fix it: <page>?waymark=<guideId>&waymark-step=<N>` under each problem. `<page>` is the stored problem URL (origin and path only, D36), cut before its first id placeholder: the stored path reads `/projects/:id/settings`, which is no page, so the link opens `/projects` and the offer says which page the step is on. N is 1-based. Nothing else is in the link. The other lines are unchanged. A page that is not http(s) gets no link.
+- **The address**: `takeDeepLinkWithStep` reads and removes `waymark` and `waymark-step` together, from the query or the hash, keeping the rest exactly (`takeDeepLink` stays for plain links). A step number that is not an integer from 1 to 1000 is removed and ignored: the link is a plain deep link.
+- **The offer** (`deeplink.check` with `step`; `linkOffer`, `src/background/report-link.ts`):
+  - The author's own guide, a step with an element: "Fix step N of “title”?" → **Fix step N** (`launcher.fix`). The run starts at N (`startRunInTab` with `stepIndex`). The player's pick (`beginFix`, D210) opens once a frame finds the step's element (`Run.fixWhenFound`, checked after each board change). When none does (the page needs earlier steps, or the element is gone), the not-found card shows with its own Pick the right element, and the author decides. If the step's page isn't open, the usual "starts on another page" note offers to open it; the fix is then started from the card or the tooltip.
+  - A team guide, or a step without an element (a note): **Start from step N** (`launcher.start` gains `stepIndex`).
+  - A step the copy doesn't have: "That step no longer exists in your copy" → **Start from step 1**.
+  - A report link for a guide not available on this site, whether the author doesn't have it or it belongs to another site: "This guide isn’t in your library." (only with `waymark-step`; a plain deep link stays silent as before). Both get the same answer, so a page can't learn which other sites' guides exist.
+  - The page gets only the guide's id and title for its own origin, as before.
+- **The panel**: `deeplink.check` keeps the offer in `linkOffer:<tabId>` (session storage), with the page's site; the library shows the same banner with the same button (`linkOffer.fix`, extension pages only; it checks the tab's site) while the tab shows that site. It goes when a run starts in the tab (from either side), on the next page load, and when the tab closes. "Not in your library" is a message, not an offer: the panel doesn't repeat it.
+- **Allow first**: on a site Waymark isn't allowed on, no content script reads the link; after the first-run Allow, the page's script reads it and offers as above.
+- **Limit**: the link names the step by number. If the author deleted or moved earlier steps since the report, step N is another step; the offer names it, and the author sees which step opens. The issue keeps the link to the guide id and the step number.
+- **Fixes from the independent review** (each with a test in `report-link.test.ts`, "review fixes", that fails on the first version; and the not-found case in e2e):
+  - Links to pages with ids in their path pointed at `/…/:id/…`; they stop before the first id now.
+  - "Not in your library" answered only for missing guides, so a page could test which guide ids of other sites exist; another site's guide gets the same answer now.
+  - The pick opened at once, even on a page not ready for the step; it waits for the element, and the card shows otherwise.
+  - The panel kept the offer after the tab left for a site without Waymark; it shows it only while the tab is on the link's site.
+  - The panel's Start dropped the offer before knowing whether the run started; a run start clears it now.
+  - The tab's site is checked again when the pick opens (the tab may have moved on).
+  - A lone `waymark-step` in the query no longer hides a deep link in the hash.
+- **Tests**: `test/unit/report-link.test.ts` (parsing and stripping, malformed numbers, the report text, offer rules, message bounds and senders, the service worker's checks); `test/e2e/f3-report-link.spec.ts`. In e2e: a reported step's copied link opens with Fix step 2, the panel offers the same, and the pick opens on step 2. Also covered: a missing guide, a gone step, `waymark-step=abc` (a plain offer, both parameters gone from the address), and a team guide started from step 2.
