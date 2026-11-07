@@ -55,6 +55,19 @@ test('drag step 7 to the top: the panel scrolls up on its own, Save keeps the or
   expect(await order(panel)).toEqual(ELEVEN);
   await expect(panel.getByTestId('save-guide')).toBeDisabled();
 
+  // Review fix: the editor closing mid-drag (a recording started by shortcut does this) ends the
+  // drag, so the next editor can drag again.
+  const h2 = (await panel.getByTestId('step-1-drag').boundingBox())!; // the drag above may have scrolled
+  await panel.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2);
+  await panel.mouse.down();
+  await panel.mouse.move(h2.x + h2.width / 2, h2.y + 60, { steps: 4 });
+  await expect(panel.locator('.edit-steps.is-dragging')).toHaveCount(1);
+  await panel.evaluate(() => (document.querySelector('[data-testid="close-editor"]') as HTMLElement).click());
+  await panel.mouse.up();
+  await panel.getByTestId(`edit-${guideId}`).click();
+  await expect(panel.getByTestId('step-10-drag')).toBeVisible();
+  await expect(panel.locator('.edit-steps.is-dragging, .edit-step.dragging, .drop-before, .drop-after')).toHaveCount(0);
+
   // Step 7 is below the fold: scroll to it, grab it, and hold near the top until the list is back at the top.
   await panel.getByTestId('step-6-drag').scrollIntoViewIfNeeded();
   await panel.evaluate(() => window.scrollBy(0, 200));
@@ -88,6 +101,26 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   const panel = await context.newPage();
   await openEditor(panel, extensionId, tabId, guideId);
 
+  // Review fix: picked up and put back without a move, the draft is unchanged (Save stays off).
+  await panel.getByTestId('step-6-drag').focus();
+  await panel.keyboard.press('Space');
+  await panel.keyboard.press('Escape');
+  await panel.getByTestId('step-0-drag').focus();
+  await panel.keyboard.press('Enter');
+  await panel.keyboard.press('Home'); // already at the top
+  await panel.keyboard.press('ArrowUp');
+  await panel.keyboard.press('Escape');
+  await expect(panel.getByTestId('save-guide')).toBeDisabled();
+  expect(await order(panel)).toEqual(ELEVEN);
+
+  // Review fix: a click elsewhere drops a lifted step where it is.
+  await panel.getByTestId('step-3-drag').focus();
+  await panel.keyboard.press('Space');
+  await expect(panel.getByTestId('step-3-drag')).toHaveAttribute('aria-pressed', 'true');
+  await panel.getByTestId('guide-title-edit').click();
+  await expect(panel.getByTestId('step-3-drag')).toHaveAttribute('aria-pressed', 'false');
+  await expect(panel.getByTestId('reorder-status')).toHaveText('Step dropped at position 4 of 11.');
+
   await panel.getByTestId('step-6-drag').focus();
   await panel.keyboard.press('Space');
   await expect(panel.getByTestId('step-6-drag')).toHaveAttribute('aria-pressed', 'true');
@@ -109,7 +142,32 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   expect(await order(panel)).toEqual(moved);
   await expect(panel.getByTestId('step-0-drag')).toBeFocused();
 
-  // Move to bottom and to top, in More options.
+  // Enter picks up, End sends it to the bottom, Tab drops it there.
+  await panel.keyboard.press('Enter');
+  await panel.keyboard.press('End');
+  await expect(panel.getByTestId('step-10-drag')).toBeFocused();
+  await panel.keyboard.press('Tab');
+  await expect(panel.getByTestId('reorder-status')).toHaveText('Step dropped at position 11 of 11.');
+  expect((await order(panel)).at(-1)).toBe('Step 7');
+  await panel.getByTestId('step-10-drag').focus();
+  await panel.keyboard.press('Space');
+  await panel.keyboard.press('Home');
+  await panel.keyboard.press('Space');
+  expect(await order(panel)).toEqual(moved);
+
+  // Move to top and to bottom, in More options.
+  await panel.getByTestId('step-4-toggle').click();
+  await panel.getByTestId('step-4-more').click();
+  await panel.getByTestId('step-4-to-top').click();
+  expect((await order(panel))[0]).toBe('Step 4'); // the 5th card in this order
+  await panel.getByTestId('step-0-drag').focus();
+  await panel.keyboard.press('Space');
+  await panel.keyboard.press('ArrowDown');
+  await panel.keyboard.press('ArrowDown');
+  await panel.keyboard.press('ArrowDown');
+  await panel.keyboard.press('ArrowDown');
+  await panel.keyboard.press('Space');
+  expect(await order(panel)).toEqual(moved);
   await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-more').click();
   await expect(panel.getByTestId('step-0-to-top')).toBeDisabled();
@@ -129,4 +187,26 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await panel.getByTestId(`edit-${guideId}`).click();
   await expect(panel.getByTestId('step-0-toggle')).toBeVisible();
   await expect(panel.locator('[data-testid$="-drag"]')).toHaveCount(0);
+});
+
+test('review fix: an open (tall) card drags down past the next card once its bottom edge passes that card\'s middle', async ({ context, ext, site, extensionId }) => {
+  const { tabId, guideId } = await elevenSteps(context, ext, site);
+  const panel = await context.newPage();
+  await openEditor(panel, extensionId, tabId, guideId);
+  await panel.getByTestId('step-0-toggle').click();
+  await panel.getByTestId('step-0-more').click(); // taller still
+  const card = (await panel.getByTestId('step-0').boundingBox())!;
+  const next = (await panel.getByTestId('step-1').boundingBox())!;
+  expect(card.height).toBeGreaterThan(next.height * 2);
+  const h = (await panel.getByTestId('step-0-drag').boundingBox())!;
+  const x = h.x + h.width / 2;
+  // Just enough for the card's bottom edge to pass the next card's middle: far less than the card's height.
+  const by = next.y + next.height / 2 - (card.y + card.height) + 12;
+  expect(by).toBeLessThan(card.height / 2);
+  await panel.mouse.move(x, h.y + h.height / 2);
+  await panel.mouse.down();
+  await panel.mouse.move(x, h.y + h.height / 2 + by, { steps: 6 });
+  await expect(panel.getByTestId('step-1')).toHaveClass(/drop-after/);
+  await panel.mouse.up();
+  expect((await order(panel)).slice(0, 2)).toEqual(['Step 2', 'Step 1']);
 });

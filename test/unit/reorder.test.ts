@@ -1,6 +1,7 @@
 /** D205 (#108): reordering steps by drag, by keyboard, and with Move to top / bottom. */
 import { describe, expect, it } from 'vitest';
 import { dropIndex, edgeScroll, moveItem } from '../../src/core/editor/reorder';
+import { reordered } from '../../src/ui/useMotion';
 
 describe('moveItem', () => {
   const steps = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
@@ -20,15 +21,44 @@ describe('moveItem', () => {
 describe('dropIndex', () => {
   // Four 100 px cards with 10 px gaps: middles at 50, 160, 270, 380.
   const spans = [0, 110, 220, 330].map((top) => ({ top, height: 100 }));
-  it('a card makes way once the pointer passes its middle', () => {
-    expect(dropIndex(spans, 3, 40)).toBe(0); // above card 1's middle: to the top
-    expect(dropIndex(spans, 3, 60)).toBe(1);
-    expect(dropIndex(spans, 3, 400)).toBe(3); // back where it was
-    expect(dropIndex(spans, 0, 170)).toBe(1);
-    expect(dropIndex(spans, 0, 500)).toBe(3);
+  it('the line passes a card once the dragged card\'s leading edge passes its middle', () => {
+    expect(dropIndex(spans, 3, 0)).toBe(3); // not moved
+    expect(dropIndex(spans, 3, -59)).toBe(3); // top at 271: not above card 3's middle (270) yet
+    expect(dropIndex(spans, 3, -60)).toBe(2);
+    expect(dropIndex(spans, 3, -290)).toBe(0); // top at 40: above card 1's middle
+    expect(dropIndex(spans, 0, 61)).toBe(1); // bottom at 161: past card 2's middle
+    expect(dropIndex(spans, 0, 400)).toBe(3);
   });
-  it('dropped where it started, it stays', () => {
-    expect(dropIndex(spans, 1, 150)).toBe(1);
+  it('review fix: a tall (open) card moves down past a short one as soon as its bottom edge passes it', () => {
+    // An open 500 px card above two 60 px cards (middles at 540 and 610).
+    const mixed = [
+      { top: 0, height: 500 },
+      { top: 510, height: 60 },
+      { top: 580, height: 60 },
+    ];
+    expect(dropIndex(mixed, 0, 41)).toBe(1); // bottom at 541: past the first short card's middle
+    expect(dropIndex(mixed, 0, 39)).toBe(0);
+    expect(dropIndex(mixed, 2, -40)).toBe(1); // a short card going up: its top edge counts
+    expect(dropIndex(mixed, 2, -331)).toBe(0); // top at 249: above the tall card's middle (250)
+  });
+});
+
+describe('reordered (FLIP: what glides)', () => {
+  const keys = (n: number) => Array.from({ length: n }, (_, i) => `s${i + 1}`);
+  it('↑ / ↓ glide both swapped rows', () => {
+    expect(reordered(['a', 'b', 'c'], ['b', 'a', 'c'])).toEqual(new Set(['a', 'b']));
+  });
+  it('review fix: one step moved across a long list glides alone, not every row between', () => {
+    const before = keys(500);
+    const after = ['s500', ...before.slice(0, 499)];
+    expect(reordered(before, after)).toEqual(new Set(['s500']));
+    const down = [...before.slice(1), 's1'];
+    expect(reordered(before, down)).toEqual(new Set(['s1']));
+    const mid = moveItem(keys(11), 6, 0) as string[];
+    expect(reordered(keys(11), mid)).toEqual(new Set(['s7']));
+  });
+  it('two items moved: all the changed rows glide, as before', () => {
+    expect(reordered(['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']).size).toBe(4);
   });
 });
 

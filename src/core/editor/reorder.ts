@@ -22,15 +22,21 @@ export interface Span {
 
 /**
  * Where the dragged card lands: its final index, given the cards' boxes in list order (the dragged
- * one included, at `from`) and the pointer's position. A card moves out of the way once the
- * pointer passes its middle.
+ * one included, at `from`) and how far it has been dragged (`dy`, down is positive). The line
+ * moves past a card once the dragged card's leading edge passes that card's middle: its top edge
+ * going up, its bottom edge going down, so a tall (open) card moves as readily as a short one.
  */
-export function dropIndex(spans: readonly Span[], from: number, y: number): number {
+export function dropIndex(spans: readonly Span[], from: number, dy: number): number {
+  const me = spans[from];
+  if (!me) return from;
+  const top = me.top + dy;
+  const bottom = top + me.height;
   let to = 0;
   for (let i = 0; i < spans.length; i++) {
     if (i === from) continue;
     const s = spans[i]!;
-    if (y > s.top + s.height / 2) to++;
+    const middle = s.top + s.height / 2;
+    if (i < from ? top > middle : bottom > middle) to++;
   }
   return to;
 }

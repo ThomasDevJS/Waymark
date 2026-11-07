@@ -1513,13 +1513,14 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
 - **Finding**: steps moved one place per click of ↑ / ↓. In the owner's 11-step guide, moving step 7 to the top took 6 clicks, and the card scrolled away between them.
 - **Drag handle** (a grip at the left of each card, own guides only):
   - pressing it and moving 4 px starts a drag; the card follows the pointer, raised;
-  - a line shows where it lands (a card makes way once the pointer passes its middle);
-  - near the top or bottom 48 px of the scrolling area, the panel scrolls by itself, faster closer to the edge;
-  - release drops it; Esc or a cancelled pointer leaves the order as it was;
+  - a line shows where it lands. The other cards stay put; the line moves past a card once the dragged card's leading edge (its top going up, its bottom going down) passes that card's middle, so an open, tall card moves as readily as a short one;
+  - near the top or bottom 48 px of the visible list (below the panel's sticky header, above the Save bar), the panel scrolls by itself toward the edge the pointer moved to, faster closer to the edge; a wheel turned mid-drag moves the card and the line too;
+  - release drops it; Esc, a cancelled pointer or lost pointer capture leaves the order as it was, and so does the editor closing mid-drag;
+  - one drag at a time; the drag's classes and offset are set on the DOM, so dragging re-renders nothing (a 500-step guide stays smooth);
   - `touch-action: none` on the handle only, so a touch drag starts there and the list still scrolls everywhere else.
-- **Keyboard and screen readers**: on the handle, Space or Enter picks the step up (`aria-pressed`), ↑ / ↓ move it one place, Home / End to the top or bottom, Space or Enter drops it, Esc puts it back where it was picked up, Tab drops it. A hidden live region says each move ("Position 1 of 11."). Focus stays on the moved step's handle.
+- **Keyboard and screen readers**: on the handle, Space or Enter picks the step up (`aria-pressed`; a held key doesn't repeat), ↑ / ↓ move it one place, Home / End to the top or bottom, Space or Enter drops it, Esc puts it back where it was picked up, Tab or a click elsewhere drops it. Picked up and put back without a move, the draft is unchanged. NVDA and JAWS in browse mode keep the arrow keys; ↑ / ↓ buttons stay for them. A hidden live region says each move ("Position 1 of 11."). Focus stays on the moved step's handle.
 - **Move to top** and **Move to bottom** are in a step's More options. ↑ / ↓ stay.
-- **Same rules as any edit**: the draft changes, so Save keeps it and Close drops it. Steps keep their ids, so "Add a step after" and recording into a guide (D202, anchored by step id) still land in the right place. The dropped card glides from where it was let go to its place (the list's FLIP measures it with its drag offset, D130).
+- **Same rules as any edit**: the draft changes, so Save keeps it and Close drops it. Steps keep their ids, so "Add a step after" and recording into a guide (D202, anchored by step id) still land in the right place. The dropped card glides from where it was let go to its place (the list's FLIP measures it with its drag offset, D130). When one step moves several places (a drag, Move to top), only it glides; the rows between snap, as the D130 bench asked (↑ / ↓ still glide both swapped rows).
 - **No new dependency**: pointer events and three pure helpers in `src/core/editor/reorder.ts` (`moveItem`, `dropIndex`, `edgeScroll`).
 - **Tests**:
   - `test/unit/reorder.test.ts`: moving step 7 to the top and to the bottom in one go, clamping, no change in place, where a drop lands, edge scrolling.
@@ -1529,6 +1530,13 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
     - by keyboard: Space, ↑ ×6, Space; Esc puts it back; focus stays on the handle; the live region's words;
     - Move to bottom, then Save;
     - a team guide has no handles.
+  - Fixes from the independent review, each with a test that fails on the first version:
+    - the editor closing mid-drag left the drag stuck: every later list looked mid-drag and no drag could start (e2e: Close mid-drag, then drag again);
+    - Esc or Home with no move marked the draft changed (e2e: Save stays off);
+    - a lifted step stayed lifted after a click elsewhere, so a later Esc could move it to a stale place (e2e);
+    - an open card had to be dragged about its own height to pass a short one (unit `dropIndex`, e2e);
+    - a long move glided every row between, and each drop-index change re-rendered all rows (unit `reordered`; classes now set on the DOM);
+    - smaller: auto-scroll zones under the sticky bars, a wheel mid-drag, the line hidden on a picking card, a held Space, two drags at once, Enter missing from the help text.
 
 ## 2026-11-06 — Search among a page's guides (issue #69)
 

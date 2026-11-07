@@ -115,8 +115,11 @@ let refocusMove: { id: string; control: 'up' | 'down' | 'drag' } | null = null;
 
 /** Moves the step at `index` to `to` (clamped). `control`: what gets focus back if it had it. */
 function moveTo(index: number, to: number, control: 'up' | 'down' | 'drag') {
+  const steps = draft.value?.steps ?? [];
+  // Nothing moves (Esc without a move, Home at the top): the draft stays unchanged, Save stays off.
+  if (index < 0 || index >= steps.length || Math.max(0, Math.min(steps.length - 1, to)) === index) return;
   const active = document.activeElement;
-  const id = draft.value?.steps[index]?.id;
+  const id = steps[index]?.id;
   refocusMove = id && active?.closest(`[data-flip="${CSS.escape(id)}"]`) ? { id, control } : null;
   setSteps((steps) => moveItem(steps, index, to) as Step[]);
 }
@@ -125,21 +128,18 @@ function move(index: number, by: number) {
   moveTo(index, index + by, by < 0 ? 'up' : 'down');
 }
 
-/** The line that shows where a dragged step lands: above the card it takes the place of, or below it. */
-function dropMark(i: number): string {
-  const d = dragging.value;
-  if (!d || d.to === d.from || i !== d.to) return '';
-  return d.to < d.from ? ' drop-before' : ' drop-after';
-}
-
 /** Keyboard reordering (D205): the step picked up with Space on its handle, and where it was. */
 const lifted = signal<{ id: string; from: number } | null>(null);
-/** A pointer drag in progress: the dragged step, where it was, and where it would land. */
-const dragging = signal<{ id: string; from: number; to: number } | null>(null);
 /** What a screen reader hears about reordering. */
 const reorderNote = signal('');
 /** The dragged row keeps its offset until the new order is rendered, so it glides from where it was dropped. */
 let dropped: HTMLElement | null = null;
+/**
+ * Ends the pointer drag in progress, if any, without moving anything. A drag lives outside
+ * Preact's state (its classes and offset are set on the DOM, so a drag re-renders nothing), and
+ * this is how the editor ends one when it goes away mid-drag.
+ */
+let cancelDrag: (() => void) | null = null;
 
 function scrollerOf(el: Element): Element {
   for (let n = el.parentElement; n; n = n.parentElement) {
@@ -154,9 +154,20 @@ function clearDragStyle(row: HTMLElement) {
   row.classList.remove('dragging');
 }
 
+/** The visible part of the scrolling area: below the panel's sticky header, above the editor's sticky Save bar. */
+function visibleArea(scroller: Element, isPage: boolean): { top: number; bottom: number } {
+  const box = isPage ? { top: 0, bottom: innerHeight } : scroller.getBoundingClientRect();
+  let { top, bottom } = box;
+  const header = document.querySelector('.app-header')?.getBoundingClientRect();
+  const bar = document.querySelector('.editor-bar')?.getBoundingClientRect();
+  if (header && header.bottom > top && header.bottom < bottom) top = header.bottom;
+  if (bar && bar.top < bottom && bar.top > top) bottom = bar.top;
+  return { top, bottom };
+}
+
 /** A drag from a step's handle (D205): the card follows the pointer, a line shows where it lands, the panel scrolls near its edges, Esc cancels. */
 function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id: string, total: number) {
-  if (e.button !== 0 || !list || dragging.value) return;
+  if (e.button !== 0 || !list || cancelDrag) return; // one drag at a time
   const handle = e.currentTarget as HTMLElement;
   const row = handle.closest<HTMLElement>('[data-flip]');
   if (!row) return;
@@ -170,9 +181,9 @@ function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id:
   }
   const scroller = scrollerOf(list);
   const isPage = scroller === document.scrollingElement || scroller === document.documentElement;
-  const area = () => (isPage ? { top: 0, bottom: innerHeight } : scroller.getBoundingClientRect());
   const top0 = scroller.scrollTop;
-  const spans = Array.from(list.querySelectorAll<HTMLElement>(':scope > [data-flip]')).map((r) => {
+  const rows = Array.from(list.querySelectorAll<HTMLElement>(':scope > [data-flip]'));
+  const spans = rows.map((r) => {
     const b = r.getBoundingClientRect();
     return { top: b.top + top0, height: b.height };
   });
@@ -180,17 +191,32 @@ function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id:
   let y = startY;
   let started = false;
   let raf = 0;
+  let to = index;
+  let marked: HTMLElement | null = null;
+  // The line: above the card the step takes the place of when it goes up, below it when it goes down.
+  const mark = () => {
+    const target = to === index ? null : (rows[to] ?? null);
+    const cls = to < index ? 'drop-before' : 'drop-after';
+    if (marked && (marked !== target || !marked.classList.contains(cls))) marked.classList.remove('drop-before', 'drop-after');
+    marked = target;
+    marked?.classList.add(cls);
+  };
   const place = () => {
-    const at = y + scroller.scrollTop;
-    row.style.transform = `translateY(${Math.round(at - (startY + top0))}px)`;
-    const to = dropIndex(spans, index, at);
-    if (dragging.value?.to !== to) dragging.value = { id, from: index, to };
+    if (!started) return;
+    const dy = y + scroller.scrollTop - (startY + top0);
+    row.style.transform = `translateY(${Math.round(dy)}px)`;
+    const next = dropIndex(spans, index, dy);
+    if (next !== to) {
+      to = next;
+      mark();
+    }
   };
   const tick = () => {
     raf = 0;
-    const a = area();
+    const a = visibleArea(scroller, isPage);
     const by = edgeScroll(y, a.top, a.bottom);
-    if (!by) return;
+    // Only toward the edge the pointer went to: a handle grabbed near the top doesn't scroll at once.
+    if (!by || (by < 0 && y >= startY) || (by > 0 && y <= startY)) return;
     const before = scroller.scrollTop;
     scroller.scrollTop += by;
     if (scroller.scrollTop === before) return; // at the end
@@ -204,19 +230,24 @@ function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id:
       if (Math.abs(y - startY) < 4) return;
       started = true;
       row.classList.add('dragging');
+      list.classList.add('is-dragging');
     }
     place();
     if (!raf) raf = requestAnimationFrame(tick);
   };
+  const scrollTarget: EventTarget = isPage ? window : scroller;
   const finish = (commit: boolean) => {
+    cancelDrag = null;
     handle.removeEventListener('pointermove', onMove);
     handle.removeEventListener('pointerup', onUp);
     handle.removeEventListener('pointercancel', onCancel);
+    handle.removeEventListener('lostpointercapture', onCancel);
+    scrollTarget.removeEventListener('scroll', place);
     window.removeEventListener('keydown', onKey, true);
     cancelAnimationFrame(raf);
-    const to = dragging.value?.to;
-    dragging.value = null;
-    if (commit && started && to !== undefined && to !== index) {
+    marked?.classList.remove('drop-before', 'drop-after');
+    list.classList.remove('is-dragging');
+    if (commit && started && to !== index && row.isConnected) {
       dropped = row;
       reorderNote.value = `Step moved to position ${to + 1} of ${total}.`;
       moveTo(index, to, 'drag');
@@ -226,6 +257,7 @@ function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id:
     }
   };
   const onUp = (ev: PointerEvent) => ev.pointerId === e.pointerId && finish(true);
+  // A cancelled pointer, or capture lost (the handle left the page): nothing moves.
   const onCancel = (ev: PointerEvent) => ev.pointerId === e.pointerId && finish(false);
   const onKey = (ev: KeyboardEvent) => {
     if (ev.key !== 'Escape') return;
@@ -233,9 +265,12 @@ function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id:
     ev.stopPropagation();
     finish(false);
   };
+  cancelDrag = () => finish(false);
   handle.addEventListener('pointermove', onMove);
   handle.addEventListener('pointerup', onUp);
   handle.addEventListener('pointercancel', onCancel);
+  handle.addEventListener('lostpointercapture', onCancel);
+  scrollTarget.addEventListener('scroll', place, { passive: true }); // a wheel turned mid-drag
   window.addEventListener('keydown', onKey, true);
 }
 
@@ -244,6 +279,7 @@ function onHandleKey(e: KeyboardEvent, index: number, id: string, total: number)
   const l = lifted.value;
   if (e.key === ' ' || e.key === 'Enter') {
     e.preventDefault();
+    if (e.repeat) return; // a held key doesn't pick up and drop over and over
     if (l?.id === id) {
       lifted.value = null;
       reorderNote.value = `Step dropped at position ${index + 1} of ${total}.`;
@@ -275,6 +311,19 @@ function onHandleKey(e: KeyboardEvent, index: number, id: string, total: number)
     lifted.value = null;
     reorderNote.value = `Step dropped at position ${index + 1} of ${total}.`;
   }
+}
+
+/**
+ * Focus left a lifted step's handle (a click elsewhere): the step is dropped where it is, so a
+ * later Esc can't put it back at a place that has changed since. A move re-inserts the row, which
+ * blurs the handle for a moment: that blur (refocusMove still pending) doesn't count.
+ */
+function onHandleBlur(e: FocusEvent, index: number, id: string, total: number) {
+  if (lifted.value?.id !== id || refocusMove) return;
+  const row = (e.currentTarget as HTMLElement).closest('[data-flip]');
+  if (row && e.relatedTarget instanceof Node && row.contains(e.relatedTarget)) return;
+  lifted.value = null;
+  reorderNote.value = `Step dropped at position ${index + 1} of ${total}.`;
 }
 
 /** A copy of a step right after it, with a new id (D100). */
@@ -443,6 +492,14 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('[data-testid$="-up"], [data-testid$="-down"]'));
     (buttons.find((b) => b.dataset.testid!.endsWith(`-${r.control}`) && !b.disabled) ?? buttons.find((b) => !b.disabled))?.focus();
   });
+  // A drag or a lifted step never outlives the editor (it can close mid-drag: a recording started by shortcut).
+  useEffect(
+    () => () => {
+      cancelDrag?.();
+      lifted.value = null;
+    },
+    [],
+  );
   // Results from a play while the editor is open show at once (review of D211), for a kept draft too.
   useEffect(() => {
     void loadPlays(guideId);
@@ -457,6 +514,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
     // Back from a recording started with the shortcut: the unsaved draft of this guide is kept.
     lifted.value = null;
     reorderNote.value = '';
+    cancelDrag?.();
     if (draft.value?.id === guideId && dirty.value) return () => dismissScope('editor');
     draft.value = null;
     dirty.value = false;
@@ -637,12 +695,12 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
       </div>
       <p class="hint">Open a step to change its text, test it or point it at another element. Drag a step by its handle, or use the arrows, to reorder.</p>
       <p class="visually-hidden" id="reorder-help">
-        Drag to move the step, or press Space to pick it up, the up and down arrow keys to move it, and Space again to drop it. Escape cancels.
+        Drag to move the step, or press Space or Enter to pick it up, the up and down arrow keys to move it, and Space or Enter again to drop it. Escape cancels.
       </p>
       <p class="visually-hidden" role="status" data-testid="reorder-status">
         {reorderNote.value}
       </p>
-      <ol class={`edit-steps${dragging.value ? ' is-dragging' : ''}`} aria-label="Steps" ref={stepFlip.ref}>
+      <ol class="edit-steps" aria-label="Steps" ref={stepFlip.ref}>
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
@@ -680,7 +738,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           const more = moreSteps.value.has(s.id);
           const moreId = `step-more-${s.id}`;
           return (
-            <li key={s.id} class={`edit-step ${stepFlip.enter(s.id)}${isPicking ? ' picking' : ''}${open ? ' open' : ''}${dropMark(i)}`} data-flip={s.id} data-testid={`step-${i}`} aria-labelledby={titleId}>
+            <li key={s.id} class={`edit-step ${stepFlip.enter(s.id)}${isPicking ? ' picking' : ''}${open ? ' open' : ''}`} data-flip={s.id} data-testid={`step-${i}`} aria-labelledby={titleId}>
               <div class="step-head">
                 {!readOnly && (
                   <button
@@ -693,6 +751,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     title="Drag to move (or Space, then the arrow keys)"
                     onPointerDown={(e) => startDrag(e, stepFlip.ref.current, i, s.id, g.steps.length)}
                     onKeyDown={(e) => onHandleKey(e, i, s.id, g.steps.length)}
+                    onBlur={(e) => onHandleBlur(e, i, s.id, g.steps.length)}
                   >
                     <Icon name="grip" />
                   </button>

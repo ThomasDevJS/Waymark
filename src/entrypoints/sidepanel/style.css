@@ -466,10 +466,11 @@ button.record .rec-dot {
   box-shadow: var(--wm-shadow-3);
   will-change: transform;
 }
-.edit-step.drop-before {
+/* More specific than .edit-step.picking, which also sets a shadow: the line shows on a picking card too. */
+.edit-steps > .edit-step.drop-before {
   box-shadow: 0 -4px 0 -1px var(--wm-accent);
 }
-.edit-step.drop-after {
+.edit-steps > .edit-step.drop-after {
   box-shadow: 0 4px 0 -1px var(--wm-accent);
 }
 .edit-step.picking {
