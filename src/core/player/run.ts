@@ -4,7 +4,7 @@
  * with even if the guide is edited. Pure functions; the service worker persists them.
  */
 import type { ElementFingerprint, Guide, RunState, Step } from '../model/schema';
-import { matchPath, routedPath, urlMatches } from '../url/url';
+import { matchPath, routedPath, urlMatches, type UrlOptions } from '../url/url';
 import type { Shade } from './shade';
 
 export type RunOp = 'done' | 'next' | 'back' | 'skip' | 'exit';
@@ -81,7 +81,7 @@ export function applyRunOp(run: Run, op: Exclude<RunOp, 'exit'>, stepId: string)
 }
 
 /** The step a learner should start at: the first step whose page matches the current URL. */
-export function stepForUrl(guide: Guide, url: string): number {
+export function stepForUrl(guide: Guide, url: string, opts: UrlOptions = {}): number {
   let u: URL;
   try {
     u = new URL(url);
@@ -89,17 +89,17 @@ export function stepForUrl(guide: Guide, url: string): number {
     return -1;
   }
   if (!guide.appOrigins.includes(u.origin)) return -1;
-  const path = routedPath(u);
+  const path = routedPath(u, opts);
   return guide.steps.findIndex((s) => matchPath(s.url, path));
 }
 
 /** True when the URL is on the guide's start page (the first step's page). */
-export function onStartPage(guide: Guide, url: string): boolean {
+export function onStartPage(guide: Guide, url: string, opts: UrlOptions = {}): boolean {
   const first = guide.steps[0];
   if (!first) return false;
   try {
     const u = new URL(url);
-    return guide.appOrigins.includes(u.origin) && matchPath(first.url, routedPath(u));
+    return guide.appOrigins.includes(u.origin) && matchPath(first.url, routedPath(u, opts));
   } catch {
     return false;
   }
@@ -253,20 +253,20 @@ export interface MatchBoard {
  * the new page is the next step's page, the action happened even though its "done" report may
  * have died with the old page (for example while the service worker was starting). See D32.
  */
-export function shouldCatchUp(run: Run, url: string): boolean {
+export function shouldCatchUp(run: Run, url: string, opts: UrlOptions = {}): boolean {
   if (run.status !== 'running') return false;
   const step = currentStep(run);
   const next = run.guideSnapshot.steps[run.stepIndex + 1];
   if (!step || !next || (step.kind !== 'click' && step.kind !== 'submit')) return false;
   const origins = run.guideSnapshot.appOrigins;
-  return !urlMatches(step.url, url, origins) && urlMatches(next.url, url, origins);
+  return !urlMatches(step.url, url, origins, opts) && urlMatches(next.url, url, origins, opts);
 }
 
 /**
  * A new tab takes the run only when it opened on the page of the run's current step (the
  * click on the link has already advanced the run), not for any same-origin tab (D36).
  */
-export function newTabContinuesRun(run: Run, url: string): boolean {
+export function newTabContinuesRun(run: Run, url: string, opts: UrlOptions = {}): boolean {
   const step = currentStep(run);
-  return run.status === 'running' && !!step && urlMatches(step.url, url, run.guideSnapshot.appOrigins);
+  return run.status === 'running' && !!step && urlMatches(step.url, url, run.guideSnapshot.appOrigins, opts);
 }

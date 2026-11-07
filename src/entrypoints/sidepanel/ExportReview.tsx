@@ -3,6 +3,9 @@
  * pack contains (titles, notes, labels, URLs), so the author can remove business data").
  */
 import { signal } from '@preact/signals';
+import { useEffect } from 'preact/hooks';
+import type { SiteProfile } from '../../core/model/profile';
+import { loadProfiles, NO_PROFILES, profileFor, type Profiles } from '../../core/storage/profiles';
 import type { Guide } from '../../core/model/schema';
 import { makePack } from '../../core/sharing/pack';
 import { applyRemovals, packStrings, type StringKind } from '../../core/sharing/review';
@@ -12,6 +15,36 @@ import { Icon } from '../../ui/Icon';
 import { previewPath } from '../howto/data';
 
 const removed = signal<Set<string>>(new Set());
+/** The author's own site profiles (D213): a pack carries those of its guides' sites, unless removed here. */
+const profiles = signal<Profiles>(NO_PROFILES);
+const profileKey = (origin: string) => `profile:${origin}`;
+
+/**
+ * The profiles a pack of these guides carries: for each of their sites, the profile they play with
+ * (the own one for own guides, the library's for team guides, each falling back to the other, D213
+ * review), minus those removed in the review.
+ */
+export function packedProfiles(guides: Guide[], all: Profiles, drop: Set<string>): SiteProfile[] {
+  const out: SiteProfile[] = [];
+  for (const origin of new Set(guides.flatMap((g) => g.appOrigins))) {
+    if (drop.has(profileKey(origin))) continue;
+    const own = guides.some((g) => g.source === 'local' && g.appOrigins.includes(origin));
+    const p = profileFor(all, origin, own ? 'local' : 'library');
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/** A profile in words, for the review: names and patterns only, as the file holds them. */
+export function profileSummary(p: SiteProfile): string {
+  const parts = [
+    p.stableAttributes.length ? `stable attributes: ${p.stableAttributes.join(', ')}` : '',
+    p.ignorePatterns.length ? `ignore: ${p.ignorePatterns.join(', ')}` : '',
+    p.hashRouting ? 'hash routing' : '',
+    p.keepQueryKeys.length ? `kept query keys: ${p.keepQueryKeys.join(', ')}` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
 const fileName = signal('guides');
 /** What to export (D104): a pack to import elsewhere, or a how-to to read or print. */
 export type ExportFormat = 'pack' | 'markdown' | 'html';
@@ -40,13 +73,13 @@ const KIND: Record<StringKind, string> = {
 export const TECHNICAL: ReadonlySet<StringKind> = new Set<StringKind>(['selector', 'link']);
 
 /** Builds the pack JSON for the reviewed copy. */
-export function exportJson(guides: Guide[], drop: Set<string>): string {
-  return JSON.stringify(makePack(applyRemovals(guides, drop)), null, 2);
+export function exportJson(guides: Guide[], drop: Set<string>, siteProfiles: Profiles = NO_PROFILES): string {
+  return JSON.stringify(makePack(applyRemovals(guides, drop), new Date(), packedProfiles(guides, siteProfiles, drop)), null, 2);
 }
 
 /** The file for a format, built from the reviewed copy (the same removals for every format). */
-export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat): string {
-  if (f === 'pack') return exportJson(guides, drop);
+export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat, siteProfiles: Profiles = NO_PROFILES): string {
+  if (f === 'pack') return exportJson(guides, drop, siteProfiles);
   const copy = applyRemovals(guides, drop);
   return f === 'markdown' ? howtoMarkdown(copy) : howtoHtml(copy);
 }
@@ -70,7 +103,18 @@ export function openPreview(guides: Guide[], drop: Set<string>, name: string): v
 }
 
 export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () => void }) {
+  useEffect(() => {
+    // A hint for the file only: the review works without it.
+    void (async () => {
+      try {
+        profiles.value = await loadProfiles();
+      } catch {
+        profiles.value = NO_PROFILES;
+      }
+    })();
+  }, []);
   const f = format.value;
+  const sitesProfiles = f === 'pack' ? packedProfiles(guides, profiles.value, new Set()) : [];
   const spec = FORMATS.find((x) => x.value === f)!;
   const strings = f === 'pack' ? packStrings(guides) : howtoStrings(guides);
   const keys = new Set(strings.map((x) => x.key));
@@ -175,6 +219,42 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
           </div>
         );
       })}
+      {sitesProfiles.length > 0 && (
+        <details class="technical" data-testid="export-profiles">
+          <summary class="small">Technical details: site options for matching ({sitesProfiles.length})</summary>
+          <p class="xsmall muted">Attribute names and patterns from Site options → Advanced matching, so those who import the file match the same way. No page content.</p>
+          <ul class="list divided review-list">
+            {sitesProfiles.map((p) => {
+              const gone = removed.value.has(profileKey(p.origin));
+              return (
+                <li key={p.origin} class={`list-item${gone ? ' removed' : ''}`}>
+                  <div class="grow">
+                    <div class="xsmall muted">
+                      {p.origin}
+                      {gone && ' · removed'}
+                    </div>
+                    <div class="value">{profileSummary(p)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="ghost sm"
+                    data-testid={`remove-profile-${p.origin}`}
+                    aria-label={`${gone ? 'Keep' : 'Remove'} the site options of ${p.origin}`}
+                    onClick={() => {
+                      const next = new Set(removed.value);
+                      if (gone) next.delete(profileKey(p.origin));
+                      else next.add(profileKey(p.origin));
+                      removed.value = next;
+                    }}
+                  >
+                    {gone ? 'Keep' : 'Remove'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
       <div class="editor-bar stack-sm">
         <label class="field">
           <span class="label">File name</span>
@@ -204,7 +284,7 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
               class="primary"
               data-testid={f === 'pack' ? 'download-pack' : 'download-howto'}
               onClick={() => {
-                download(fileName.value, exportText(guides, removed.value, f), f);
+                download(fileName.value, exportText(guides, removed.value, f, profiles.value), f);
                 finish();
               }}
             >

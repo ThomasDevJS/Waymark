@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture: automation ids and a hash router</title>
+  </head>
+  <body>
+    <!-- Site profiles (D213): buttons with a non-default stable attribute and generated-looking ids,
+         and a hash-routed view (#/orders). ?renamed changes every visible label. -->
+    <main>
+      <h1>Orders</h1>
+      <div role="toolbar" aria-label="Order actions" id="bar"></div>
+      <section id="view" aria-live="polite"></section>
+    </main>
+    <script>
+      const renamed = new URLSearchParams(location.search).has('renamed');
+      const actions = [
+        ['save-order', 'Save', 'Store'],
+        ['cancel-order', 'Cancel', 'Discard'],
+        ['print-order', 'Print', 'Output'],
+        ['email-customer', 'Email', 'Send mail'],
+      ];
+      const bar = document.getElementById('bar');
+      for (const [key, label, other] of renamed ? [...actions].reverse() : actions) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.automationId = key;
+        b.id = `gen-${key}-${renamed ? 'b7' : 'a1'}`;
+        b.textContent = renamed ? other : label;
+        b.addEventListener('click', () => (document.getElementById('view').textContent = `${key} done`));
+        bar.append(b);
+      }
+      const route = () => (document.getElementById('view').dataset.route = location.hash.replace(/^#/, '') || '/');
+      addEventListener('hashchange', route);
+      route();
+    </script>
+  </body>
+</html>

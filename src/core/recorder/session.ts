@@ -32,6 +32,8 @@ export interface RecordingState {
   startUrl: string;
   /** URL rule of the page recording started on (pattern only, no query). */
   startRule?: Step['url'];
+  /** Per tab, the last page as its step URL rule reads it (only with kept query keys, D213). */
+  lastRoute?: Record<string, string>;
   appOrigins: string[];
   /**
    * Recording into an existing guide (D202): its steps go before this index of that guide
@@ -103,7 +105,7 @@ export function urlKey(url: string): string {
   }
 }
 
-export function startRecording(title: string, tabId: number, url: string, now = Date.now()): RecordingState {
+export function startRecording(title: string, tabId: number, url: string, now = Date.now(), opts: UrlOptions = {}): RecordingState {
   return {
     guideId: newId(),
     title: title.trim() || 'Untitled guide',
@@ -113,7 +115,7 @@ export function startRecording(title: string, tabId: number, url: string, now = 
     steps: [],
     startedAt: new Date(now).toISOString(),
     startUrl: safeStartUrl(url),
-    startRule: stepUrlRule(url),
+    startRule: stepUrlRule(url, opts),
     appOrigins: [new URL(url).origin],
     lastActionAt: 0,
     lastUrl: { [tabId]: urlKey(url) },
@@ -168,6 +170,8 @@ export interface RouteReport {
   navigationType?: string;
   title?: string;
   now?: number;
+  /** The previous page as its step URL rule reads it (routedPath with the profile's options), D213. */
+  prevRoute?: string;
   /** When the previous page started leaving, for full page loads (ms). */
   leavingAt?: number;
 }
@@ -192,7 +196,10 @@ export function navigationStep(state: RecordingState, r: RouteReport, opts: UrlO
   } catch {
     return null;
   }
-  if (a.origin === b.origin && a.pathname === b.pathname && a.hash === b.hash) return null; // query-only
+  // Query-only, unless a query key the site profile keeps changed: that is another page (D213 review).
+  // The stored previous URL has its query hashed (urlKey): kept keys are compared on the routed paths.
+  const sameKept = !opts.keepQueryKeys?.length || r.prevRoute === undefined || r.prevRoute === routedPath(new URL(r.url), opts);
+  if (a.origin === b.origin && a.pathname === b.pathname && a.hash === b.hash && sameKept) return null;
   if (r.navigationType === 'replace') return null;
   const now = r.now ?? Date.now();
   if (now - state.lastActionAt <= NAV_BELONGS_TO_CLICK_MS) return null;
@@ -211,9 +218,9 @@ export function navigationStep(state: RecordingState, r: RouteReport, opts: UrlO
   };
 }
 
-export function noteStep(state: RecordingState, title: string, note: string | undefined, url: string): Step | null {
+export function noteStep(state: RecordingState, title: string, note: string | undefined, url: string, opts: UrlOptions = {}): Step | null {
   if (state.steps.length >= MAX_STEPS_PER_GUIDE) return null;
-  const step: Step = { id: newId(), kind: 'note', title: title.trim() || 'Note', url: stepUrlRule(url), advance: 'next' };
+  const step: Step = { id: newId(), kind: 'note', title: title.trim() || 'Note', url: stepUrlRule(url, opts), advance: 'next' };
   if (note?.trim()) step.note = note.trim();
   void state;
   return step;

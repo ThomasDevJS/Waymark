@@ -17,6 +17,8 @@ import { bestSpeechVoice } from '../../core/voice/voice';
 import { presentSignals } from '../../core/matcher/signals';
 import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
+import { fetchProfile } from '../profile';
+import type { ProfileOptions } from '../../core/model/profile';
 import { matchStrength } from '../../core/stats/plays';
 import { reducedMotion } from '../../ui/motion';
 
@@ -183,7 +185,19 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     testMark('player', 'idle');
   };
 
-  const onStartPageUrl = (v: RunView) => !!v.step && urlMatches(v.step.url, topUrl(), v.appOrigins);
+  // The site profile of the run (D213): its matcher options and URL options (hash routing, kept
+  // query keys). Asked once per run; a search waits for it.
+  let profile: ProfileOptions = {};
+  let profileRun: string | null = null;
+  let profileReady: Promise<ProfileOptions> = Promise.resolve({});
+  const runProfile = (v: RunView): Promise<ProfileOptions> => {
+    if (profileRun !== v.runId) {
+      profileRun = v.runId;
+      profileReady = fetchProfile('run').then((p) => (profile = p));
+    }
+    return profileReady;
+  };
+  const onStartPageUrl = (v: RunView) => !!v.step && urlMatches(v.step.url, topUrl(), v.appOrigins, profile);
 
   function topUrl(): string {
     try {
@@ -245,7 +259,16 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       // note and navigate steps have no element; the top frame shows a centered tooltip
       if (isTop) {
         // Back onto a navigate step whose page we are already on must not bounce forward again.
-        if (step.kind === 'navigate' && v.cause !== 'back' && onStartPageUrl(v)) return op('done');
+        // The URL is read with the run's profile (D213): asked once per run, usually here already.
+        if (step.kind === 'navigate' && v.cause !== 'back') {
+          if (profileRun === v.runId) {
+            if (onStartPageUrl(v)) return op('done');
+          } else {
+            void runProfile(v).then(() => {
+              if (view?.stepToken === v.stepToken && onStartPageUrl(view)) op('done');
+            });
+          }
+        }
         ui.showStep(v, null);
         drawnFor = v.stepToken;
         testMark('player', `note:${v.stepIndex}`);
@@ -274,7 +297,10 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       frame: deps.framePath().length ? 'iframe' : 'top',
       pathMatches: JSON.stringify(deps.framePath()) === JSON.stringify(fp.framePath),
     }));
-    void waitForMatch(document, step.target, { signal: ac.signal }).then((r) => {
+    void runProfile(v)
+      .then((p) => (ac.signal.aborted ? null : waitForMatch(document, fp, { signal: ac.signal, profile: p })))
+      .then((r) => {
+      if (!r) return;
       if (ac.signal.aborted || view?.stepToken !== v.stepToken) return;
       dlog('match', r.status, () =>
         r.status === 'found'
@@ -356,6 +382,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
     // Views can arrive out of order (a reply to a page-load report vs. a push): keep the newest.
     if (view && next.runId && view.runId === next.runId && next.rev < view.rev) return;
     view = next;
+    if (next.active && next.runId && next.status === 'running') void runProfile(next);
     ui.setMuted(next.muted);
     ui.setShade(next.shade);
     if (next.fixing && next.status === 'running' && next.stepToken) {
@@ -459,7 +486,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
         return;
       }
       if (!isTop) return;
-      if (v.step.kind === 'navigate' && urlMatches(v.step.url, url, v.appOrigins)) op('done');
+      if (v.step.kind === 'navigate' && urlMatches(v.step.url, url, v.appOrigins, profile)) op('done');
     },
     dispose() {
       offReleased();

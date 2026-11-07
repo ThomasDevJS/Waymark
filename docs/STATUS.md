@@ -75,12 +75,16 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - The copied Problems report has `Fix it: <page>?waymark=<id>&waymark-step=<N>` (`reportLink`, `Options.tsx`). The content script reads it with `takeDeepLinkWithStep` (`launcher.ts`); `deeplink.check` returns the offer (`linkOffer`, `src/background/report-link.ts`) and keeps it for the panel (`linkOffer:<tabId>`); Fix runs `launcher.fix` / `linkOffer.fix` → `fixFromLink` → `startRunInTab` + `beginFix` (D210).
 - Tests: `test/unit/report-link.test.ts`, e2e `test/e2e/f3-report-link.spec.ts` (test hook `deeplink-offer` = `fix`, `start`, `no-step`, `not-in-library`, `plain`).
 
+## Site profiles (D213, issue #97)
+- Schema, caps, wildcard ignore patterns (`wildcardMatch`, never a regex) and `compileProfile`: `src/core/model/profile.ts`. Storage and precedence (`siteProfiles`, `libraryProfiles`, `profileFor`, `urlOptionsFor`): `src/core/storage/profiles.ts`. Service worker: `src/background/profiles.ts` (`profile.get` for a frame's own origin; the panel's get / set / candidates / Test all steps). Content: `src/content/profile.ts` (recorder, outline, picker, Test step, player). URL options reach the recorder, runs, badges and the launcher. Packs: `profiles[]` (`packProfiles`, `makePack`), import keep / replace, the library's replace `libraryProfiles`. Panel: `sidepanel/Matching.tsx`; export review lists them.
+- Tests: `test/unit/site-profiles.test.ts`, `test/browser/profile-matching.test.ts`, e2e `test/e2e/f4-site-profiles.spec.ts` (fixture `automation.html`).
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.
 - **D24:** elements with only `cursor: pointer` or `tabindex` are not treated as interactive. Revisit with pilot data.
 - **D33 + D36:** the start URL drops ids, so for first pages like `/orders/:id` the panel asks the learner to open the page themselves.
-- **D41:** site profiles (extra stable attributes, ignore patterns, hash routing, kept query keys) exist in the code (`src/core/model/profile.ts`, threaded through as `ProfileOptions`) but have no UI and aren't loaded anywhere. The recorder and picker run without a profile.
+- **D41** (no UI for site profiles) is resolved by D213: Site options → Advanced matching.
 - No strict spotlight mode. Analytics and Phase 2 are out of scope.
 
 ## Manual checks still pending

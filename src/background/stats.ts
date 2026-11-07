@@ -11,7 +11,7 @@ import { enqueue } from '../core/storage/queue';
 import { guideKey, listGuides } from '../core/storage/guides';
 import { liveTrash, TRASH_KEY } from '../core/storage/trash';
 import { targetHash } from '../core/shots/lifecycle';
-import { urlMatches } from '../core/url/url';
+import { urlMatches, type UrlOptions } from '../core/url/url';
 import { pruneStats, readCounts, readStats, recordResult, STATS_INDEX_KEY, statsKey, stepReasons, withCount, type PlayResult } from '../core/stats/plays';
 
 export interface Play {
@@ -33,7 +33,7 @@ export interface PendingPlay {
  * What a board change says about the current step's play, or null when it says nothing new.
  * `before` is the board before the change (same step token), `pageUrl` the top page's URL.
  */
-export function decidePlay(run: Run, before: { winner: string | null; gave: boolean } | null, board: MatchBoard, pageUrl: string | undefined): PendingPlay | null {
+export function decidePlay(run: Run, before: { winner: string | null; gave: boolean } | null, board: MatchBoard, pageUrl: string | undefined, opts: UrlOptions = {}): PendingPlay | null {
   const step = currentStep(run);
   if (run.status !== 'running' || !step?.target || board.stepToken !== run.stepToken) return null;
   const base = { guideId: run.guideSnapshot.id, step, runId: run.startedAt };
@@ -47,7 +47,7 @@ export function decidePlay(run: Run, before: { winner: string | null; gave: bool
   // No frame has it and the top frame gave up: the card shows when the page is the step's. That
   // is new when the top frame just gave up, or when the frame that had it went away.
   if (!board.topGaveUp || (before?.gave && !before.winner)) return null;
-  if (!pageUrl || !urlMatches(step.url, pageUrl, run.guideSnapshot.appOrigins)) return null;
+  if (!pageUrl || !urlMatches(step.url, pageUrl, run.guideSnapshot.appOrigins, opts)) return null;
   const top = board.reports['0'];
   return { ...base, play: { found: false, score: top?.score ?? 0, margin: 0, strong: 0 } };
 }
