@@ -43,7 +43,7 @@ All in `docs/assets/`, each under 300 KB (`test/unit/readme-assets.test.ts` chec
 | `hero-light.png`, `hero-dark.png` | README banner, 1280 × 400 at 2× |
 | `poster-{record,play,share,private}-{light,dark}.png` | Feature cards, 640 × 400 at 2×: a title and a picture; the README's bullets carry the words |
 | `shot-record.png`, `shot-play.png`, `shot-editor.png`, `shot-launcher.png`, `shot-howto.png` | Screenshots in a drawn browser window |
-| `clip-play.gif` | A guide playing, four steps, 1× |
+| `clip-play.gif` | A guide playing, three steps on the form, 0.85× |
 | `social-preview.png` | GitHub social preview, 1280 × 640 (upload it in the repository's Settings → General → Social preview) |
 | `store/store-small-440x280.png`, `store/store-marquee-1400x560.png` | Chrome Web Store tiles, for a later listing (D58) |
 

@@ -54,13 +54,13 @@ for n in STORE:
 if not art_only:
     for n in SHOTS:
         pack(n, OUT / f'{n}.png', dither=True)
-    # The clip: four steps of a guide playing, each held long enough to read.
-    frames = [Image.open(ART / f'clip-{i}.png').convert('RGB') for i in range(4)]
+    # The clip: three steps of a guide playing on the form, each held long enough to read.
+    frames = [Image.open(ART / f'clip-{i}.png').convert('RGB') for i in (1, 2, 3)]
     strip = Image.new('RGB', (frames[0].width, frames[0].height * len(frames)))
     for i, f in enumerate(frames):
         strip.paste(f, (0, i * f.height))
     pal = strip.quantize(255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     out = [f.quantize(palette=pal, dither=Image.Dither.FLOYDSTEINBERG) for f in frames]
     gif = OUT / 'clip-play.gif'
-    out[0].save(gif, save_all=True, append_images=out[1:], duration=[1800, 2200, 2200, 2600], loop=0, optimize=True, disposal=1)
+    out[0].save(gif, save_all=True, append_images=out[1:], duration=[2200, 2200, 2600], loop=0, optimize=True, disposal=1)
     report(gif)

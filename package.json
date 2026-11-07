@@ -27,7 +27,7 @@
     "demo": "node demo/serve.mjs",
     "release": "node scripts/release.mjs",
     "screens": "pnpm build:test && xvfb-run -a playwright test -c playwright.screens.config.ts",
-    "shots:readme": "pnpm build:test && xvfb-run -a -s '-screen 0 3200x2200x24' playwright test -c playwright.shots.config.ts && node scripts/readme-art.mjs && python3 scripts/readme-pack.py"
+    "shots:readme": "pnpm build:test && xvfb-run -a -s '-screen 0 3200x3000x24' playwright test -c playwright.shots.config.ts && node scripts/readme-art.mjs && python3 scripts/readme-pack.py"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",

@@ -25,7 +25,7 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 
 Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each release with `pnpm shots:readme`.
 
-![A guide playing on a made-up invoicing app, four steps: the spotlight moves from the New invoice button to the Customer field, then Item, then Amount, with a tooltip that counts the steps.](docs/assets/clip-play.gif)
+![A guide playing on a made-up invoicing app: the spotlight moves from the Customer field to Item, then Amount, with a tooltip that counts the steps.](docs/assets/clip-play.gif)
 
 **Record.** While you record, an outline shows what a click will record, and the panel lists each step.
 
@@ -41,11 +41,11 @@ Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each r
 
 **Find.** The `?` button on the page lists the guides for that page, with a search once there are many.
 
-<p align="center"><img src="docs/assets/shot-launcher.png" alt="The ? launcher open on the dashboard, with the search box holding &quot;pay&quot; and two matching guides." width="72%"></p>
+<p align="center"><img src="docs/assets/shot-launcher.png" alt="The ? launcher open on the dashboard, with the search box holding &quot;pay&quot; and two matching guides." width="100%"></p>
 
 **Print.** Export a printable how-to. With screenshots turned on while recording, steps get a picture with their element outlined; you can add a missing one from the editor.
 
-<p align="center"><img src="docs/assets/shot-howto.png" alt="The printable how-to preview: step 1 has no picture yet, step 2's picture has the Customer field outlined and numbered." width="72%"></p>
+<p align="center"><img src="docs/assets/shot-howto.png" alt="The printable how-to preview: step 1 has no picture yet, step 2's picture has the Customer field outlined and numbered." width="100%"></p>
 
 ## Install
 

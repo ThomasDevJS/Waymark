@@ -137,12 +137,11 @@ function poster(t, p) {
     t,
     640,
     400,
-    `<div style="position:absolute;inset:0;background:${t.surface};border:1px solid ${t.border};border-radius:20px;padding:34px 36px;display:grid;grid-template-rows:auto 1fr auto;gap:0">
+    `<div style="position:absolute;inset:0;background:${t.surface};border:1px solid ${t.border};border-radius:20px;padding:34px 36px;display:grid;grid-template-rows:auto 1fr;gap:0">
       <div style="display:flex;align-items:center;gap:14px">
         <span style="width:60px;height:60px;border-radius:15px;background:${t.accentSoft};color:${t.accentText};display:grid;place-items:center">${icon(p.icon, 32)}</span>
         <span style="font-size:48px;font-weight:700;letter-spacing:-.025em">${p.title}</span></div>
-      <div></div>
-      <div style="align-self:end">${posterArt(t, p.key)}</div></div>`,
+      <div style="align-self:center">${posterArt(t, p.key)}</div></div>`,
     'body{background:transparent}',
   );
 }
@@ -164,7 +163,8 @@ function social(t, W, H, { markSize, name, pitch, sub, appX, appY, appScale, pad
 /* A drawn browser window around the raw shots: page, and the side panel when given. */
 function frame(name, { page: pg, panel, url, crop, square }) {
   const PW = 1040;
-  const PH = crop ?? 720;
+  // The page's CSS height: the raw shot is at device scale 2 (PNG height at byte 20).
+  const PH = crop ?? readFileSync(join(RAW, `${pg}.png`)).readUInt32BE(20) / 2;
   const SW = panel ? 400 : 0;
   const W = PW + SW + 2;
   const BAR = 44;
@@ -225,10 +225,10 @@ if (!artOnly) {
     frame('shot-play', { page: 'play-page', panel: 'play-panel', url: `${base}/new-invoice.html` }),
     frame('shot-editor', { page: 'editor-page', panel: 'editor-panel', url: `${base}/new-invoice.html` }),
     frame('shot-launcher', { page: 'launcher-page', url: `${base}/index.html` }),
-    frame('shot-howto', { page: 'howto-page', url: 'Printable how-to (preview)', crop: 980 }),
-    ...[0, 1, 2, 3].map((i) => frame(`clip-${i}`, { square: true, page: `clip-${i}`, url: `${base}/${i ? 'new-invoice' : 'index'}.html` })),
+    frame('shot-howto', { page: 'howto-page', url: 'Printable how-to (preview)' }),
+    ...[1, 2, 3].map((i) => frame(`clip-${i}`, { square: true, page: `clip-${i}`, url: `${base}/new-invoice.html` })),
   ];
   // About 1.4 px per CSS px: sharp at GitHub's ~900 px column on a 2× screen, and small.
-  for (const f of frames) await render(f.name, f.html, f.w, f.h, f.name.startsWith('clip') ? 1 : 1.4);
+  for (const f of frames) await render(f.name, f.html, f.w, f.h, f.name.startsWith('clip') ? 0.85 : 1.4);
 }
 await browser.close();

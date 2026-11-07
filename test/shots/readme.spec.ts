@@ -23,7 +23,7 @@ const OUT = join(process.cwd(), 'artifacts', 'readme', 'raw');
 const PAGE = { width: 1040, height: 720 };
 const PANEL = { width: 400, height: 720 };
 /** The how-to preview is shot taller, so its first step's picture is whole. */
-const HOWTO_HEIGHT = 980;
+const HOWTO_HEIGHT = 1400;
 
 const test = base.extend<object, { site: { port: number; main: string; other: string } }>({
   // A fixed port, so the panel shows the same address in every shot.
@@ -231,7 +231,9 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   const [preview] = await Promise.all([context.waitForEvent('page'), panel.getByTestId('open-preview').click()]);
   await preview.waitForURL(/howto\.html/);
   await expect(preview.getByTestId('howto-preview')).toHaveAttribute('data-ready', 'yes', { timeout: 15_000 });
-  await fit(context, preview, PAGE.width, HOWTO_HEIGHT);
+  // Tall enough to end just under the first step picture, so the shot doesn't stop mid-image.
+  const imgBottom = await preview.locator('img[data-testid^="howto-img-"]').first().evaluate((e) => Math.ceil(e.getBoundingClientRect().bottom));
+  await fit(context, preview, PAGE.width, Math.min(imgBottom + 28, HOWTO_HEIGHT));
   await shot(preview, 'howto-page');
 
   writeFileSync(join(OUT, 'done.txt'), new Date().toISOString() + '\n');
