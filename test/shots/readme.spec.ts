@@ -174,7 +174,7 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   await panel.getByTestId('step-3-test').click();
   await expect(panel.getByTestId('step-3-test-result')).not.toContainText('Looking', { timeout: 12_000 });
   await panel.getByTestId('step-0').evaluate((e) => e.scrollIntoView({ block: 'start' }));
-  await panel.evaluate(() => scrollBy(0, -12));
+  await panel.evaluate(() => scrollBy(0, -76)); // clear of the panel's sticky header
   await shot(panel, 'editor-panel');
   await app.bringToFront();
   await shot(app, 'editor-page');
