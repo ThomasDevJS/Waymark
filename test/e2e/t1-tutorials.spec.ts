@@ -62,6 +62,8 @@ test('the panel lists the tutorials; Start opens the practice page, which plays 
   // The text typed in practice never reached the voice; tutorials never became guides.
   expect((await spoken()).join('\n')).not.toContain('Ada');
   expect((await ext.message<{ guides: unknown[] }>('guide.list', {})).guides).toEqual([]);
+  // A tutorial is not a play of a guide: no step results are written (D211).
+  expect(Object.keys(await (await ext.sw()).evaluate(() => chrome.storage.local.get(null))).filter((k) => k.startsWith('stats:'))).toEqual([]);
 });
 
 test('the warnings tutorial shows the real not-found card for a missing element; Skip goes on', async ({ context, extensionId }) => {

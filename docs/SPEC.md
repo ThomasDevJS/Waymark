@@ -192,6 +192,7 @@ interface GuidePack {         // export / import / library file
 - Guides and settings live in `chrome.storage.local` with `unlimitedStorage`, one key per guide plus an index. A few hundred guides at 1 to 1.5 KB per step can pass the default 10 MB limit.
 - All writes go through one queue in the service worker, so a guide and the index never disagree.
 - Run and recording state live in `chrome.storage.session`.
+- Step results from plays on this device (D211) live in `chrome.storage.local` per guide (`stats:<guideId>`, last 20 per step, numbers only) and follow the guide: a step with another element starts over.
 - Both areas are set to `TRUSTED_CONTEXTS`, so content scripts get guides only through the service worker.
 - Older schema versions are migrated on read. A newer `schemaVersion` or `formatVersion` is rejected with a message, never silently trimmed.
 

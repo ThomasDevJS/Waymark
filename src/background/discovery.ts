@@ -13,6 +13,7 @@ import { enqueue } from '../core/storage/queue';
 import { dropShotsOf, scheduleShotSweep, sweepShots } from './shots';
 import { addToTrash, liveTrash, TRASH_KEY, trashIsStale, trashItems, UNDO_MS } from '../core/storage/trash';
 import { lastCompletions } from '../core/storage/problems';
+import { sweepStatsInQueue } from './stats';
 import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
@@ -83,6 +84,8 @@ export function purgeTrash(now = Date.now()) {
       if (live.length) await chrome.storage.local.set({ [TRASH_KEY]: live });
       else await chrome.storage.local.remove(TRASH_KEY);
     }
+    // Guides gone for good (out of the trash, however their entry left it) lose their play results (D211).
+    await sweepStatsInQueue(now);
     return live;
   });
 }

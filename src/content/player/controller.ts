@@ -17,6 +17,7 @@ import { bestSpeechVoice } from '../../core/voice/voice';
 import { presentSignals } from '../../core/matcher/signals';
 import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
+import { matchStrength } from '../../core/stats/plays';
 import { reducedMotion } from '../../ui/motion';
 
 /** Why the matcher gave up, in words, for the debug log (D110). */
@@ -208,6 +209,8 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       found: r.status === 'found',
       score: r.status === 'found' ? r.score : r.bestScore,
       margin: r.status === 'found' ? r.margin : 0,
+      // How many strong signals the match used: a number, never page text (D211).
+      strong: r.status === 'found' ? matchStrength(r) : 0,
       instance: fp?.instance ?? 'unique',
       pathMatches: !!fp && JSON.stringify(deps.framePath()) === JSON.stringify(fp.framePath),
     })
