@@ -17,7 +17,29 @@ export function reordered(prev: readonly string[], next: readonly string[]): Set
   // Moved items are those outside a longest common subsequence; for the small moves the
   // editor makes (one step up or down) comparing ranks is exact and cheap.
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) out.add(a[i]!).add(b[i]!);
+  // One item moved several places (dragged, or Move to top): only it glides. Every row between
+  // would glide too otherwise, up to the whole list (the bench's dropped frames, D205 review).
+  if (out.size > 2) {
+    const single = singleMove(a, b);
+    if (single) return new Set([single]);
+  }
   return out;
+}
+
+/** The key that alone moved from `a` to `b` (same keys), or null when more than one did. */
+function singleMove(a: readonly string[], b: readonly string[]): string | null {
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  let j = a.length - 1;
+  while (j > i && a[j] === b[j]) j--;
+  if (i >= j) return null;
+  const same = (x: number, y: number, n: number) => {
+    for (let k = 0; k < n; k++) if (a[x + k] !== b[y + k]) return false;
+    return true;
+  };
+  if (b[i] === a[j] && same(i, i + 1, j - i)) return a[j]!; // moved up from j to i
+  if (a[i] === b[j] && same(i + 1, i, j - i)) return a[i]!; // moved down from i to j
+  return null;
 }
 
 /**

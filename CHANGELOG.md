@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Reorder steps in the editor by dragging a step's handle, or by keyboard (Space, the arrow keys, Space). **Move to top** and **Move to bottom** are in a step's More options (D205, #108).
+
 ### For developers
 - The README has a hero, feature posters, screenshots and a short clip, plus a social preview and store tiles, all in `docs/assets/`. `pnpm shots:readme` re-shoots them from a made-up app in the fixture site; `docs/BRAND.md` covers logo, colours, type and re-shooting (D230–D233, #109).
 
