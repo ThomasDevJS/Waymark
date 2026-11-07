@@ -139,7 +139,12 @@ export function reportLink(p: Pick<Problem, 'url' | 'guideId' | 'stepIndex'>): s
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-  return `${u.origin}${u.pathname}?waymark=${encodeURIComponent(p.guideId)}&waymark-step=${p.stepIndex + 1}`;
+  // The stored path has its ids replaced (`/projects/:id/settings`, D36): the link stops before the
+  // first one, on a page that exists; the offer then says which page the step is on (review of D212).
+  const segs = u.pathname.split('/');
+  const cut = segs.findIndex((s) => s.startsWith(':'));
+  const path = cut < 0 ? u.pathname : segs.slice(0, cut).join('/') || '/';
+  return `${u.origin}${path}?waymark=${encodeURIComponent(p.guideId)}&waymark-step=${p.stepIndex + 1}`;
 }
 const libraryUrl = signal('');
 const libraryBusy = signal(false);

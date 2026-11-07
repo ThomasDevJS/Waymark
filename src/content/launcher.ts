@@ -136,14 +136,15 @@ function takeDeepLinkUnsafe(loc: Location, hist: History): DeepLink | null {
   let id: string | null = null;
   let step: string | null = null;
   let changed = false;
-  if (/[?&]waymark(-step)?=/.test(url.search)) {
+  // The part that has the guide id is the link's part; a lone waymark-step elsewhere doesn't count.
+  if (/[?&]waymark=/.test(url.search)) {
     const a = cut(url.search, 'waymark', false);
     const b = cut(a.rest, 'waymark-step', false);
     id = a.value;
     step = b.value;
     url.search = b.rest;
     changed = true;
-  } else if (/[#&?]waymark(-step)?=/.test(url.hash)) {
+  } else if (/[#&?]waymark=/.test(url.hash)) {
     const a = cut(url.hash, 'waymark', true);
     const b = cut(a.rest, 'waymark-step', true);
     id = a.value;

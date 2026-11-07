@@ -91,6 +91,18 @@ test('report links: a team guide offers Start from step N; a missing guide, a go
   await ext.grant('http://127.0.0.1/*');
   const { guideId } = await recordAndReport(context, ext, site, extensionId);
 
+  // The page isn't ready for the step (its element is missing): Fix starts the run there, the
+  // not-found card shows with Pick the right element, and no pick opens by itself.
+  const page = await open(context, `${site.main}/?static&seed=3&waymark=${guideId}&waymark-step=2`);
+  await page.evaluate(() => document.querySelector('[data-fx="tb-export"]')?.remove());
+  await expect.poll(() => marker(page, 'deeplink-offer')).toBe('fix');
+  await offer(page).locator('[data-action="fix"]').click();
+  await expect.poll(() => marker(page, 'player'), { timeout: 20_000 }).toBe('not-found:1');
+  await expect(page.locator('waymark-overlay .tip [data-action="fix"]')).toBeVisible();
+  expect(await marker(page, 'picking')).not.toBe('on');
+  await page.locator('waymark-overlay .tip [data-action="exit"]').click();
+  await page.close();
+
   // Not in the author's library.
   let app = await open(context, `${site.main}/?static&seed=3&waymark=01NOTMYGUIDE00000000000000&waymark-step=2`);
   await expect.poll(() => marker(app, 'deeplink-offer')).toBe('not-in-library');

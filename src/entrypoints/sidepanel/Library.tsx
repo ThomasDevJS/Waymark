@@ -108,13 +108,22 @@ interface LinkOffer {
   title: string;
   offer: 'fix' | 'start' | 'no-step';
   stepIndex: number;
+  origin: string;
 }
 const linkOffer = signal<LinkOffer | null>(null);
 
+function originOfUrl(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 function readLinkOffer(raw: unknown): LinkOffer | null {
   const r = raw as Partial<LinkOffer> | undefined;
-  if (!r || typeof r.guideId !== 'string' || typeof r.title !== 'string' || typeof r.stepIndex !== 'number' || !['fix', 'start', 'no-step'].includes(r.offer as string)) return null;
-  return { guideId: r.guideId, title: r.title, offer: r.offer as LinkOffer['offer'], stepIndex: r.stepIndex };
+  if (!r || typeof r.guideId !== 'string' || typeof r.title !== 'string' || typeof r.stepIndex !== 'number' || typeof r.origin !== 'string' || !['fix', 'start', 'no-step'].includes(r.offer as string)) return null;
+  return { guideId: r.guideId, title: r.title, offer: r.offer as LinkOffer['offer'], stepIndex: r.stepIndex, origin: r.origin };
 }
 
 /** Fixes this panel already showed a toast for (D210). */
@@ -498,7 +507,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
   };
 
   const imp = importState.value;
-  const lo = linkOffer.value;
+  // Only while the tab still shows the link's site: it may have left for a site without Waymark (review of D212).
+  const lo = linkOffer.value && tabUrl && originOfUrl(tabUrl) === linkOffer.value.origin ? linkOffer.value : null;
   const endOffer = () => {
     linkOffer.value = null;
     if (tabId !== null) void chrome.storage.session.remove(`linkOffer:${tabId}`);
@@ -525,8 +535,7 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                   onClick={() =>
                     void attempt(async () => {
                       const r = await send('linkOffer.fix', { tabId, guideId: lo.guideId, stepIndex: lo.stepIndex });
-                      if (r.status === 'started') endOffer();
-                      else error.value = 'Open the page of that step first, then try again.';
+                      if (r.status !== 'started') error.value = `This step is on a page like ${r.pattern}. Open that page, then try again.`;
                     })
                   }
                 >
@@ -537,10 +546,8 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
                   type="button"
                   class="primary sm"
                   data-testid="link-offer-start"
-                  onClick={() => {
-                    endOffer();
-                    onStart(lo.guideId, lo.offer === 'start' ? lo.stepIndex : 0);
-                  }}
+                  // The offer goes once the run has started (the service worker clears it then).
+                  onClick={() => onStart(lo.guideId, lo.offer === 'start' ? lo.stepIndex : 0)}
                 >
                   {lo.offer === 'start' ? `Start from step ${lo.stepIndex + 1}` : 'Start from step 1'}
                 </button>

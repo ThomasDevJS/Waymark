@@ -159,12 +159,12 @@ export async function fixPicked(tabId: number, target: unknown, ctx: HandlerCont
  * Starts the player's pick for the current step of a tab's run (D210), when `may` accepts the run:
  * the caller checks who asks (a frame of the page, or a report link, D212).
  */
-export async function beginFix(tabId: number, stepId: string, may: (run: Run) => boolean): Promise<{ ok: boolean; why?: FixRefusal }> {
+export async function beginFix(tabId: number, stepId: string, may: (run: Run) => boolean | Promise<boolean>): Promise<{ ok: boolean; why?: FixRefusal }> {
   const why = await enqueue(async (): Promise<FixRefusal | null> => {
     const run = await getRun(tabId);
     const step = run ? currentStep(run) : undefined;
     if (!run || run.status !== 'running' || !step?.target || step.id !== stepId) return 'step';
-    if (!may(run)) return 'page';
+    if (!(await may(run))) return 'page';
     if (run.guideSnapshot.source !== 'local') return 'guide';
     const stored = await storedGuide(run.guideSnapshot.id);
     if (!stored || stored.source !== 'local') return 'guide';

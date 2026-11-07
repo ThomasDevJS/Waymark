@@ -139,7 +139,8 @@ describe('the service worker (D212)', () => {
     expect(await h['deeplink.check']!({ guideId: 'g1' }, ctx())).toEqual({ guide: { id: 'g1', title: 'Pay' } });
     expect(await h['deeplink.check']!({ guideId: 'nope', step: 2 }, ctx())).toEqual({ guide: null, notInLibrary: true });
     expect(await h['deeplink.check']!({ guideId: 'nope' }, ctx())).toEqual({ guide: null });
-    expect(await h['deeplink.check']!({ guideId: 'g1', step: 2 }, ctx('https://other.test'))).toEqual({ guide: null });
+    expect(await h['deeplink.check']!({ guideId: 'g1', step: 2 }, ctx('https://other.test'))).toEqual({ guide: null, notInLibrary: true });
+    expect(await h['deeplink.check']!({ guideId: 'g1' }, ctx('https://other.test'))).toEqual({ guide: null });
     expect(await h['deeplink.check']!({ guideId: 'g1', step: 2 }, ctx('https://app.test', 3))).toEqual({ guide: null });
   });
 
@@ -154,10 +155,10 @@ describe('the service worker (D212)', () => {
     expect(session['run:7']).toBeUndefined();
     local['guide:g1'] = makeGuide();
     session['linkOffer:7'] = { guideId: 'g1' };
-    expect(await h['launcher.fix']!({ guideId: 'g1', stepIndex: 2 }, ctx())).toEqual({ status: 'started', fixing: true });
-    const run = session['run:7'] as { stepIndex: number; fix?: unknown };
+    expect(await h['launcher.fix']!({ guideId: 'g1', stepIndex: 2 }, ctx())).toEqual({ status: 'started', fixing: 'when-found' });
+    const run = session['run:7'] as { stepIndex: number; stepToken: string; fixWhenFound?: string };
     expect(run.stepIndex).toBe(2);
-    expect(run.fix).toBeDefined();
+    expect(run.fixWhenFound).toBe(run.stepToken);
     expect(session['linkOffer:7']).toBeUndefined();
   });
 
@@ -177,5 +178,76 @@ describe('the service worker (D212)', () => {
     delete session['run:7'];
     expect(await h['launcher.start']!({ guideId: 'g1', stepIndex: 40 }, ctx())).toEqual({ status: 'started' });
     expect((session['run:7'] as { stepIndex: number }).stepIndex).toBe(0);
+  });
+});
+
+// Fixes from the independent review (D212). Each test fails on the first version.
+describe('review fixes (D212)', () => {
+  it('a reported page with ids in its path links to the page before the first id (the stored path has :id there)', () => {
+    expect(reportLink({ guideId: 'g', stepIndex: 2, url: 'https://app.test/projects/:id/settings' })).toBe('https://app.test/projects?waymark=g&waymark-step=3');
+    expect(reportLink({ guideId: 'g', stepIndex: 0, url: 'https://app.test/:id' })).toBe('https://app.test/?waymark=g&waymark-step=1');
+  });
+
+  it('a report link for another site’s guide gets the same answer as a missing one (no oracle)', async () => {
+    local['guide:g1'] = makeGuide();
+    const h = await handlers();
+    const other = await h['deeplink.check']!({ guideId: 'g1', step: 2 }, ctx('https://other.test'));
+    const missing = await h['deeplink.check']!({ guideId: 'zz', step: 2 }, ctx('https://other.test'));
+    expect(other).toEqual(missing);
+  });
+
+  it('Fix step N opens the pick only once a frame finds the element; not found, the card shows and no pick opens', async () => {
+    local['guide:g1'] = makeGuide();
+    const h = await handlers();
+    const { runHandlers } = await import('../../src/background/runs');
+    const rh = runHandlers as unknown as Record<string, H>;
+    await h['launcher.fix']!({ guideId: 'g1', stepIndex: 2 }, ctx());
+    let run = session['run:7'] as { stepToken: string; fix?: unknown; fixWhenFound?: string };
+    expect(run.fix).toBeUndefined();
+    const rep = (found: boolean) => ({ stepToken: run.stepToken, frameToken: 'f', found, score: found ? 90 : 10, margin: found ? 50 : 0, instance: 'unique', pathMatches: true, strong: 3 });
+    await rh['run.match']!(rep(true), ctx());
+    run = session['run:7'] as typeof run;
+    expect(run.fix).toBeDefined();
+    expect(run.fixWhenFound).toBeUndefined();
+
+    delete session['run:7'];
+    delete session['match:7'];
+    await h['launcher.fix']!({ guideId: 'g1', stepIndex: 2 }, ctx());
+    run = session['run:7'] as typeof run;
+    await rh['run.match']!(rep(false), ctx());
+    run = session['run:7'] as typeof run;
+    expect(run.fix).toBeUndefined();
+    expect(run.fixWhenFound).toBeUndefined();
+  });
+
+  it('the tab that left the guide’s site before the element was found gets no pick', async () => {
+    local['guide:g1'] = makeGuide();
+    const h = await handlers();
+    const { runHandlers } = await import('../../src/background/runs');
+    await h['launcher.fix']!({ guideId: 'g1', stepIndex: 2 }, ctx());
+    const run = session['run:7'] as { stepToken: string; fix?: unknown };
+    tabUrl = 'https://other.test/';
+    await (runHandlers as unknown as Record<string, H>)['run.match']!({ stepToken: run.stepToken, frameToken: 'f', found: true, score: 90, margin: 50, instance: 'unique', pathMatches: true, strong: 3 }, ctx());
+    expect((session['run:7'] as { fix?: unknown }).fix).toBeUndefined();
+  });
+
+  it('the offer goes when a run starts in the tab (the panel’s Start too), not when its button is pressed', async () => {
+    local['guide:g1'] = makeGuide({ source: 'library' });
+    session['linkOffer:7'] = { guideId: 'g1' };
+    const { startRunInTab } = await import('../../src/background/runs');
+    tabUrl = 'https://app.test/';
+    await startRunInTab(7, 'g1', false, 2);
+    expect(session['linkOffer:7']).toBeUndefined();
+  });
+
+  it('the record keeps the page’s site, so the panel hides it once the tab shows another site', async () => {
+    local['guide:g1'] = makeGuide();
+    const h = await handlers();
+    await h['deeplink.check']!({ guideId: 'g1', step: 3 }, ctx());
+    expect(session['linkOffer:7']).toMatchObject({ origin: 'https://app.test' });
+  });
+
+  it('a lone waymark-step in the query does not hide a deep link in the hash', () => {
+    expect(take('https://app.test/?waymark-step=2#/r?waymark=01ABC').link).toEqual({ id: '01ABC', step: null });
   });
 });

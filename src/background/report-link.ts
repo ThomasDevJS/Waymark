@@ -8,7 +8,9 @@
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import { GuideSchema, type Guide } from '../core/model/schema';
 import { guideKey } from '../core/storage/guides';
-import { startRunInTab, type StartResult } from './runs';
+import { boardHooks, getRun, runKey, startRunInTab, type StartResult } from './runs';
+import { enqueue } from '../core/storage/queue';
+import { currentStep, type MatchBoard } from '../core/player/run';
 import { beginFix } from './fix';
 
 /** What a report link offers. */
@@ -32,6 +34,8 @@ export interface LinkOfferRecord {
   stepIndex: number;
   /** The step number the link asked for (1-based). */
   step: number;
+  /** The page's site: the panel hides the offer once the tab shows another site. */
+  origin: string;
   at: number;
 }
 
@@ -49,25 +53,44 @@ async function tabOrigin(tabId: number): Promise<string | null> {
   }
 }
 
-export type FixFromLinkResult = StartResult & { fixing?: boolean };
+export type FixFromLinkResult = StartResult & { fixing?: 'when-found' };
+
+/** True while the tab still shows one of the guide's sites (checked again inside the queue: the tab may have moved on). */
+async function tabOnSites(tabId: number, origins: string[]): Promise<boolean> {
+  const o = await tabOrigin(tabId);
+  return !!o && origins.includes(o);
+}
 
 /**
- * Starts the run at step `stepIndex` and opens the player's pick there. Only the author's own
- * guide, only when the tab shows one of its sites (the run start checks the step's page too).
+ * Starts the run at step `stepIndex` of the author's own guide, on one of its sites. The player's
+ * pick opens once a frame finds the step's element; when none does, the not-found card shows
+ * with its own Pick the right element, and the author decides (issue #98: nothing is guessed).
  */
 export async function fixFromLink(tabId: number, guideId: string, stepIndex: number): Promise<FixFromLinkResult> {
   const g = await loadGuide(guideId);
-  const origin = await tabOrigin(tabId);
-  if (!g || !origin || !g.appOrigins.includes(origin)) throw new Error('This guide isn’t in your library.');
+  if (!g || !(await tabOnSites(tabId, g.appOrigins))) throw new Error('This guide isn’t in your library.');
   if (g.source !== 'local') throw new Error('Team guides are read-only. Use Duplicate in the list to edit your own copy.');
   const step = g.steps[stepIndex];
   if (!step?.target) throw new Error('That step no longer exists in your copy.');
-  const r = await startRunInTab(tabId, guideId, false, stepIndex);
-  if (r.status !== 'started') return r;
-  await chrome.storage.session.remove(linkOfferKey(tabId));
-  const fix = await beginFix(tabId, step.id, () => true);
-  return { ...r, fixing: fix.ok };
+  const r = await startRunInTab(tabId, guideId, false, stepIndex, (run) => (run.fixWhenFound = run.stepToken));
+  return r.status === 'started' ? { ...r, fixing: 'when-found' } : r;
 }
+
+/** After a board change: a run waiting for its step's element (Fix step N) opens the pick, or gives up on the card. */
+boardHooks.push(async (tabId) => {
+  const due = await enqueue(async () => {
+    const run = await getRun(tabId);
+    if (!run?.fixWhenFound) return null;
+    const board = (await chrome.storage.session.get(`match:${tabId}`))[`match:${tabId}`] as MatchBoard | undefined;
+    const current = run.fixWhenFound === run.stepToken && board?.stepToken === run.stepToken;
+    if (current && !board?.winner && !board?.topGaveUp) return null; // still searching
+    delete run.fixWhenFound;
+    await chrome.storage.session.set({ [runKey(tabId)]: run });
+    const step = currentStep(run);
+    return current && board?.winner && step ? { stepId: step.id, origins: run.guideSnapshot.appOrigins } : null;
+  });
+  if (due) await beginFix(tabId, due.stepId, () => tabOnSites(tabId, due.origins));
+});
 
 export const reportLinkHandlers: Handlers = {
   // The launcher's Fix step N: the sender's own tab, top frame, a guide of the sender's site.

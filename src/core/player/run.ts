@@ -27,6 +27,11 @@ export interface Run extends RunState {
    * "Pick the right element", for this step token only. Content scripts hide the player meanwhile.
    */
   fix?: { stepToken: string; at: number };
+  /**
+   * A report link's Fix step N (D212): open the player's pick once a frame finds this step token's
+   * element. Not found: the not-found card shows, with its own Pick the right element.
+   */
+  fixWhenFound?: string;
 }
 
 export function startRun(guide: Guide, now = Date.now(), startIndex = 0): Run {

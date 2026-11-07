@@ -275,8 +275,8 @@ export interface ResponseMap {
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
   'deeplink.check': { guide: { id: string; title: string } | null; offer?: 'fix' | 'start' | 'no-step'; stepIndex?: number; notInLibrary?: boolean };
-  'launcher.fix': StartResult & { fixing?: boolean };
-  'linkOffer.fix': StartResult & { fixing?: boolean };
+  'launcher.fix': StartResult & { fixing?: 'when-found' };
+  'linkOffer.fix': StartResult & { fixing?: 'when-found' };
   'guide.many': { guides: Guide[] };
   'guide.delete': { ok: boolean; undoUntil: number | null };
   'guide.duplicate': Guide;
