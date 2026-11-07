@@ -22,6 +22,8 @@ const OUT = join(process.cwd(), 'artifacts', 'readme', 'raw');
 /** CSS sizes: the page beside a 400 px side panel in a 1440 × 760 window. */
 const PAGE = { width: 1040, height: 720 };
 const PANEL = { width: 400, height: 720 };
+/** The how-to preview is shot taller, so its first step's picture is whole. */
+const HOWTO_HEIGHT = 980;
 
 const test = base.extend<object, { site: { port: number; main: string; other: string } }>({
   // A fixed port, so the panel shows the same address in every shot.
@@ -133,8 +135,10 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   await app.waitForTimeout(700);
   await app.getByLabel('Item').click();
   await app.keyboard.type('Sourdough workshop');
+  await app.waitForTimeout(700);
   await app.getByLabel('Amount').click();
   await app.keyboard.type('480');
+  await app.waitForTimeout(700);
   await choose(app, 'Payment terms', 'Net 3');
   await app.waitForTimeout(700);
   // No caret or selected text in the picture.
@@ -187,6 +191,14 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toMatch(/^drawn:1/);
   await shot(app, 'play-page');
   await shot(app, 'clip-1');
+  // The panel at the same step, without the HD voice offer (answered "Not now").
+  await panel.reload();
+  await expect(panel.getByTestId('run-status')).toBeVisible();
+  const later = panel.getByTestId('hd-offer-later');
+  if (await later.isVisible().catch(() => false)) await later.click();
+  await expect(panel.getByTestId('run-step')).toContainText('Choose the customer');
+  await shot(panel, 'play-panel');
+  await app.bringToFront();
   await choose(app, 'Customer', 'Tansy');
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toMatch(/^drawn:2/);
   await shot(app, 'clip-2');
@@ -194,9 +206,6 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   await app.getByLabel('Item').press('Tab');
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toMatch(/^drawn:3/);
   await shot(app, 'clip-3');
-  await panel.reload();
-  await expect(panel.getByTestId('run-status')).toBeVisible();
-  await shot(panel, 'play-panel');
   await ext.message('run.stop', { tabId });
 
   // 4. The "?" launcher with its search: six guides or more for the page (D170).
@@ -222,7 +231,7 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   const [preview] = await Promise.all([context.waitForEvent('page'), panel.getByTestId('open-preview').click()]);
   await preview.waitForURL(/howto\.html/);
   await expect(preview.getByTestId('howto-preview')).toHaveAttribute('data-ready', 'yes', { timeout: 15_000 });
-  await fit(context, preview, PAGE.width, PAGE.height);
+  await fit(context, preview, PAGE.width, HOWTO_HEIGHT);
   await shot(preview, 'howto-page');
 
   writeFileSync(join(OUT, 'done.txt'), new Date().toISOString() + '\n');

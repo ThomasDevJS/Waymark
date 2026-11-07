@@ -89,19 +89,18 @@ function miniApp(t, x, y, scale = 1) {
 
 function hero(t) {
   const W = 1280;
-  const H = 360;
+  const H = 400;
   return page(
     t,
     W,
     H,
     `<div style="position:absolute;inset:0;background:${t.bg}"></div>
-    <div style="position:absolute;left:72px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;width:600px">
-      <div style="display:flex;align-items:center;gap:18px">${mark(64)}<div style="font-size:54px;font-weight:700;letter-spacing:-.025em">Waymark</div></div>
-      <div style="font-size:27px;font-weight:600;line-height:1.3;margin-top:24px;letter-spacing:-.01em">Record a walkthrough once.<br>Replay it on the live page.</div>
-      <div style="font-size:17px;color:${t.muted};margin-top:14px">A Chromium extension. No server, no account, no keys.</div>
+    <div style="position:absolute;left:72px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;width:640px">
+      <div style="display:flex;align-items:center;gap:22px">${mark(80)}<div style="font-size:72px;font-weight:700;letter-spacing:-.03em">Waymark</div></div>
+      <div style="font-size:40px;font-weight:600;line-height:1.22;margin-top:26px;letter-spacing:-.015em">Record a walkthrough once.<br>Replay it on the live page.</div>
     </div>
-    ${trail(t, W, H, [[660, 296]], -1, [[724, 250], [700, 190], [826, 179]])}
-    ${miniApp(t, 820, 34, 0.74)}`,
+    ${trail(t, W, H, [[690, 330]], -1, [[750, 280], [730, 210], [846, 199]])}
+    ${miniApp(t, 840, 54, 0.74)}`,
   );
 }
 
@@ -114,23 +113,22 @@ const POSTERS = [
 
 function posterArt(t, key) {
   const dark = t === THEMES.dark;
-  const row = (inner, extra = '') => `<div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;border:1px solid ${t.border};border-radius:10px;background:${t.surface};font-size:15px;${extra}">${inner}</div>`;
-  const num = (n, on) => `<span style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:1px solid ${on ? t.accent : t.border};background:${on ? t.accent : t.surface2};color:${on ? (dark ? '#0b1020' : '#fff') : t.muted}">${n}</span>`;
+  const row = (inner, extra = '') => `<div style="display:flex;align-items:center;gap:14px;height:58px;padding:0 18px;border:1px solid ${t.border};border-radius:12px;background:${t.surface};font-size:21px;${extra}">${inner}</div>`;
+  const num = (n, on) => `<span style="width:32px;height:32px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:16px;font-weight:700;border:1px solid ${on ? t.accent : t.border};background:${on ? t.accent : t.surface2};color:${on ? (dark ? '#0b1020' : '#fff') : t.muted}">${n}</span>`;
   if (key === 'record')
     return `<div style="display:grid;gap:8px">
-      <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:${t.rec}"><i style="width:9px;height:9px;border-radius:50%;background:${t.rec}"></i>REC</div>
-      ${row(`${num(1)}<span>Click <b>New invoice</b></span>`)}${row(`${num(2)}<span>Choose <b>Tansy Bakehouse</b></span>`)}${row(`${num(3, true)}<span>Enter <b>Amount</b></span>`, `border-color:${t.ring};box-shadow:0 0 0 3px ${t.accentSoft}`)}</div>`;
+       ${row(`${num(1)}<span>Click <b>New invoice</b></span>`)}${row(`${num(2)}<span>Choose <b>Tansy Bakehouse</b></span>`)}${row(`${num(3, true)}<span>Enter <b>Item</b></span>`, `border-color:${t.ring};box-shadow:0 0 0 3px ${t.accentSoft}`)}</div>`;
   if (key === 'play')
-    return `<div style="position:relative;height:170px">
-      <div style="position:absolute;left:0;right:0;top:14px;height:42px;border:1px solid ${t.border};border-radius:9px;background:${t.surface};box-shadow:0 0 0 4px ${t.bg},0 0 0 7px ${t.ring};display:flex;align-items:center;padding:0 14px;color:${t.muted};font-size:15px">Choose a customer</div>
-      <div style="position:absolute;left:28px;top:76px;width:300px;background:${t.surface};border:1px solid ${t.border};border-radius:12px;padding:12px 16px;box-shadow:0 3px 0 ${dark ? 'rgba(0,0,0,.35)' : 'rgba(16,24,40,.06)'}">
-        <div style="font-size:12px;font-weight:600;color:${t.muted}">Step 2 of 6</div>
-        <div style="height:3px;background:${t.surface2};border-radius:2px;margin:7px 0 9px"><div style="height:3px;width:33%;background:${t.accent};border-radius:2px"></div></div>
-        <div style="font-size:15px;font-weight:600">Choose the customer</div></div></div>`;
+    return `<div style="position:relative;height:222px">
+      <div style="position:absolute;left:8px;right:8px;top:10px;height:58px;border:1px solid ${t.border};border-radius:10px;background:${t.surface};box-shadow:0 0 0 5px ${t.surface},0 0 0 9px ${t.ring};display:flex;align-items:center;padding:0 18px;color:${t.muted};font-size:21px">Choose a customer</div>
+      <div style="position:absolute;left:36px;top:96px;width:400px;background:${t.surface};border:1px solid ${t.border};border-radius:12px;padding:16px 20px;box-shadow:0 3px 0 ${dark ? 'rgba(0,0,0,.35)' : 'rgba(16,24,40,.06)'}">
+        <div style="font-size:16px;font-weight:600;color:${t.muted}">Step 2 of 6</div>
+        <div style="height:4px;background:${t.surface2};border-radius:2px;margin:9px 0 12px"><div style="height:4px;width:33%;background:${t.accent};border-radius:2px"></div></div>
+        <div style="font-size:22px;font-weight:600">Choose the customer</div></div></div>`;
   if (key === 'share')
-    return `<div style="display:grid;gap:8px">${row(`<span style="color:${t.accentText}">${icon('FileJson', 18)}</span>send-an-invoice.waymark.json`)}${row(`<span style="color:${t.accentText}">${icon('Link', 18)}</span>Copy link that starts the guide`)}${row(`<span style="color:${t.accentText}">${icon('Library', 18)}</span>Team library URL, checked daily`)}</div>`;
-  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${['No server', 'No account', 'No API keys', 'No telemetry', 'One site at a time', '$0 to run']
-    .map((s) => row(`<span style="color:${t.success}">${icon('Check', 18, 2.5)}</span>${s}`))
+    return `<div style="display:grid;gap:8px">${row(`<span style="color:${t.accentText}">${icon('FileJson', 24)}</span>Guide file`)}${row(`<span style="color:${t.accentText}">${icon('Link', 24)}</span>Link that starts it`)}${row(`<span style="color:${t.accentText}">${icon('Library', 24)}</span>Team library`)}</div>`;
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${['No server', 'No account', 'No keys', 'No telemetry', 'Sites you allow', '$0 to run']
+    .map((s) => row(`<span style="color:${t.success}">${icon('Check', 24, 2.5)}</span>${s}`))
     .join('')}</div>`;
 }
 
@@ -139,11 +137,11 @@ function poster(t, p) {
     t,
     640,
     400,
-    `<div style="position:absolute;inset:0;background:${t.surface};border:1px solid ${t.border};border-radius:20px;padding:34px 36px;display:grid;grid-template-rows:auto auto 1fr;gap:0">
+    `<div style="position:absolute;inset:0;background:${t.surface};border:1px solid ${t.border};border-radius:20px;padding:34px 36px;display:grid;grid-template-rows:auto 1fr auto;gap:0">
       <div style="display:flex;align-items:center;gap:14px">
-        <span style="width:44px;height:44px;border-radius:12px;background:${t.accentSoft};color:${t.accentText};display:grid;place-items:center">${icon(p.icon, 24)}</span>
-        <span style="font-size:30px;font-weight:700;letter-spacing:-.02em">${p.title}</span></div>
-      <div style="font-size:17px;line-height:1.45;color:${t.muted};margin:14px 0 22px;max-width:520px">${p.line}</div>
+        <span style="width:60px;height:60px;border-radius:15px;background:${t.accentSoft};color:${t.accentText};display:grid;place-items:center">${icon(p.icon, 32)}</span>
+        <span style="font-size:48px;font-weight:700;letter-spacing:-.025em">${p.title}</span></div>
+      <div></div>
       <div style="align-self:end">${posterArt(t, p.key)}</div></div>`,
     'body{background:transparent}',
   );
@@ -182,7 +180,7 @@ function frame(name, { page: pg, panel, url, crop, square }) {
       H,
       `<div style="width:${W}px;height:${H}px;border:1px solid #c9ced6;border-radius:${square ? 0 : 12}px;overflow:hidden;background:#fff">
         <div style="height:${BAR}px;background:#eef0f3;border-bottom:1px solid #dde1e7;display:flex;align-items:center;gap:8px;padding:0 16px">
-          ${['#e06c5f', '#e7b14c', '#5fb36c'].map((c) => `<i style="width:11px;height:11px;border-radius:50%;background:${c}"></i>`).join('')}
+          ${['#c4c9d1', '#c4c9d1', '#c4c9d1'].map((c) => `<i style="width:11px;height:11px;border-radius:50%;background:${c}"></i>`).join('')}
           <div style="margin-left:18px;flex:0 1 560px;height:28px;border-radius:14px;background:#fff;border:1px solid #dde1e7;display:flex;align-items:center;padding:0 14px;font-size:13px;color:#5b6270">${url}</div>
         </div>
         <div style="display:flex">${img(pg, PW, PH)}${panel ? `<div style="border-left:1px solid #dde1e7">${img(panel, SW - 1, PH)}</div>` : ''}</div>
@@ -227,10 +225,10 @@ if (!artOnly) {
     frame('shot-play', { page: 'play-page', panel: 'play-panel', url: `${base}/new-invoice.html` }),
     frame('shot-editor', { page: 'editor-page', panel: 'editor-panel', url: `${base}/new-invoice.html` }),
     frame('shot-launcher', { page: 'launcher-page', url: `${base}/index.html` }),
-    frame('shot-howto', { page: 'howto-page', url: 'Printable how-to (preview)' }),
+    frame('shot-howto', { page: 'howto-page', url: 'Printable how-to (preview)', crop: 980 }),
     ...[0, 1, 2, 3].map((i) => frame(`clip-${i}`, { square: true, page: `clip-${i}`, url: `${base}/${i ? 'new-invoice' : 'index'}.html` })),
   ];
   // About 1.4 px per CSS px: sharp at GitHub's ~900 px column on a 2× screen, and small.
-  for (const f of frames) await render(f.name, f.html, f.w, f.h, f.name.startsWith('clip') ? 0.9 : 1.4);
+  for (const f of frames) await render(f.name, f.html, f.w, f.h, f.name.startsWith('clip') ? 1 : 1.4);
 }
 await browser.close();

@@ -32,7 +32,7 @@ Flat colours only. The one gradient is the mark's tile. No photos, no stock imag
 
 - **Inter** (SIL Open Font License 1.1), bundled in `assets/fonts/inter/` with its licence. Weights 400, 500, 600 and 700. Headings 600–700 with slightly tight tracking; body 400.
 - **Lucide** icons (ISC), from the `lucide` package the extension already uses. Stroke 2, round caps.
-- The recurring motif is the mark's dotted trail: numbered waypoints joined by a dotted line, ending in a spotlit element.
+- The recurring motif is the mark's dotted trail: a dotted line from a numbered waypoint to a spotlit element.
 
 ## The graphics
 
@@ -40,10 +40,10 @@ All in `docs/assets/`, each under 300 KB (`test/unit/readme-assets.test.ts` chec
 
 | File | What |
 | --- | --- |
-| `hero-light.png`, `hero-dark.png` | README banner, 1280 × 360 at 2× |
-| `poster-{record,play,share,private}-{light,dark}.png` | Feature cards, 640 × 400 at 2× |
+| `hero-light.png`, `hero-dark.png` | README banner, 1280 × 400 at 2× |
+| `poster-{record,play,share,private}-{light,dark}.png` | Feature cards, 640 × 400 at 2×: a title and a picture; the README's bullets carry the words |
 | `shot-record.png`, `shot-play.png`, `shot-editor.png`, `shot-launcher.png`, `shot-howto.png` | Screenshots in a drawn browser window |
-| `clip-play.gif` | A guide playing, four steps |
+| `clip-play.gif` | A guide playing, four steps, 1× |
 | `social-preview.png` | GitHub social preview, 1280 × 640 (upload it in the repository's Settings → General → Social preview) |
 | `store/store-small-440x280.png`, `store/store-marquee-1400x560.png` | Chrome Web Store tiles, for a later listing (D58) |
 

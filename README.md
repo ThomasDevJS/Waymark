@@ -8,10 +8,6 @@
 Waymark is a Chromium (Manifest V3) extension that records click-by-click walkthroughs of a web app and replays them on the live page. It spotlights the real element, shows a note and can read it aloud. Guides hold no screenshots (an optional, off-by-default screenshot per step exists only for the printable how-to and stays on the device), there are no servers and no account, and it costs $0 to run.
 
 <p align="center">
-  <img src="docs/assets/clip-play.gif" alt="A guide playing on a made-up invoicing app: the spotlight moves from the New invoice button to the Customer field, then to Item, with a tooltip that counts the steps." width="100%">
-</p>
-
-<p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-record-dark.png"><img src="docs/assets/poster-record-light.png" alt="Record: do the task once; every click, choice and field becomes a step." width="49%"></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-play-dark.png"><img src="docs/assets/poster-play-light.png" alt="Play: learners follow a spotlight on the real page." width="49%"></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-share-dark.png"><img src="docs/assets/poster-share-light.png" alt="Share: a guide file, a link that starts it, or a team library URL." width="49%"></picture>
@@ -29,6 +25,8 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 
 Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each release with `pnpm shots:readme`.
 
+![A guide playing on a made-up invoicing app, four steps: the spotlight moves from the New invoice button to the Customer field, then Item, then Amount, with a tooltip that counts the steps.](docs/assets/clip-play.gif)
+
 **Record.** While you record, an outline shows what a click will record, and the panel lists each step.
 
 ![Recording a guide: the page with an outline on the Create invoice button and the REC pill, and the side panel listing five recorded steps.](docs/assets/shot-record.png)
@@ -43,11 +41,11 @@ Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each r
 
 **Find.** The `?` button on the page lists the guides for that page, with a search once there are many.
 
-![The ? launcher open on the dashboard, with the search box holding "pay" and two matching guides.](docs/assets/shot-launcher.png)
+<p align="center"><img src="docs/assets/shot-launcher.png" alt="The ? launcher open on the dashboard, with the search box holding &quot;pay&quot; and two matching guides." width="72%"></p>
 
-**Print.** Export a printable how-to, with a picture of each step taken while recording.
+**Print.** Export a printable how-to. With screenshots turned on while recording, steps get a picture with their element outlined; you can add a missing one from the editor.
 
-![The printable how-to preview: a step's picture with the Customer field outlined and numbered.](docs/assets/shot-howto.png)
+<p align="center"><img src="docs/assets/shot-howto.png" alt="The printable how-to preview: step 1 has no picture yet, step 2's picture has the Customer field outlined and numbered." width="72%"></p>
 
 ## Install
 
