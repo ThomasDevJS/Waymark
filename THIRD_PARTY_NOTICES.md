@@ -270,3 +270,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+
+## Inter (repository graphics only)
+
+The README graphics (`docs/assets/`, D232) are set in Inter, bundled in `assets/fonts/inter/` for rendering them. Inter is not part of the extension. Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter), licensed under the SIL Open Font License 1.1: the full text is in `assets/fonts/inter/OFL.txt`.

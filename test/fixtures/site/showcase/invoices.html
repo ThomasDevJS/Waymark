@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Invoices · Demo Books</title><link rel="stylesheet" href="app.css" /></head>
+<body>
+<!-- Made-up app and data for the README screenshots (D231). -->
+<div class="shell">
+  <aside></aside>
+  <main>
+    <div class="top"><div><h1>Invoices</h1><p class="sub">All invoices in Example Co.</p></div><a class="btn primary" href="new-invoice.html" data-icon="plus">New invoice</a></div>
+    <div class="banner" id="created" hidden>Invoice INV-1049 created and sent.</div>
+    <div class="toolbar"><input type="search" aria-label="Search invoices" placeholder="Search invoices" /><select aria-label="Status"><option>All statuses</option><option>Open</option><option>Paid</option><option>Overdue</option></select></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Due</th><th>Status</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          <tr><td>INV-1048</td><td>Quillmoor Studio</td><td>Nov 28</td><td><span class="pill due">Open</span></td><td class="num">$1,240.00</td></tr>
+          <tr><td>INV-1047</td><td>Tansy Bakehouse</td><td>Nov 21</td><td><span class="pill paid">Paid</span></td><td class="num">$480.00</td></tr>
+          <tr><td>INV-1046</td><td>Orrin Tile Works</td><td>Nov 02</td><td><span class="pill late">Overdue</span></td><td class="num">$2,150.00</td></tr>
+          <tr><td>INV-1045</td><td>Brackenfield Farm</td><td>Oct 30</td><td><span class="pill paid">Paid</span></td><td class="num">$760.50</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+<script src="nav.js"></script>
+<script>if (new URLSearchParams(location.search).has('created')) document.getElementById('created').hidden = false;</script>
+</body>
+</html>
