@@ -52,7 +52,7 @@ test('drag step 7 to the top: the panel scrolls up on its own, Save keeps the or
   await panel.keyboard.press('Escape');
   await panel.mouse.up();
   await expect(panel.locator('.edit-step.dragging')).toHaveCount(0);
-  expect(await order(panel)).toEqual(ELEVEN);
+  await expect.poll(() => order(panel)).toEqual(ELEVEN);
   await expect(panel.getByTestId('save-guide')).toBeDisabled();
 
   // Review fix: the editor closing mid-drag (a recording started by shortcut does this) ends the
@@ -84,7 +84,7 @@ test('drag step 7 to the top: the panel scrolls up on its own, Save keeps the or
   await expect(panel.getByTestId('step-0')).toHaveClass(/drop-before/);
   if (process.env.WAYMARK_SHOT) await panel.screenshot({ path: process.env.WAYMARK_SHOT });
   await panel.mouse.up();
-  expect(await order(panel)).toEqual(['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')]);
+  await expect.poll(() => order(panel)).toEqual(['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')]);
   await expect(panel.getByTestId('reorder-status')).toHaveText('Step moved to position 1 of 11.');
   await expect(panel.locator('.edit-step[style*="transform"]')).toHaveCount(0);
 
@@ -93,7 +93,7 @@ test('drag step 7 to the top: the panel scrolls up on its own, Save keeps the or
   expect(await stored(ext, guideId)).toEqual(['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')]);
   await panel.reload();
   await panel.getByTestId(`edit-${guideId}`).click();
-  expect(await order(panel)).toEqual(['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')]);
+  await expect.poll(() => order(panel)).toEqual(['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')]);
 });
 
 test('by keyboard: Space picks the step up, the arrow keys move it, Space drops it, Esc puts it back; Move to top / bottom; none for a team guide', async ({ context, ext, site, extensionId }) => {
@@ -111,7 +111,7 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await panel.keyboard.press('ArrowUp');
   await panel.keyboard.press('Escape');
   await expect(panel.getByTestId('save-guide')).toBeDisabled();
-  expect(await order(panel)).toEqual(ELEVEN);
+  await expect.poll(() => order(panel)).toEqual(ELEVEN);
 
   // Review fix: a click elsewhere drops a lifted step where it is.
   await panel.getByTestId('step-3-drag').focus();
@@ -131,7 +131,7 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await expect(panel.getByTestId('reorder-status')).toHaveText('Step dropped at position 1 of 11.');
   await expect(panel.getByTestId('step-0-drag')).toHaveAttribute('aria-pressed', 'false');
   const moved = ['Step 7', ...ELEVEN.filter((t) => t !== 'Step 7')];
-  expect(await order(panel)).toEqual(moved);
+  await expect.poll(() => order(panel)).toEqual(moved);
 
   // Esc puts it back where it was picked up.
   await panel.keyboard.press('Space');
@@ -139,7 +139,7 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await panel.keyboard.press('ArrowDown');
   await panel.keyboard.press('Escape');
   await expect(panel.getByTestId('reorder-status')).toHaveText('Move cancelled. Step back at position 1 of 11.');
-  expect(await order(panel)).toEqual(moved);
+  await expect.poll(() => order(panel)).toEqual(moved);
   await expect(panel.getByTestId('step-0-drag')).toBeFocused();
 
   // Enter picks up, End sends it to the bottom, Tab drops it there.
@@ -153,7 +153,7 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await panel.keyboard.press('Space');
   await panel.keyboard.press('Home');
   await panel.keyboard.press('Space');
-  expect(await order(panel)).toEqual(moved);
+  await expect.poll(() => order(panel)).toEqual(moved);
 
   // Move to top and to bottom, in More options.
   await panel.getByTestId('step-4-toggle').click();
@@ -167,7 +167,7 @@ test('by keyboard: Space picks the step up, the arrow keys move it, Space drops 
   await panel.keyboard.press('ArrowDown');
   await panel.keyboard.press('ArrowDown');
   await panel.keyboard.press('Space');
-  expect(await order(panel)).toEqual(moved);
+  await expect.poll(() => order(panel)).toEqual(moved);
   await panel.getByTestId('step-0-toggle').click();
   await panel.getByTestId('step-0-more').click();
   await expect(panel.getByTestId('step-0-to-top')).toBeDisabled();
