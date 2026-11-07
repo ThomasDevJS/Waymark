@@ -1,6 +1,22 @@
-# Waymark
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
+    <img src="docs/assets/hero-light.png" alt="Waymark. Record a walkthrough once. Replay it on the live page." width="100%">
+  </picture>
+</h1>
 
 Waymark is a Chromium (Manifest V3) extension that records click-by-click walkthroughs of a web app and replays them on the live page. It spotlights the real element, shows a note and can read it aloud. Guides hold no screenshots (an optional, off-by-default screenshot per step exists only for the printable how-to and stays on the device), there are no servers and no account, and it costs $0 to run.
+
+<p align="center">
+  <img src="docs/assets/clip-play.gif" alt="A guide playing on a made-up invoicing app: the spotlight moves from the New invoice button to the Customer field, then to Item, with a tooltip that counts the steps." width="100%">
+</p>
+
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-record-dark.png"><img src="docs/assets/poster-record-light.png" alt="Record: do the task once; every click, choice and field becomes a step." width="49%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-play-dark.png"><img src="docs/assets/poster-play-light.png" alt="Play: learners follow a spotlight on the real page." width="49%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-share-dark.png"><img src="docs/assets/poster-share-light.png" alt="Share: a guide file, a link that starts it, or a team library URL." width="49%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/poster-private-dark.png"><img src="docs/assets/poster-private-light.png" alt="Private: no backend, no account, no keys." width="49%"></picture>
+</p>
 
 - **Record:** press Record and do the task. Waymark writes a step for each click, choice and field, and never stores what you type.
 - **Play:** a learner follows the spotlight on the real page, across pages, tabs, dialogs and iframes. When a step can't be found, Waymark says so instead of pointing at the wrong element.
@@ -8,6 +24,30 @@ Waymark is a Chromium (Manifest V3) extension that records click-by-click walkth
 - **Private:** Waymark works only on sites you allow, one at a time. Guides stay in your browser, and there is no telemetry ([privacy policy](docs/PRIVACY.md)).
 
 **Status:** v0.9.0. Milestones M0–M5 are done (scaffold, matcher, recorder, player, editor and voice, discovery and sharing). From M6 it has the popup fallback and an optional on-device HD voice. It is for internal use and installed from a release; a store listing draft is kept in [docs/STORE.md](docs/STORE.md) for later (D58). What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
+## See it work
+
+Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each release with `pnpm shots:readme`.
+
+**Record.** While you record, an outline shows what a click will record, and the panel lists each step.
+
+![Recording a guide: the page with an outline on the Create invoice button and the REC pill, and the side panel listing five recorded steps.](docs/assets/shot-record.png)
+
+**Play.** The spotlight and the tooltip show the learner the next step on the live page.
+
+![Playing a guide: the Customer field is spotlighted, the tooltip reads Step 2 of 6, Choose the customer, and the panel shows the guide playing.](docs/assets/shot-play.png)
+
+**Edit.** Change a step's text, add a note, test it on the page, or point it at another element.
+
+![The editor in the side panel: steps of the guide, with step 4 open showing its title, note, Test step and Re-pick element.](docs/assets/shot-editor.png)
+
+**Find.** The `?` button on the page lists the guides for that page, with a search once there are many.
+
+![The ? launcher open on the dashboard, with the search box holding "pay" and two matching guides.](docs/assets/shot-launcher.png)
+
+**Print.** Export a printable how-to, with a picture of each step taken while recording.
+
+![The printable how-to preview: a step's picture with the Customer field outlined and numbered.](docs/assets/shot-howto.png)
 
 ## Install
 
@@ -62,6 +102,7 @@ pnpm test:e2e:xvfb   # Playwright with the built extension, headed under Xvfb
 pnpm check:manifest  # no content_scripts, no host_permissions, no CDN code
 pnpm bench           # performance harness (not part of check)
 pnpm screens         # screenshots of every panel and on-page state, light and dark (D90)
+pnpm shots:readme    # re-shoots the README graphics in docs/assets (D230; docs/BRAND.md)
 pnpm test:real       # opt-in: record and replay tasks on public demo apps (network + Xvfb; docs/RELIABILITY.md)
 pnpm fixture         # the fixture app at http://127.0.0.1:4173
 ```
@@ -105,5 +146,6 @@ scripts/           manifest and CDN guards, CI and release helpers
 | [docs/RELIABILITY.md](docs/RELIABILITY.md) | Real-site reliability results and known limits |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Privacy policy |
 | [docs/STORE.md](docs/STORE.md) | Chrome Web Store listing draft |
+| [docs/BRAND.md](docs/BRAND.md) | Logo, colours, type and how to re-shoot the README graphics |
 | [CHANGELOG.md](CHANGELOG.md) | Changes per version |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Licenses of bundled code and the HD voice model |

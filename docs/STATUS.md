@@ -19,6 +19,7 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - Design tokens (colour, spacing, radius, type, elevation, motion; light and dark) are in `src/ui/tokens.css`; components are in `src/ui/components.css`. The overlay uses the same tokens, scoped to its layer in the closed shadow root (`src/content/overlay/theme.ts`).
 - Icons: Lucide, bundled (`src/ui/icons.ts` for the pages, one-by-one imports in the content script). The Waymark mark is in `assets/brand/`; `node scripts/icons.mjs` renders `public/icon/{16,32,48,128}.png`.
 - `pnpm screens` shoots every screen and state (light, dark, dark browser on a light page, 200% zoom, phone) to compare before and after a UI change.
+- README graphics (D230–D233): `pnpm shots:readme` re-shoots `docs/assets/` from the made-up app in `test/fixtures/site/showcase/`; logo, colours, type and steps are in `docs/BRAND.md`.
 
 ## Conveniences (D100–D106)
 - Undo for deleted guides (a trash in `storage.local`, `src/core/storage/trash.ts`) and steps; one toast component (`sidepanel/Toast.tsx`). Completed badge, Restart and Start from step N (`run.start` `stepIndex`). Tag chips and the editor's Tags field (`src/core/discovery/tags.ts`). Duplicate guide and step. E2E: `test/e2e/q1-library-editor.spec.ts`.
