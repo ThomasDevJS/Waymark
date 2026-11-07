@@ -173,8 +173,13 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   if (!(await panel.getByTestId('step-3-title').count())) await panel.getByTestId('step-3-toggle').click();
   await panel.getByTestId('step-3-test').click();
   await expect(panel.getByTestId('step-3-test-result')).not.toContainText('Looking', { timeout: 12_000 });
-  await panel.getByTestId('step-0').evaluate((e) => e.scrollIntoView({ block: 'start' }));
-  await panel.evaluate(() => scrollBy(0, -12));
+  // The step list's hint whole, just under the panel's sticky header (the bottom of whatever covers
+  // the top of the page), then the steps with their drag handles.
+  await panel.locator('p.hint', { hasText: 'to reorder' }).evaluate((hint) => {
+    hint.scrollIntoView({ block: 'start' });
+    const cover = document.elementsFromPoint(innerWidth / 2, 2).find((e) => getComputedStyle(e).position === 'sticky');
+    scrollBy(0, -((cover?.getBoundingClientRect().bottom ?? 0) + 12));
+  });
   await shot(panel, 'editor-panel');
   await app.bringToFront();
   await shot(app, 'editor-page');
@@ -194,8 +199,10 @@ test('README screenshots', async ({ context, ext, site, extensionId }) => {
   // The panel at the same step, without the HD voice offer (answered "Not now").
   await panel.reload();
   await expect(panel.getByTestId('run-status')).toBeVisible();
+  // The offer loads after the panel, so wait for it a moment, answer it, and check it is gone.
   const later = panel.getByTestId('hd-offer-later');
-  if (await later.isVisible().catch(() => false)) await later.click();
+  await later.waitFor({ timeout: 4000 }).then(() => later.click(), () => undefined);
+  await expect(panel.getByTestId('hd-offer')).toHaveCount(0);
   await expect(panel.getByTestId('run-step')).toContainText('Choose the customer');
   await shot(panel, 'play-panel');
   await app.bringToFront();

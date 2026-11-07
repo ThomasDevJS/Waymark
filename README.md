@@ -35,9 +35,9 @@ Screenshots of the made-up "Demo Books" app in the test fixtures, re-shot each r
 
 ![Playing a guide: the Customer field is spotlighted, the tooltip reads Step 2 of 6, Choose the customer, and the panel shows the guide playing.](docs/assets/shot-play.png)
 
-**Edit.** Change a step's text, add a note, test it on the page, or point it at another element.
+**Edit.** Change a step's text, add a note, test it on the page, point it at another element, or drag a step by its handle to reorder.
 
-![The editor in the side panel: steps of the guide, with step 4 open showing its title, note, Test step and Re-pick element.](docs/assets/shot-editor.png)
+![The editor in the side panel: steps of the guide with their drag handles, step 4 open showing its title, note, Test step and Re-pick element.](docs/assets/shot-editor.png)
 
 **Find.** The `?` button on the page lists the guides for that page, with a search once there are many.
 

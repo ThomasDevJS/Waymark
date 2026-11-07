@@ -1976,4 +1976,5 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
 
 ### D233. The editor's drag handle shot waits for #108
 *7 Nov 2026 · issue #109, D205*
-- The issue lists the editor "including the drag handle". Dragging to reorder (D205, #108) is being built separately and isn't on `main` yet, so the editor shot shows the up and down arrows. Once #108 is merged, re-run `pnpm shots:readme`; the editor shot then shows the handle with no script change. `docs/BRAND.md` notes it as pending.
+- The issue lists the editor "including the drag handle". Dragging to reorder (D205, #108) is being built separately and isn't on `main` yet, so the editor shot shows the up and down arrows. Once #108 is merged, re-run `pnpm shots:readme`; the editor shot then shows the handle with no script change.
+- **Done** (7 Nov 2026): #108 merged as PR #111; the editor shot was re-shot and shows each step's drag handle. No script change was needed beyond scrolling the step list clear of the panel's sticky header.

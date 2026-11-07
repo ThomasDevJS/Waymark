@@ -47,8 +47,6 @@ All in `docs/assets/`, each under 300 KB (`test/unit/readme-assets.test.ts` chec
 | `social-preview.png` | GitHub social preview, 1280 × 640 (upload it in the repository's Settings → General → Social preview) |
 | `store/store-small-440x280.png`, `store/store-marquee-1400x560.png` | Chrome Web Store tiles, for a later listing (D58) |
 
-Pending: a shot of the editor's drag handle (D205, #108) is added once that change is on `main` (D233).
-
 ## Re-shooting
 
 ```sh
