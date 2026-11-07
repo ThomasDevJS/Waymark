@@ -443,6 +443,35 @@ button.record .rec-dot {
 .edit-step {
   gap: var(--wm-space-3);
 }
+/* Reordering by drag or keyboard (D205). */
+.step-head .grip {
+  cursor: grab;
+  touch-action: none;
+  margin-inline-start: -4px;
+  color: var(--wm-fg-muted);
+}
+.step-head .grip.lifted {
+  color: var(--wm-accent-text);
+  background: var(--wm-accent-soft);
+  box-shadow: 0 0 0 2px var(--wm-accent);
+}
+.edit-steps.is-dragging,
+.edit-steps.is-dragging * {
+  cursor: grabbing;
+  user-select: none;
+}
+.edit-step.dragging {
+  position: relative;
+  z-index: 3;
+  box-shadow: var(--wm-shadow-3);
+  will-change: transform;
+}
+.edit-step.drop-before {
+  box-shadow: 0 -4px 0 -1px var(--wm-accent);
+}
+.edit-step.drop-after {
+  box-shadow: 0 4px 0 -1px var(--wm-accent);
+}
 .edit-step.picking {
   border-color: var(--wm-accent);
   box-shadow: 0 0 0 1px var(--wm-accent);

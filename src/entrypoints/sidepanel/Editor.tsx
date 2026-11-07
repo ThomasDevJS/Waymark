@@ -17,6 +17,7 @@ import { parseTags } from '../../core/discovery/tags';
 import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
+import { dropIndex, edgeScroll, moveItem } from '../../core/editor/reorder';
 import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
 import type { ShotsStatus } from '../../core/messaging/protocol';
@@ -107,22 +108,173 @@ function patchStep(id: string, patch: Partial<Step>) {
 }
 
 /**
- * The step whose Move up / Move down button had focus: reordering re-inserts its row, which
- * drops focus to the page, so the button gets it back after the render (D130).
+ * The step whose Move up / Move down button or drag handle had focus: reordering re-inserts its
+ * row, which drops focus to the page, so the control gets it back after the render (D130, D205).
  */
-let refocusMove: { id: string; dir: 'up' | 'down' } | null = null;
+let refocusMove: { id: string; control: 'up' | 'down' | 'drag' } | null = null;
 
-function move(index: number, by: number) {
+/** Moves the step at `index` to `to` (clamped). `control`: what gets focus back if it had it. */
+function moveTo(index: number, to: number, control: 'up' | 'down' | 'drag') {
   const active = document.activeElement;
   const id = draft.value?.steps[index]?.id;
-  refocusMove = id && active?.closest(`[data-flip="${CSS.escape(id)}"]`) ? { id, dir: by < 0 ? 'up' : 'down' } : null;
-  setSteps((steps) => {
-    const to = index + by;
-    if (to < 0 || to >= steps.length) return steps;
-    const copy = steps.slice();
-    [copy[index], copy[to]] = [copy[to]!, copy[index]!];
-    return copy;
+  refocusMove = id && active?.closest(`[data-flip="${CSS.escape(id)}"]`) ? { id, control } : null;
+  setSteps((steps) => moveItem(steps, index, to) as Step[]);
+}
+
+function move(index: number, by: number) {
+  moveTo(index, index + by, by < 0 ? 'up' : 'down');
+}
+
+/** The line that shows where a dragged step lands: above the card it takes the place of, or below it. */
+function dropMark(i: number): string {
+  const d = dragging.value;
+  if (!d || d.to === d.from || i !== d.to) return '';
+  return d.to < d.from ? ' drop-before' : ' drop-after';
+}
+
+/** Keyboard reordering (D205): the step picked up with Space on its handle, and where it was. */
+const lifted = signal<{ id: string; from: number } | null>(null);
+/** A pointer drag in progress: the dragged step, where it was, and where it would land. */
+const dragging = signal<{ id: string; from: number; to: number } | null>(null);
+/** What a screen reader hears about reordering. */
+const reorderNote = signal('');
+/** The dragged row keeps its offset until the new order is rendered, so it glides from where it was dropped. */
+let dropped: HTMLElement | null = null;
+
+function scrollerOf(el: Element): Element {
+  for (let n = el.parentElement; n; n = n.parentElement) {
+    const o = getComputedStyle(n).overflowY;
+    if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
+function clearDragStyle(row: HTMLElement) {
+  row.style.transform = '';
+  row.classList.remove('dragging');
+}
+
+/** A drag from a step's handle (D205): the card follows the pointer, a line shows where it lands, the panel scrolls near its edges, Esc cancels. */
+function startDrag(e: PointerEvent, list: HTMLElement | null, index: number, id: string, total: number) {
+  if (e.button !== 0 || !list || dragging.value) return;
+  const handle = e.currentTarget as HTMLElement;
+  const row = handle.closest<HTMLElement>('[data-flip]');
+  if (!row) return;
+  e.preventDefault(); // no text selection
+  handle.focus({ preventScroll: true });
+  lifted.value = null;
+  try {
+    handle.setPointerCapture(e.pointerId);
+  } catch {
+    // a synthetic or already released pointer: moves still reach the handle while it is pressed
+  }
+  const scroller = scrollerOf(list);
+  const isPage = scroller === document.scrollingElement || scroller === document.documentElement;
+  const area = () => (isPage ? { top: 0, bottom: innerHeight } : scroller.getBoundingClientRect());
+  const top0 = scroller.scrollTop;
+  const spans = Array.from(list.querySelectorAll<HTMLElement>(':scope > [data-flip]')).map((r) => {
+    const b = r.getBoundingClientRect();
+    return { top: b.top + top0, height: b.height };
   });
+  const startY = e.clientY;
+  let y = startY;
+  let started = false;
+  let raf = 0;
+  const place = () => {
+    const at = y + scroller.scrollTop;
+    row.style.transform = `translateY(${Math.round(at - (startY + top0))}px)`;
+    const to = dropIndex(spans, index, at);
+    if (dragging.value?.to !== to) dragging.value = { id, from: index, to };
+  };
+  const tick = () => {
+    raf = 0;
+    const a = area();
+    const by = edgeScroll(y, a.top, a.bottom);
+    if (!by) return;
+    const before = scroller.scrollTop;
+    scroller.scrollTop += by;
+    if (scroller.scrollTop === before) return; // at the end
+    place();
+    raf = requestAnimationFrame(tick);
+  };
+  const onMove = (ev: PointerEvent) => {
+    if (ev.pointerId !== e.pointerId) return;
+    y = ev.clientY;
+    if (!started) {
+      if (Math.abs(y - startY) < 4) return;
+      started = true;
+      row.classList.add('dragging');
+    }
+    place();
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+  const finish = (commit: boolean) => {
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onCancel);
+    window.removeEventListener('keydown', onKey, true);
+    cancelAnimationFrame(raf);
+    const to = dragging.value?.to;
+    dragging.value = null;
+    if (commit && started && to !== undefined && to !== index) {
+      dropped = row;
+      reorderNote.value = `Step moved to position ${to + 1} of ${total}.`;
+      moveTo(index, to, 'drag');
+    } else {
+      clearDragStyle(row);
+      if (started) reorderNote.value = `Move cancelled. Step ${index + 1} stays where it was.`;
+    }
+  };
+  const onUp = (ev: PointerEvent) => ev.pointerId === e.pointerId && finish(true);
+  const onCancel = (ev: PointerEvent) => ev.pointerId === e.pointerId && finish(false);
+  const onKey = (ev: KeyboardEvent) => {
+    if (ev.key !== 'Escape') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    finish(false);
+  };
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp);
+  handle.addEventListener('pointercancel', onCancel);
+  window.addEventListener('keydown', onKey, true);
+}
+
+/** The drag handle by keyboard (D205): Space or Enter picks the step up and drops it, the arrow keys move it, Esc puts it back. */
+function onHandleKey(e: KeyboardEvent, index: number, id: string, total: number) {
+  const l = lifted.value;
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (l?.id === id) {
+      lifted.value = null;
+      reorderNote.value = `Step dropped at position ${index + 1} of ${total}.`;
+    } else {
+      lifted.value = { id, from: index };
+      reorderNote.value = `Step ${index + 1} of ${total} picked up. Use the up and down arrow keys to move it, Space to drop it, Escape to cancel.`;
+    }
+    return;
+  }
+  if (l?.id !== id) return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const to = index + (e.key === 'ArrowUp' ? -1 : 1);
+    if (to < 0 || to >= total) return;
+    moveTo(index, to, 'drag');
+    reorderNote.value = `Position ${to + 1} of ${total}.`;
+  } else if (e.key === 'Home' || e.key === 'End') {
+    e.preventDefault();
+    const to = e.key === 'Home' ? 0 : total - 1;
+    moveTo(index, to, 'drag');
+    reorderNote.value = `Position ${to + 1} of ${total}.`;
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    lifted.value = null;
+    moveTo(index, l.from, 'drag');
+    reorderNote.value = `Move cancelled. Step back at position ${l.from + 1} of ${total}.`;
+  } else if (e.key === 'Tab') {
+    lifted.value = null;
+    reorderNote.value = `Step dropped at position ${index + 1} of ${total}.`;
+  }
 }
 
 /** A copy of a step right after it, with a new id (D100). */
@@ -273,14 +425,23 @@ function AddStepButtons({ after, testid, label, g, tabId, readOnly }: { after: s
 export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: number | null; onClose: () => void }) {
   const stepFlip = useFlipList<HTMLOListElement>(draft.value?.steps.map((s) => s.id) ?? []);
   useLayoutEffect(() => {
+    // The dropped row glides from where it was let go (its offset stayed for the measurement).
+    if (dropped) {
+      clearDragStyle(dropped);
+      dropped = null;
+    }
     const r = refocusMove;
     if (!r) return;
     refocusMove = null;
     const row = stepFlip.ref.current?.querySelector(`[data-flip="${CSS.escape(r.id)}"]`);
     if (!row || row.contains(document.activeElement)) return;
+    if (r.control === 'drag') {
+      row.querySelector<HTMLButtonElement>('[data-testid$="-drag"]')?.focus();
+      return;
+    }
     // At the top or bottom the pressed button is now disabled: the other one takes focus.
     const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('[data-testid$="-up"], [data-testid$="-down"]'));
-    (buttons.find((b) => b.dataset.testid!.endsWith(`-${r.dir}`) && !b.disabled) ?? buttons.find((b) => !b.disabled))?.focus();
+    (buttons.find((b) => b.dataset.testid!.endsWith(`-${r.control}`) && !b.disabled) ?? buttons.find((b) => !b.disabled))?.focus();
   });
   // Results from a play while the editor is open show at once (review of D211), for a kept draft too.
   useEffect(() => {
@@ -294,6 +455,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
   }, [guideId]);
   useEffect(() => {
     // Back from a recording started with the shortcut: the unsaved draft of this guide is kept.
+    lifted.value = null;
+    reorderNote.value = '';
     if (draft.value?.id === guideId && dirty.value) return () => dismissScope('editor');
     draft.value = null;
     dirty.value = false;
@@ -472,8 +635,14 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           {allOpen ? 'Fold all steps' : 'Open all steps'}
         </button>
       </div>
-      <p class="hint">Open a step to change its text, test it or point it at another element. Use the arrows to reorder.</p>
-      <ol class="edit-steps" aria-label="Steps" ref={stepFlip.ref}>
+      <p class="hint">Open a step to change its text, test it or point it at another element. Drag a step by its handle, or use the arrows, to reorder.</p>
+      <p class="visually-hidden" id="reorder-help">
+        Drag to move the step, or press Space to pick it up, the up and down arrow keys to move it, and Space again to drop it. Escape cancels.
+      </p>
+      <p class="visually-hidden" role="status" data-testid="reorder-status">
+        {reorderNote.value}
+      </p>
+      <ol class={`edit-steps${dragging.value ? ' is-dragging' : ''}`} aria-label="Steps" ref={stepFlip.ref}>
         {g.steps.map((s, i) => {
           const t = tests.value[s.id];
           const canTarget = s.kind !== 'note' && s.kind !== 'navigate';
@@ -511,8 +680,23 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
           const more = moreSteps.value.has(s.id);
           const moreId = `step-more-${s.id}`;
           return (
-            <li key={s.id} class={`edit-step ${stepFlip.enter(s.id)}${isPicking ? ' picking' : ''}${open ? ' open' : ''}`} data-flip={s.id} data-testid={`step-${i}`} aria-labelledby={titleId}>
+            <li key={s.id} class={`edit-step ${stepFlip.enter(s.id)}${isPicking ? ' picking' : ''}${open ? ' open' : ''}${dropMark(i)}`} data-flip={s.id} data-testid={`step-${i}`} aria-labelledby={titleId}>
               <div class="step-head">
+                {!readOnly && (
+                  <button
+                    type="button"
+                    class={`ghost icon sm grip${lifted.value?.id === s.id ? ' lifted' : ''}`}
+                    data-testid={`step-${i}-drag`}
+                    aria-label={`Move step ${i + 1}`}
+                    aria-describedby="reorder-help"
+                    aria-pressed={lifted.value?.id === s.id}
+                    title="Drag to move (or Space, then the arrow keys)"
+                    onPointerDown={(e) => startDrag(e, stepFlip.ref.current, i, s.id, g.steps.length)}
+                    onKeyDown={(e) => onHandleKey(e, i, s.id, g.steps.length)}
+                  >
+                    <Icon name="grip" />
+                  </button>
+                )}
                 <span class="num" aria-hidden="true">
                   {i + 1}
                 </span>
@@ -685,6 +869,14 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                         <button type="button" class="ghost sm" data-testid={`step-${i}-add-note`} disabled={readOnly} onClick={() => insertNote(i)}>
                           <Icon name="plus" />
                           Add a note after
+                        </button>
+                        <button type="button" class="ghost sm" data-testid={`step-${i}-to-top`} disabled={readOnly || i === 0} onClick={() => moveTo(i, 0, 'up')}>
+                          <Icon name="arrow-up" />
+                          Move to top
+                        </button>
+                        <button type="button" class="ghost sm" data-testid={`step-${i}-to-bottom`} disabled={readOnly || i === g.steps.length - 1} onClick={() => moveTo(i, g.steps.length - 1, 'down')}>
+                          <Icon name="arrow-down" />
+                          Move to bottom
                         </button>
                         <button type="button" class="ghost sm" data-testid={`step-${i}-duplicate`} aria-label={`Duplicate step ${i + 1}`} disabled={readOnly} onClick={() => setSteps((steps) => duplicateStepIn(steps, i))}>
                           <Icon name="duplicate" />

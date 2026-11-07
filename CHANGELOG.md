@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Reorder steps in the editor by dragging a step's handle, or by keyboard (Space, the arrow keys, Space). **Move to top** and **Move to bottom** are in a step's More options (D205, #108).
+
 ## [0.9.0] - 2026-11-07
 
 ### Added

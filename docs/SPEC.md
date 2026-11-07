@@ -65,7 +65,7 @@ An author records by doing the task once; a learner plays it on the real page an
 1. Edit each step's title, note, voice text, advance mode (on action or Next button), and whether it is optional.
 2. Test step highlights the matched element on the current page.
 3. Re-pick element lets the author click the right element when the match is wrong.
-4. Reorder, delete or insert steps; Save bumps the guide version.
+4. Reorder (drag a step's handle, or Space and the arrow keys on it; ↑ / ↓; Move to top / bottom; D205), delete or insert steps; Save bumps the guide version.
 
 **Play (learner)**
 
