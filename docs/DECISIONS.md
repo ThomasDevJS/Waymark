@@ -1923,3 +1923,26 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
     - Save's before / after, then Revert;
     - a pack carrying the profile to a library without it;
     - a hash-routed team guide that starts with the library's hash routing while its own copy (own profile, no hash routing) doesn't.
+
+### D230. README graphics are rendered by script from the fixture app
+*7 Nov 2026 · SPEC: Milestones (M6, docs); issue #109*
+- **What**: a hero (light and dark), four feature posters (light and dark), five framed screenshots, a short GIF of a guide playing, the GitHub social preview and two Chrome Web Store tiles, all in `docs/assets/`. `pnpm shots:readme` re-shoots everything: a Playwright spec (`test/shots/readme.spec.ts`), an HTML renderer (`scripts/readme-art.mjs`) and a packer (`scripts/readme-pack.py`). How to use them: `docs/BRAND.md`.
+- **PNG, not SVG**, for the hero and posters: they set text in Inter, and an SVG in an `<img>` can't load the font without embedding it in every file. The mark stays SVG.
+- **Size**: shots are rendered at 1.4 px per CSS px (sharp in GitHub's ~900 px column on a 2× screen) and packed to 256 colours: drawn art without dithering, screenshots with it (shadows and the spotlight's shade band otherwise). Every file is far under the 300 KB limit (largest: the GIF, about 190 KB). `test/unit/readme-assets.test.ts` checks sizes, the required listing dimensions and that README links are relative and exist.
+- **Chrome window and side panel are drawn**, not captured: the page and the side panel (an extension page in its own popup window, 400 px wide) are shot separately at device scale 2 and placed in a plain window frame. Real Chrome UI isn't reachable from Playwright, and a drawn frame shows no browser's branding.
+- **The clip is a GIF** (four held frames), because GitHub renders a GIF from a relative path; a video would have to be uploaded to GitHub, which a fork can't re-shoot.
+- Not in `pnpm check` or CI: it needs Xvfb, Pillow and a display-sized screen. Only the size test runs in CI.
+
+### D231. A made-up "Demo Books" app in the fixture site, for the shots
+*7 Nov 2026 · SPEC: Tech stack ("Fixture test app"); issue #109*
+- The issue asks for shots of the fixture app. Its test pages (`test/fixtures/site/*.html`) are built to break guides, not to look like an app, and the manual-test demo (`demo/`) labels its cards with what each should trigger. So `test/fixtures/site/showcase/` adds three plain pages (dashboard, new invoice, invoices) with made-up companies and amounts. No test uses them; the fixture server serves them as it serves the rest. The page's sidebar is built with DOM APIs (no HTML strings), with Lucide icons.
+- The app's accent is teal, so Waymark's blue spotlight and buttons stand apart from it.
+
+### D232. Inter is the brand typeface, bundled
+*7 Nov 2026 · issue #109*
+- Inter (OFL 1.1) is bundled in `assets/fonts/inter/` (four latin weights, woff2, from `@fontsource/inter` 5.3.0) with its licence; the renderer loads it from disk, so nothing is fetched. Inter, not a display face, because the extension's UI falls back to the system font and Inter is what most of those screenshots show: posters and screenshots then share one typeface.
+- The fonts are not shipped in the extension (they are outside `public/`).
+
+### D233. The editor's drag handle shot waits for #108
+*7 Nov 2026 · issue #109, D205*
+- The issue lists the editor "including the drag handle". Dragging to reorder (D205, #108) is being built separately and isn't on `main` yet, so the editor shot shows the up and down arrows. Once #108 is merged, re-run `pnpm shots:readme`; the editor shot then shows the handle with no script change. `docs/BRAND.md` notes it as pending.

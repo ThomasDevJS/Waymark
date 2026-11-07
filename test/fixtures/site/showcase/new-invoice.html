@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>New invoice · Demo Books</title><link rel="stylesheet" href="app.css" /></head>
+<body>
+<!-- Made-up app and data for the README screenshots (D231). -->
+<div class="shell">
+  <aside></aside>
+  <main>
+    <div class="top"><div><h1>New invoice</h1><p class="sub">INV-1049 · draft</p></div></div>
+    <form class="card" action="invoices.html" method="get">
+      <input type="hidden" name="created" value="1" />
+      <div class="field"><label for="customer">Customer</label>
+        <select id="customer" name="customer"><option value="">Choose a customer</option><option>Brackenfield Farm</option><option>Orrin Tile Works</option><option>Pellow &amp; Finch</option><option>Quillmoor Studio</option><option>Tansy Bakehouse</option></select></div>
+      <div class="grid2">
+        <div class="field"><label for="issued">Issue date</label><input id="issued" type="text" value="Nov 7, 2026" /></div>
+        <div class="field"><label for="terms">Payment terms</label>
+          <select id="terms" name="terms"><option>Due on receipt</option><option>Net 15</option><option>Net 30</option><option>Net 60</option></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="item">Item</label><input id="item" type="text" placeholder="What you are billing for" /></div>
+        <div class="field"><label for="amount">Amount</label><input id="amount" type="text" inputmode="decimal" placeholder="0.00" /></div>
+      </div>
+      <label class="check"><input type="checkbox" id="copy" /> Send me a copy</label>
+      <div class="actions"><a class="btn" href="index.html">Cancel</a><button class="btn primary" type="submit">Create invoice</button></div>
+    </form>
+  </main>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>
