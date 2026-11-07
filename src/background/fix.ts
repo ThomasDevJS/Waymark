@@ -155,42 +155,50 @@ export async function fixPicked(tabId: number, target: unknown, ctx: HandlerCont
   return { ok: true };
 }
 
+/**
+ * Starts the player's pick for the current step of a tab's run (D210), when `may` accepts the run:
+ * the caller checks who asks (a frame of the page, or a report link, D212).
+ */
+export async function beginFix(tabId: number, stepId: string, may: (run: Run) => boolean): Promise<{ ok: boolean; why?: FixRefusal }> {
+  const why = await enqueue(async (): Promise<FixRefusal | null> => {
+    const run = await getRun(tabId);
+    const step = run ? currentStep(run) : undefined;
+    if (!run || run.status !== 'running' || !step?.target || step.id !== stepId) return 'step';
+    if (!may(run)) return 'page';
+    if (run.guideSnapshot.source !== 'local') return 'guide';
+    const stored = await storedGuide(run.guideSnapshot.id);
+    if (!stored || stored.source !== 'local') return 'guide';
+    if (!stored.steps.some((s) => s.id === stepId && s.target)) return 'step';
+    run.fix = { stepToken: run.stepToken, at: Date.now() };
+    run.rev += 1;
+    await chrome.storage.session.set({ [runKey(tabId)]: run });
+    return null;
+  });
+  if (why) {
+    dlog('run', 'fix.refused', { tab: tabId }, { why });
+    return { ok: false, why };
+  }
+  dlog('run', 'fix.start', { tab: tabId });
+  // An editor pick in this tab gives way (its panel stops waiting); only once this pick is on.
+  if ((await chrome.storage.session.get(pickKey(tabId)))[pickKey(tabId)]) await endPick(tabId, true);
+  await broadcast(tabId);
+  const msg: ContentPush = { type: 'pick.start' };
+  try {
+    await chrome.tabs.sendMessage(tabId, msg);
+  } catch {
+    await endFix(tabId, 'no picker on the page');
+    return { ok: false, why: 'page' };
+  }
+  return { ok: true };
+}
+
 export const fixHandlers: Handlers = {
   // From the player (card or tooltip): only the sender tab's run, its current step, on the guide's site.
   'run.fix.start': async ({ stepId }, ctx: HandlerContext): Promise<{ ok: boolean; why?: FixRefusal }> => {
     const tabId = ctx.tabId;
     if (tabId === undefined) return { ok: false, why: 'page' };
     const path = await senderPath(tabId, ctx);
-    const why = await enqueue(async (): Promise<FixRefusal | null> => {
-      const run = await getRun(tabId);
-      const step = run ? currentStep(run) : undefined;
-      if (!run || run.status !== 'running' || !step?.target || step.id !== stepId) return 'step';
-      if (!onGuideSite(run, ctx) || !frameMayFix(run, ctx, path)) return 'page';
-      if (run.guideSnapshot.source !== 'local') return 'guide';
-      const stored = await storedGuide(run.guideSnapshot.id);
-      if (!stored || stored.source !== 'local') return 'guide';
-      if (!stored.steps.some((s) => s.id === stepId && s.target)) return 'step';
-      run.fix = { stepToken: run.stepToken, at: Date.now() };
-      run.rev += 1;
-      await chrome.storage.session.set({ [runKey(tabId)]: run });
-      return null;
-    });
-    if (why) {
-      dlog('run', 'fix.refused', { tab: tabId }, { why });
-      return { ok: false, why };
-    }
-    dlog('run', 'fix.start', { tab: tabId });
-    // An editor pick in this tab gives way (its panel stops waiting); only once this pick is on.
-    if ((await chrome.storage.session.get(pickKey(tabId)))[pickKey(tabId)]) await endPick(tabId, true);
-    await broadcast(tabId);
-    const msg: ContentPush = { type: 'pick.start' };
-    try {
-      await chrome.tabs.sendMessage(tabId, msg);
-    } catch {
-      await endFix(tabId, 'no picker on the page');
-      return { ok: false, why: 'page' };
-    }
-    return { ok: true };
+    return beginFix(tabId, stepId, (run) => onGuideSite(run, ctx) && frameMayFix(run, ctx, path));
   },
   // The panel's Undo: the exact copy from before the fix, only while nothing changed it since.
   'run.fix.undo': async ({ tabId }) => {

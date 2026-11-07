@@ -82,6 +82,24 @@ export const LAUNCHER_CSS = `
 
 /** Reads and removes `waymark=<id>` from the URL (query or hash), keeping hash routes intact. */
 export function takeDeepLink(loc: Location = location, hist: History = history): string | null {
+  return takeDeepLinkWithStep(loc, hist)?.id ?? null;
+}
+
+/** A deep link, and the step a broken-step report points at (1-based, D212), if any. */
+export interface DeepLink {
+  id: string;
+  step: number | null;
+}
+
+/** The step number of a report link: an integer from 1 to MAX_LINK_STEP; anything else is ignored (D212). */
+export const MAX_LINK_STEP = 1000;
+
+/**
+ * Reads and removes `waymark=<id>` and `waymark-step=<N>` from the URL (query or hash), keeping
+ * the rest exactly as it was. A malformed step number is removed too and ignored: the link
+ * behaves like a plain deep link (D212).
+ */
+export function takeDeepLinkWithStep(loc: Location = location, hist: History = history): DeepLink | null {
   try {
     return takeDeepLinkUnsafe(loc, hist);
   } catch {
@@ -97,29 +115,50 @@ function safeDecode(s: string): string | null {
   }
 }
 
-function takeDeepLinkUnsafe(loc: Location, hist: History): string | null {
+/** Removes one `name=value` segment from a query (`?a&b`) or a hash (`#…`), keeping the rest exactly. */
+function cut(part: string, name: string, hash: boolean): { value: string | null; rest: string } {
+  const re = hash ? new RegExp(`([#&?])${name}=([^&#]*)&?`) : new RegExp(`([?&])${name}=([^&#]*)(&?)`);
+  const m = re.exec(part);
+  if (!m) return { value: null, rest: part };
+  const value = safeDecode(m[2] ?? '');
+  let rest: string;
+  if (hash) {
+    rest = part.replace(m[0], m[1] === '#' ? '#' : m[1]!).replace(/[?&]$/, '');
+    if (rest === '#') rest = '';
+  } else {
+    rest = part.replace(m[0], m[3] ? m[1]! : '').replace(/[?&]$/, '');
+  }
+  return { value, rest };
+}
+
+function takeDeepLinkUnsafe(loc: Location, hist: History): DeepLink | null {
   const url = new URL(loc.href);
   let id: string | null = null;
-  // Remove only the waymark=… segment and keep the rest of the query exactly as it was.
-  const q = /([?&])waymark=([^&#]*)(&?)/.exec(url.search);
-  if (q) {
-    id = safeDecode(q[2] ?? '');
-    url.search = url.search.replace(q[0], q[3] ? q[1]! : '').replace(/[?&]$/, '');
-  } else if (url.hash.includes('waymark=')) {
-    const m = /([#&?])waymark=([^&#]*)&?/.exec(url.hash);
-    if (m) {
-      id = safeDecode(m[2] ?? '');
-      url.hash = url.hash.replace(m[0], m[1] === '#' ? '#' : m[1]!).replace(/[?&]$/, '');
-      if (url.hash === '#') url.hash = '';
-    }
+  let step: string | null = null;
+  let changed = false;
+  if (/[?&]waymark(-step)?=/.test(url.search)) {
+    const a = cut(url.search, 'waymark', false);
+    const b = cut(a.rest, 'waymark-step', false);
+    id = a.value;
+    step = b.value;
+    url.search = b.rest;
+    changed = true;
+  } else if (/[#&?]waymark(-step)?=/.test(url.hash)) {
+    const a = cut(url.hash, 'waymark', true);
+    const b = cut(a.rest, 'waymark-step', true);
+    id = a.value;
+    step = b.value;
+    url.hash = b.rest;
+    changed = true;
   }
-  if (!id || !/^[0-9A-Za-z_-]{1,64}$/.test(id)) return null;
+  if (!changed || !id || !/^[0-9A-Za-z_-]{1,64}$/.test(id)) return null;
   try {
     hist.replaceState(hist.state, '', url.href.replace(/#$/, ''));
   } catch {
     // some pages lock history; the offer still works
   }
-  return id;
+  const n = step !== null && /^[1-9][0-9]{0,3}$/.test(step) ? Number(step) : null;
+  return { id, step: n !== null && n <= MAX_LINK_STEP ? n : null };
 }
 
 /**
@@ -132,7 +171,7 @@ export function pressInsideLauncher(path: EventTarget[], menu: Element | null, b
 }
 
 /** `isTop`: only the top frame shows the launcher (a parameter so browser tests, run in an iframe, can say yes). */
-export function startLauncher(isTop = window === window.top): { refresh(): void; offerDeepLink(id: string): void; dispose(): void } {
+export function startLauncher(isTop = window === window.top): { refresh(): void; offerDeepLink(link: DeepLink | string): void; dispose(): void } {
   if (!isTop) return { refresh() {}, offerDeepLink() {}, dispose() {} };
   let button: HTMLButtonElement | null = null;
   let menu: HTMLElement | null = null;
@@ -175,9 +214,10 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
     return wrap;
   };
 
-  const start = async (id: string, openStart = false, into: HTMLElement | null = null) => {
+  /** Starts a guide; from a report link at step `stepIndex`, and with `fix`, with the player's pick open there (D212). */
+  const start = async (id: string, openStart = false, into: HTMLElement | null = null, from: { stepIndex: number; fix?: boolean } | null = null) => {
     try {
-      const r = await send('launcher.start', { guideId: id, openStart });
+      const r = from?.fix && !openStart ? await send('launcher.fix', { guideId: id, stepIndex: from.stepIndex }) : await send('launcher.start', { guideId: id, openStart, ...(from ? { stepIndex: from.stepIndex } : {}) });
       if (r.status === 'started') {
         closeMenu();
         offer?.remove();
@@ -196,7 +236,8 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
         const open = document.createElement('button');
         open.className = 'wm-primary';
         open.append(buildSvg(Play), 'Open start page');
-        open.addEventListener('click', () => void start(id, true, host));
+        // The step's page opens and the run starts there; a fix starts from its tooltip or card.
+        open.addEventListener('click', () => void start(id, true, host, from ? { stepIndex: from.stepIndex } : null));
         wrap.append(note, open);
       } else {
         note.textContent = `This guide starts on a page like ${r.pattern}. Open that page, then press Start.`;
@@ -445,10 +486,12 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
       .catch(() => undefined);
   };
 
-  const offerDeepLink = (id: string) => {
-    send('deeplink.check', { guideId: id })
+  /** A plain deep link offers Start; a broken-step report link (D212) offers Fix or Start from step N. */
+  const offerDeepLink = (link: DeepLink | string) => {
+    const { id, step } = typeof link === 'string' ? { id: link, step: null } : link;
+    send('deeplink.check', { guideId: id, ...(step !== null ? { step } : {}) })
       .then((r) => {
-        if (!r.guide) return;
+        if (!r.guide && !r.notInLibrary) return;
         ensureStyle();
         offer?.remove();
         offer = document.createElement('div');
@@ -460,24 +503,45 @@ export function startLauncher(isTop = window === window.top): { refresh(): void;
         const t = document.createElement('p');
         t.className = 'wm-text';
         t.id = 'wm-offer-text';
-        t.textContent = `Start the guide “${r.guide.title}”?`;
         const row = document.createElement('div');
         row.className = 'wm-row';
-        const yes = document.createElement('button');
-        yes.className = 'wm-primary';
-        yes.append(buildSvg(Play), 'Start');
-        yes.dataset.action = 'start';
-        yes.addEventListener('click', () => void start(r.guide!.id, false, offer));
         const no = document.createElement('button');
-        no.textContent = 'Not now';
+        no.textContent = r.guide ? 'Not now' : 'Close';
+        no.dataset.action = 'not-now';
         no.addEventListener('click', () => {
           offer?.remove();
           offer = null;
         });
-        row.append(no, yes);
+        row.append(no);
+        const yes = (label: string, action: string, run: () => void) => {
+          const b = document.createElement('button');
+          b.className = 'wm-primary';
+          b.append(buildSvg(Play), label);
+          b.dataset.action = action;
+          b.addEventListener('click', run);
+          row.append(b);
+        };
+        const g = r.guide;
+        const n = (r.stepIndex ?? 0) + 1;
+        if (!g) {
+          t.textContent = 'This guide isn’t in your library.';
+        } else if (r.offer === 'fix') {
+          t.textContent = `Fix step ${n} of “${g.title}”? The guide starts at that step; then click the right element.`;
+          yes(`Fix step ${n}`, 'fix', () => void start(g.id, false, offer, { stepIndex: n - 1, fix: true }));
+        } else if (r.offer === 'start') {
+          t.textContent = `Start “${g.title}” from step ${n}?`;
+          yes(`Start from step ${n}`, 'start', () => void start(g.id, false, offer, { stepIndex: n - 1 }));
+        } else if (r.offer === 'no-step') {
+          t.textContent = `That step no longer exists in your copy of “${g.title}”.`;
+          yes('Start from step 1', 'start', () => void start(g.id, false, offer));
+        } else {
+          t.textContent = `Start the guide “${g.title}”?`;
+          yes('Start', 'start', () => void start(g.id, false, offer));
+        }
         offer.append(h, t, row);
         overlayLayer().append(offer);
-        testMark('deeplink', r.guide.id);
+        testMark('deeplink', g?.id ?? 'not-in-library');
+        testMark('deeplink-offer', g ? (r.offer ?? 'plain') : 'not-in-library');
       })
       .catch(() => undefined);
   };

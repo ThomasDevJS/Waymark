@@ -562,7 +562,8 @@ export async function resumeRunsMovedTo(closedTabId: number): Promise<void> {
 
 export async function onTopFrameLoad(tabId: number, url: string): Promise<void> {
   await enqueue(async () => {
-    await chrome.storage.session.remove(boardKey(tabId));
+    // A report link's offer is for the page it opened (D212); the next page's link sets its own.
+    await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
     const run = await getRun(tabId);
     // A new page has no picker running: the player's pick ends and the step shows again (D210).
     if (run?.fix) {
@@ -588,7 +589,8 @@ export async function dropRun(tabId: number): Promise<void> {
     dlog('run', 'run.end', { tab: tabId }, { why: 'tab closed' });
   }
   // A closed tab's Undo toast can't be used any more: its copy of the guide goes (review of D210).
-  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId), `runFix:${tabId}`]);
+  // Its report-link offer goes too (D212).
+  await chrome.storage.session.remove([runKey(tabId), boardKey(tabId), `runFix:${tabId}`, `linkOffer:${tabId}`]);
 }
 
 /** chrome.commands: Next, Back and Exit shortcuts the user can change (SPEC: Accessibility). */

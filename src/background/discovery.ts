@@ -18,6 +18,7 @@ import { originToMatchPattern } from '../core/url/url';
 import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
 import { startRunInTab } from './runs';
+import { linkOffer, linkOfferKey, type LinkOfferRecord } from './report-link';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from './site-access';
 
 // ---------- toolbar badge ----------
@@ -428,13 +429,30 @@ export const discoveryHandlers: Handlers = {
     const launcher = ownSetting(await siteSettings(), origin)?.launcher ?? true; // on unless turned off (D150)
     return ForPageResponseSchema.parse({ guides, launcher });
   },
-  'launcher.start': async ({ guideId, openStart }, ctx: HandlerContext) => {
-    if (ctx.tabId === undefined || ctx.frameId !== 0 || !(await guideForSender(guideId, ctx))) throw new Error('Guide not available here.');
-    return startRunInTab(ctx.tabId, guideId, !!openStart);
+  'launcher.start': async ({ guideId, openStart, stepIndex }, ctx: HandlerContext) => {
+    const g = ctx.tabId === undefined || ctx.frameId !== 0 ? null : await guideForSender(guideId, ctx);
+    if (!g || ctx.tabId === undefined) throw new Error('Guide not available here.');
+    // Start from step N of a report link (D212): a step the guide has.
+    const at = stepIndex !== undefined && stepIndex < g.steps.length ? stepIndex : 0;
+    const r = await startRunInTab(ctx.tabId, guideId, !!openStart, at);
+    if (r.status === 'started') await chrome.storage.session.remove(linkOfferKey(ctx.tabId));
+    return r;
   },
-  'deeplink.check': async ({ guideId }, ctx: HandlerContext) => {
+  'deeplink.check': async ({ guideId, step }, ctx: HandlerContext) => {
     if (ctx.frameId !== 0) return { guide: null };
     const g = await guideForSender(guideId, ctx);
-    return { guide: g ? { id: g.id, title: g.title } : null };
+    if (!g) {
+      // A report link for a guide the author doesn't have says so; on another site, nothing (as a plain link).
+      return step !== undefined && !(await loadGuide(guideId)) ? { guide: null, notInLibrary: true } : { guide: null };
+    }
+    const guide = { id: g.id, title: g.title };
+    if (step === undefined) return { guide };
+    const o = linkOffer(g, step);
+    // The panel shows the same offer while this page is open.
+    if (ctx.tabId !== undefined) {
+      const rec: LinkOfferRecord = { guideId: g.id, title: g.title, offer: o.offer, stepIndex: o.stepIndex, step, at: Date.now() };
+      await chrome.storage.session.set({ [linkOfferKey(ctx.tabId)]: rec });
+    }
+    return { guide, offer: o.offer, stepIndex: o.stepIndex };
   },
 };

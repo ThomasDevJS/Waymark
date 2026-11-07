@@ -13,6 +13,7 @@ import { onRouteReport, onSitesRevoked, onTabCreated, onTabRemoved, recordingHan
 import { editorHandlers } from '../background/editor';
 import { endPick } from '../background/pick';
 import { fixHandlers } from '../background/fix';
+import { reportLinkHandlers } from '../background/report-link';
 import { discoveryHandlers, purgeTrash, LIBRARY_ALARM, migrateLibraryFetchOnly, onBrowserStartLibrary, refreshLibrary, updateAllBadges, updateBadge } from '../background/discovery';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from '../background/site-access';
 import { isSiteOrigin } from '../core/model/schema';
@@ -61,6 +62,7 @@ const handlers: Handlers = {
   ...recordingHandlers,
   ...runHandlers,
   ...fixHandlers,
+  ...reportLinkHandlers,
   ...editorHandlers,
   ...discoveryHandlers,
   ...debugHandlers,

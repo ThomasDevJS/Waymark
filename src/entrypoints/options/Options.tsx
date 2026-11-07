@@ -120,8 +120,26 @@ function DebugLog() {
 /** Plain text a learner can send to the author (no server in v1). */
 export function problemReport(list: Problem[]): string {
   return list
-    .map((p) => `Guide: ${p.guideTitle}\nStep ${p.stepIndex + 1}: ${p.stepTitle.replace(/\*\*/g, '')}\nPage: ${p.url}\nWhen: ${new Date(p.at).toLocaleString()}`)
+    .map((p) => {
+      const link = reportLink(p);
+      return `Guide: ${p.guideTitle}\nStep ${p.stepIndex + 1}: ${p.stepTitle.replace(/\*\*/g, '')}\nPage: ${p.url}\nWhen: ${new Date(p.at).toLocaleString()}${link ? `\nFix it: ${link}` : ''}`;
+    })
     .join('\n\n');
+}
+
+/**
+ * The link the author clicks to land on the reported page with the fix ready (D212): the page as
+ * stored (origin and path only, D36) plus the guide id and the step number. Nothing else.
+ */
+export function reportLink(p: Pick<Problem, 'url' | 'guideId' | 'stepIndex'>): string | null {
+  let u: URL;
+  try {
+    u = new URL(p.url);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  return `${u.origin}${u.pathname}?waymark=${encodeURIComponent(p.guideId)}&waymark-step=${p.stepIndex + 1}`;
 }
 const libraryUrl = signal('');
 const libraryBusy = signal(false);

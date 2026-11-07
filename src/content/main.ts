@@ -8,7 +8,7 @@ import { startEditorClient } from './editor';
 import { startShotClient } from './shots';
 import { startThemeClient } from './theme-client';
 import { startEmbedReports } from './embeds';
-import { startLauncher, takeDeepLink } from './launcher';
+import { startLauncher, takeDeepLinkWithStep } from './launcher';
 import { destroyOverlay } from './overlay/host';
 import { watchRoutes } from './route-watch';
 import { testMark } from './test-hooks';
@@ -40,7 +40,7 @@ export function startContent(): void {
   g[GLOBAL_KEY] = instance;
 
   // Deep link: read at document_start and removed at once, so hash routers never see it.
-  const deepLink = window === window.top ? takeDeepLink() : null;
+  const deepLink = window === window.top ? takeDeepLinkWithStep() : null;
   disposers.push(startDebugClient());
   disposers.push(startThemeClient());
   const frames = startFrameMapping();
