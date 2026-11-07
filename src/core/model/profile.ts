@@ -10,14 +10,20 @@ export const MAX_IGNORE_PATTERNS = 20;
 export const MAX_KEEP_QUERY_KEYS = 20;
 export const MAX_PATTERN_LENGTH = 100;
 
-/** An attribute name a page could use as a stable hook: `data-qa`, `data-test-id`, `aria-controls`. */
-export const ATTR_NAME = /^[a-z][a-z0-9_.:-]{0,63}$/;
+/**
+ * A stable attribute: a `data-*` name a page keeps on purpose (`data-automation-id`). Only data
+ * attributes: `type`, `role` or `class` would let the matcher's fast path take any element that
+ * shares a common value (review of D213). Waymark's own markers are not hooks.
+ */
+export const ATTR_NAME = /^data-(?!waymark|guide-id$)[a-z0-9_.:-]{1,58}$/;
+/** An attribute name in `attr=glob` ignore patterns: any lowercase name (id, class, name, data-*). */
+const PATTERN_ATTR = '[a-z][a-z0-9_.:-]{0,63}';
 /**
  * An ignore pattern: a wildcard (`*` = any run of characters), optionally for one attribute
  * (`id=gen-*`). Never a regular expression: a page's tokens are matched in linear-ish time, so a
  * pattern can't hang the page (catastrophic backtracking). Printable characters only.
  */
-export const IGNORE_PATTERN = /^(?:[a-z][a-z0-9_.:-]{0,63}=)?[^\s=]{1,100}$/;
+export const IGNORE_PATTERN = new RegExp(`^(?:${PATTERN_ATTR}=)?[\\x21-\\x3c\\x3e-\\x7e]{1,100}$`);
 export const QUERY_KEY = /^[A-Za-z0-9_.[\]-]{1,64}$/;
 
 export const SiteProfileSchema = z.object({
@@ -82,7 +88,7 @@ export function compilePattern(src: string): TokenMatcher | null {
 export function profileProblem(p: Pick<SiteProfile, 'stableAttributes' | 'ignorePatterns' | 'keepQueryKeys'>): string | null {
   if (p.stableAttributes.length > MAX_STABLE_ATTRIBUTES) return `At most ${MAX_STABLE_ATTRIBUTES} stable attributes.`;
   const badAttr = p.stableAttributes.find((a) => !ATTR_NAME.test(a));
-  if (badAttr !== undefined) return `“${badAttr}” is not an attribute name. Use lowercase letters, digits and - _ . : (for example data-qa).`;
+  if (badAttr !== undefined) return `“${badAttr}” can’t be a stable attribute. Use a data- attribute the site keeps on purpose, in lowercase (for example data-automation-id).`;
   if (p.ignorePatterns.length > MAX_IGNORE_PATTERNS) return `At most ${MAX_IGNORE_PATTERNS} ignore patterns.`;
   const badPattern = p.ignorePatterns.find((x) => !compilePattern(x));
   if (badPattern !== undefined) return `“${badPattern}” is not a pattern Waymark can use. Write text with * for any characters, optionally after an attribute name and = (for example id=gen-*).`;

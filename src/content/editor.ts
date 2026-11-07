@@ -46,6 +46,8 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   let testTimer: ReturnType<typeof setTimeout> | undefined;
   // The author's own profile for this site (D213), fetched when a pick starts.
   let profile: ProfileOptions = {};
+  // A click waits for it, so the picked fingerprint always has the profile (D213 review).
+  let profileReady: Promise<void> = Promise.resolve();
 
   // What a click here would pick, with the clickable region of D82 applied. Memoized on the
   // hovered element: the promotion builds a fingerprint, too costly for every mouse move.
@@ -71,7 +73,12 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     if (isOverlayPath(eventPath(e))) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (e.type === 'click' && e.isTrusted) choose(eventPath(e));
+    if (e.type === 'click' && e.isTrusted) {
+      const path = eventPath(e);
+      void profileReady.then(() => {
+        if (picking) choose(path);
+      });
+    }
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -112,7 +119,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     if (picking) return;
     picking = true;
     lastHover = null;
-    void fetchProfile('edit').then((p) => {
+    profileReady = fetchProfile('edit').then((p) => {
       profile = p;
       lastHover = null; // the outline is worked out again with the profile
     });

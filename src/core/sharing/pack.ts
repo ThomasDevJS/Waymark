@@ -16,16 +16,21 @@ export type ParseResult = { ok: true; pack: GuidePack; profiles: SiteProfile[]; 
  * The pack's site profiles that are well formed, for a site of its guides, one per site (D213).
  * Anything else is dropped and counted, so the import can say so; the guides import anyway.
  */
+/** Site profiles a pack carries at most; more are dropped with the notice (review of D213). */
+export const MAX_PACK_PROFILES = 50;
+
 export function packProfiles(pack: Pick<GuidePack, 'guides' | 'profiles'>): { profiles: SiteProfile[]; dropped: number } {
   const sites = new Set(pack.guides.flatMap((g) => g.appOrigins));
   const out = new Map<string, SiteProfile>();
   let dropped = 0;
   for (const raw of pack.profiles ?? []) {
     const p = SiteProfileSchema.safeParse(raw);
-    if (!p.success || !isSiteOrigin(p.data.origin) || !sites.has(p.data.origin) || profileProblem(p.data) || out.has(p.data.origin)) {
+    if (!p.success || !isSiteOrigin(p.data.origin) || !sites.has(p.data.origin) || profileProblem(p.data) || out.has(p.data.origin) || out.size >= MAX_PACK_PROFILES) {
       dropped++;
       continue;
     }
+    // An empty profile changes nothing: not stored (it would hide another store's).
+    if (isEmptyProfile(p.data)) continue;
     out.set(p.data.origin, p.data);
   }
   return { profiles: [...out.values()], dropped };
@@ -70,7 +75,7 @@ export function packFormatFor(guides: Pick<Guide, 'steps'>[]): GuidePack['format
 /** A pack of guides, with the site profiles of their sites when there are any (D213). */
 export function makePack(guides: Guide[], now = new Date(), profiles: SiteProfile[] = []): GuidePack {
   const sites = new Set(guides.flatMap((g) => g.appOrigins));
-  const carried = profiles.filter((p) => sites.has(p.origin) && !isEmptyProfile(p));
+  const carried = profiles.filter((p) => sites.has(p.origin) && !isEmptyProfile(p)).slice(0, MAX_PACK_PROFILES);
   return { format: 'waymark-pack', formatVersion: packFormatFor(guides), exportedAt: now.toISOString(), guides, ...(carried.length ? { profiles: carried } : {}) };
 }
 

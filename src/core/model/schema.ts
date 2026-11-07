@@ -167,6 +167,7 @@ export const GuidePackSchema = z.object({
   guides: z.array(GuideSchema),
   // Site profiles of the guides' sites (D213). Checked one by one in parsePack: a bad one is
   // dropped with a notice and the guides still import. Older Waymark ignores the field.
-  profiles: z.array(z.unknown()).max(50).optional(),
+  // A pack with more is not refused: packProfiles keeps the first MAX_PACK_PROFILES (review of D213).
+  profiles: z.array(z.unknown()).max(1000).optional(),
 });
 export type GuidePack = z.infer<typeof GuidePackSchema>;

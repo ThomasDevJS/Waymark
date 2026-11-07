@@ -356,6 +356,7 @@ export const discoveryHandlers: Handlers = {
     if (!parsed.ok) throw new Error(parsed.error);
     const pack = parsed.pack;
     let profilesWritten = 0;
+    let capped = 0;
     const plan = await enqueue(async () => {
       const p = planImport(await listGuides(), pack, choices as Record<string, Choice>, 'local');
       await writeGuides(p.write, []);
@@ -366,7 +367,12 @@ export const discoveryHandlers: Handlers = {
         for (const prof of parsed.profiles) {
           const mine = map[prof.origin];
           if (mine && (sameProfile(mine, prof) || profileChoices?.[prof.origin] !== 'replace')) continue;
-          if (!mine && Object.keys(map).length >= MAX_PROFILES) continue;
+          // A new site's profile is added unless the user chose to skip it ('keep': what they have, nothing).
+          if (!mine && profileChoices?.[prof.origin] === 'keep') continue;
+          if (!mine && Object.keys(map).length >= MAX_PROFILES) {
+            capped++;
+            continue;
+          }
           map[prof.origin] = prof;
           profilesWritten++;
         }
@@ -378,7 +384,7 @@ export const discoveryHandlers: Handlers = {
     await updateAllBadges();
     // A replaced guide's screenshots showed the old content (D185).
     await dropShotsOf(plan.write.map((g) => g.id));
-    return { imported: plan.write.length, skipped: plan.skipped, profiles: profilesWritten, droppedProfiles: parsed.droppedProfiles };
+    return { imported: plan.write.length, skipped: plan.skipped, profiles: profilesWritten, droppedProfiles: parsed.droppedProfiles + capped };
   },
   'allow.pending': async () => ({ origins: await pendingAllow() }),
   'allow.dismiss': async () => {

@@ -5,7 +5,7 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { SiteProfile } from '../../core/model/profile';
-import { LOCAL_PROFILES_KEY, readProfileMap } from '../../core/storage/profiles';
+import { loadProfiles, NO_PROFILES, profileFor, type Profiles } from '../../core/storage/profiles';
 import type { Guide } from '../../core/model/schema';
 import { makePack } from '../../core/sharing/pack';
 import { applyRemovals, packStrings, type StringKind } from '../../core/sharing/review';
@@ -16,13 +16,23 @@ import { previewPath } from '../howto/data';
 
 const removed = signal<Set<string>>(new Set());
 /** The author's own site profiles (D213): a pack carries those of its guides' sites, unless removed here. */
-const profiles = signal<SiteProfile[]>([]);
+const profiles = signal<Profiles>(NO_PROFILES);
 const profileKey = (origin: string) => `profile:${origin}`;
 
-/** The profiles a pack of these guides carries: the guides' sites, minus those removed in the review. */
-export function packedProfiles(guides: Guide[], all: SiteProfile[], drop: Set<string>): SiteProfile[] {
-  const sites = new Set(guides.flatMap((g) => g.appOrigins));
-  return all.filter((p) => sites.has(p.origin) && !drop.has(profileKey(p.origin)));
+/**
+ * The profiles a pack of these guides carries: for each of their sites, the profile they play with
+ * (the own one for own guides, the library's for team guides, each falling back to the other, D213
+ * review), minus those removed in the review.
+ */
+export function packedProfiles(guides: Guide[], all: Profiles, drop: Set<string>): SiteProfile[] {
+  const out: SiteProfile[] = [];
+  for (const origin of new Set(guides.flatMap((g) => g.appOrigins))) {
+    if (drop.has(profileKey(origin))) continue;
+    const own = guides.some((g) => g.source === 'local' && g.appOrigins.includes(origin));
+    const p = profileFor(all, origin, own ? 'local' : 'library');
+    if (p) out.push(p);
+  }
+  return out;
 }
 
 /** A profile in words, for the review: names and patterns only, as the file holds them. */
@@ -63,12 +73,12 @@ const KIND: Record<StringKind, string> = {
 export const TECHNICAL: ReadonlySet<StringKind> = new Set<StringKind>(['selector', 'link']);
 
 /** Builds the pack JSON for the reviewed copy. */
-export function exportJson(guides: Guide[], drop: Set<string>, siteProfiles: SiteProfile[] = []): string {
+export function exportJson(guides: Guide[], drop: Set<string>, siteProfiles: Profiles = NO_PROFILES): string {
   return JSON.stringify(makePack(applyRemovals(guides, drop), new Date(), packedProfiles(guides, siteProfiles, drop)), null, 2);
 }
 
 /** The file for a format, built from the reviewed copy (the same removals for every format). */
-export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat, siteProfiles: SiteProfile[] = []): string {
+export function exportText(guides: Guide[], drop: Set<string>, f: ExportFormat, siteProfiles: Profiles = NO_PROFILES): string {
   if (f === 'pack') return exportJson(guides, drop, siteProfiles);
   const copy = applyRemovals(guides, drop);
   return f === 'markdown' ? howtoMarkdown(copy) : howtoHtml(copy);
@@ -97,9 +107,9 @@ export function ExportReview({ guides, onDone }: { guides: Guide[]; onDone: () =
     // A hint for the file only: the review works without it.
     void (async () => {
       try {
-        profiles.value = Object.values(readProfileMap((await chrome.storage.local.get(LOCAL_PROFILES_KEY))[LOCAL_PROFILES_KEY]));
+        profiles.value = await loadProfiles();
       } catch {
-        profiles.value = [];
+        profiles.value = NO_PROFILES;
       }
     })();
   }, []);

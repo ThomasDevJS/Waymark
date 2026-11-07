@@ -59,7 +59,8 @@ export function buildFingerprint(el: Element, opts: BuildOptions = {}): ElementF
   const name = accessibleName(el);
   if (name) fp.accessibleName = name;
   const nameAttr = el.getAttribute('name');
-  if (nameAttr && !isGeneratedToken(nameAttr, profile.ignorePatterns, 'name') && !isDataLikeAttr(nameAttr) && nameAttr.length <= 200) fp.name = nameAttr;
+  // Length first: a page's huge name never reaches the profile's patterns (D213 review).
+  if (nameAttr && nameAttr.length <= 200 && !isGeneratedToken(nameAttr, profile.ignorePatterns, 'name') && !isDataLikeAttr(nameAttr)) fp.name = nameAttr;
   if (tag === 'input') {
     fp.inputType = inputTypeOf(el);
     // A radio's or checkbox's `name` is shared by its whole group; its value attribute (set by

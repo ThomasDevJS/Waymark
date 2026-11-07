@@ -112,7 +112,9 @@ export const RequestSchemas = {
   'profile.site.get': z.object({ origin: z.string().max(500) }),
   'profile.site.set': z.object({ origin: z.string().max(500), profile: SiteProfileSchema.nullable() }),
   'profile.candidates': z.object({ tabId: z.number().int() }),
-  'profile.testAll': z.object({ tabId: z.number().int() }),
+  // origin: the site being saved (the tab must still show it); compare: the other profile of the
+  // before / after pair, so both runs test the same steps (review of D213).
+  'profile.testAll': z.object({ tabId: z.number().int(), origin: z.string().max(500), compare: SiteProfileSchema.nullable() }),
   // The panel's Undo after the player fixed a step (D210): that tab's last fix only.
   'run.fix.undo': z.object({ tabId: z.number().int() }),
   // Steps that may break, from plays on this device (D211): counts per guide, and one guide's steps.
@@ -347,7 +349,8 @@ export interface StepCheck {
   stepId: string;
   stepIndex: number;
   stepTitle: string;
-  result: 'found' | 'fragile' | 'not-found';
+  /** off-page: with this profile's URL options the step is not on this page (hash routing, kept keys). */
+  result: 'found' | 'fragile' | 'not-found' | 'off-page';
 }
 
 /** A guide's screenshot setting, and the steps that have one (ids only, never images). */

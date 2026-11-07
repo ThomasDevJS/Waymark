@@ -53,7 +53,7 @@ describe('ignore patterns are wildcards, never regular expressions (D213)', () =
 
   it('refuses bad entries and too many with a plain message', () => {
     expect(profileProblem(prof('o', { stableAttributes: ['data-qa'] }))).toBeNull();
-    expect(profileProblem(prof('o', { stableAttributes: ['Data QA'] }))).toMatch(/not an attribute name/);
+    expect(profileProblem(prof('o', { stableAttributes: ['Data QA'] }))).toMatch(/can’t be a stable attribute/);
     expect(profileProblem(prof('o', { ignorePatterns: ['*'] }))).toMatch(/not a pattern/);
     expect(profileProblem(prof('o', { stableAttributes: Array.from({ length: 11 }, (_, i) => `data-a${i}`) }))).toMatch(/At most 10/);
     expect(profileProblem(prof('o', { keepQueryKeys: ['a b'] }))).toMatch(/not a query key/);
@@ -106,10 +106,11 @@ describe('packs carry profiles (D213)', () => {
   });
 
   it('the export review’s file carries them unless removed there', () => {
-    const all = [prof('https://app.test', { stableAttributes: ['data-x'] })];
-    expect(packedProfiles([guide()], all, new Set())).toEqual(all);
+    const own = prof('https://app.test', { stableAttributes: ['data-x'] });
+    const all: Profiles = { local: { 'https://app.test': own }, library: {} };
+    expect(packedProfiles([guide()], all, new Set())).toEqual([own]);
     expect(packedProfiles([guide()], all, new Set(['profile:https://app.test']))).toEqual([]);
-    expect(JSON.parse(exportJson([guide()], new Set(), all)).profiles).toEqual(all);
+    expect(JSON.parse(exportJson([guide()], new Set(), all)).profiles).toEqual([own]);
   });
 });
 
@@ -216,5 +217,91 @@ describe('the service worker (D213)', () => {
     expect(map['https://new.test']!.hashRouting).toBe(true);
     await h['pack.import']!({ text, choices: {}, profileChoices: { 'https://app.test': 'replace' } }, {});
     expect((local['siteProfiles'] as Record<string, SiteProfile>)['https://app.test']!.stableAttributes).toEqual(['data-file']);
+  });
+});
+
+// Fixes from the independent review (D213). Each test fails on the first version.
+describe('review fixes (D213)', () => {
+  it('a stable attribute must be a data- attribute (type, role or class would let the fast path take any shared value)', () => {
+    for (const bad of ['type', 'role', 'class', 'href', 'aria-label', 'data-waymark-x', 'data-guide-id']) expect(profileProblem(prof('o', { stableAttributes: [bad] })), bad).toMatch(/can’t be a stable attribute/);
+    expect(profileProblem(prof('o', { stableAttributes: ['data-automation-id'] }))).toBeNull();
+    expect(SiteProfileSchema.safeParse(prof('o', { stableAttributes: ['type'] })).success).toBe(false);
+  });
+
+  it('ignore patterns take printable characters only', () => {
+    expect(compilePattern('gen-\u0001*')).toBeNull();
+    expect(compilePattern('gen-é*')).toBeNull();
+    expect(compilePattern('id=gen-*')).not.toBeNull();
+  });
+
+  it('a note step recorded on a hash-routed page gets the page rule the player reads', async () => {
+    const { noteStep, startRecording } = await import('../../src/core/recorder/session');
+    const st = startRecording('T', 1, 'https://app.test/', Date.now(), { hashRouting: true });
+    expect(noteStep(st, 'Note', undefined, 'https://app.test/#/orders/5', { hashRouting: true })!.url).toEqual({ kind: 'pattern', value: '/orders/:id' });
+  });
+
+  it('a change of a kept query key is a navigation; other query changes are not', async () => {
+    const { navigationStep, startRecording, urlKey } = await import('../../src/core/recorder/session');
+    const { routedPath } = await import('../../src/core/url/url');
+    const st = startRecording('T', 1, 'https://app.test/report?tab=a', 0, { keepQueryKeys: ['tab'] });
+    st.lastActionAt = 0;
+    // As stored: the previous URL with its query hashed, and the previous page as its rule reads it.
+    const nav = (prev: string, url: string) => navigationStep(st, { url, prevUrl: urlKey(prev), prevRoute: routedPath(new URL(prev), { keepQueryKeys: ['tab'] }), now: 100_000 }, { keepQueryKeys: ['tab'] });
+    expect(nav('https://app.test/report?tab=a', 'https://app.test/report?tab=b')?.url).toEqual({ kind: 'pattern', value: '/report?tab=b' });
+    expect(nav('https://app.test/report?tab=a&x=1', 'https://app.test/report?tab=a&x=2')).toBeNull();
+  });
+
+  it('a pack with more than 50 profiles still imports: the first 50 are kept, the rest counted as dropped', () => {
+    const sites = Array.from({ length: 60 }, (_, i) => `https://s${i}.test`);
+    const gs = sites.map((o, i) => guide({ id: `g${i}`, appOrigins: [o], startUrl: `${o}/` }));
+    const pack = { ...makePack(gs), profiles: sites.map((o) => prof(o, { hashRouting: true })) };
+    const r = parsePack(JSON.stringify(pack));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.profiles).toHaveLength(50);
+    expect(r.droppedProfiles).toBe(10);
+    expect(makePack(gs, new Date(0), sites.map((o) => prof(o, { hashRouting: true }))).profiles).toHaveLength(50);
+  });
+
+  it('an empty profile in a pack is not stored (it would hide another store’s)', () => {
+    expect(packProfiles({ guides: [guide()], profiles: [prof('https://app.test')] })).toEqual({ profiles: [], dropped: 0 });
+  });
+
+  it('the export carries the profile a team guide plays with (the library’s), and own guides’ own', () => {
+    const lib = prof('https://app.test', { hashRouting: true });
+    const own = prof('https://app.test', { stableAttributes: ['data-own'] });
+    expect(packedProfiles([guide({ source: 'library' })], { local: {}, library: { 'https://app.test': lib } }, new Set())).toEqual([lib]);
+    expect(packedProfiles([guide({ source: 'library' })], { local: { 'https://app.test': own }, library: { 'https://app.test': lib } }, new Set())).toEqual([lib]);
+    expect(packedProfiles([guide()], { local: { 'https://app.test': own }, library: { 'https://app.test': lib } }, new Set())).toEqual([own]);
+  });
+});
+
+describe('review fixes in the service worker (D213)', () => {
+  it('import: a new site’s profile can be skipped; profiles over the 200-site cap are counted as dropped', async () => {
+    const h = await handlers();
+    const text = JSON.stringify({ ...makePack([guide()]), profiles: [prof('https://app.test', { hashRouting: true })] });
+    const r = (await h['pack.import']!({ text, choices: {}, profileChoices: { 'https://app.test': 'keep' } }, {})) as { profiles: number };
+    expect(r.profiles).toBe(0);
+    expect(local['siteProfiles']).toBeUndefined();
+    local['siteProfiles'] = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`https://s${i}.test`, prof(`https://s${i}.test`, { hashRouting: true })]));
+    const capped = (await h['pack.import']!({ text, choices: {} }, {})) as { profiles: number; droppedProfiles: number };
+    expect(capped).toMatchObject({ profiles: 0, droppedProfiles: 1 });
+  });
+
+  it('Test all steps: the same steps before and after (either profile’s URL options); off the page under this one; refused on another site', async () => {
+    const hashGuide = guide({ id: 'gh', matchUrls: [{ kind: 'pattern', value: '/orders' }] });
+    local['guide:gh'] = hashGuide;
+    local['guides:index'] = [{ id: 'gh', revisionId: 'r1', title: 'Orders', tags: [], startUrl: '', updatedAt: '', appOrigins: ['https://app.test'], matchUrls: [], source: 'local', steps: 1, stepTitles: '' }];
+    (chrome.tabs.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (id: number) => ({ id, url: 'https://app.test/index.html#/orders' }));
+    (chrome.tabs.sendMessage as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => ({ found: true, score: 90, margin: 50, matched: ['testId'], fragile: false }));
+    session['frames:7'] = {};
+    const h = await handlers();
+    // Before saving hash routing: with today's options the step is not on this page; with the new one it is.
+    const before = (await h['profile.testAll']!({ tabId: 7, origin: 'https://app.test', compare: prof('https://app.test', { hashRouting: true }) }, {})) as { results: { result: string }[] };
+    expect(before.results.map((x) => x.result)).toEqual(['off-page']);
+    local['siteProfiles'] = { 'https://app.test': prof('https://app.test', { hashRouting: true }) };
+    const after = (await h['profile.testAll']!({ tabId: 7, origin: 'https://app.test', compare: null }, {})) as { results: { result: string }[] };
+    expect(after.results.map((x) => x.result)).toEqual(['found']);
+    await expect(h['profile.testAll']!({ tabId: 7, origin: 'https://other.test', compare: null }, {})).rejects.toThrow(/no longer shows that site/);
   });
 });

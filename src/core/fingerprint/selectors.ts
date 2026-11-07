@@ -20,7 +20,11 @@ function attrValueOk(v: string | null, profile: ProfileOptions, attr: string): v
 export function stableTestId(el: Element, profile: ProfileOptions = {}): { attr: string; value: string } | undefined {
   for (const attr of testIdAttrs(profile)) {
     const v = el.getAttribute(attr);
-    if (attrValueOk(v, profile, attr)) return { attr, value: v };
+    if (!attrValueOk(v, profile, attr)) continue;
+    // A site profile's attribute is a test id only where its value is unique on the page, like an
+    // id: the matcher's fast path trusts a test id alone (review of D213).
+    if (!DEFAULT_TEST_ID_ATTRS.includes(attr) && rootOf(el).querySelectorAll(`[${cssEscape(attr)}="${cssEscape(v)}"]`).length !== 1) continue;
+    return { attr, value: v };
   }
   return undefined;
 }

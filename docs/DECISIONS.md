@@ -1859,7 +1859,7 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
 *7 Nov 2026 · SPEC: Element targeting ("Per-site profiles", URL step 4), Sharing and storage; issue #97; resolves D41's open note*
 
 - **Profile** (`SiteProfileSchema`, `src/core/model/profile.ts`):
-  - stable attribute names: up to 10, lowercase names such as `data-automation-id`;
+  - stable attribute names: up to 10, `data-*` names only, such as `data-automation-id`;
   - ignore patterns: up to 20;
   - hash routing: on or off;
   - query keys to keep: up to 20.
@@ -1898,6 +1898,22 @@ CI (PR #81, e2e shard 2, twice) stored step 1's box 47 px above its button. Repr
   | The attribute's value duplicated | 6/8 |
   | `id=gen-*` with regenerated ids | 8/8 |
 - **e2e fixture**: `data-qa` is already one of the default test-id attributes, so the issue's "data-qa" case would pass without any profile. The fixture (`automation.html`) uses `data-automation-id`.
+- **Fixes from the independent review** (each with a test that fails on the first version, except the huge-name check: "review fixes" in `site-profiles.test.ts` and `profile-matching.test.ts`, and `test/browser/profile-content.test.ts`):
+  - **Weak stable attributes**: any attribute name was accepted, so `type` (or a shared `data-variant`) could become a fingerprint's test id. The matcher's fast path trusts a test id alone and would take any element with the same value: a wrong element. Now:
+    - only `data-*` names are allowed, not Waymark's own markers;
+    - a profile attribute becomes the test id only where its value is unique on the recording page, as ids are;
+    - Find candidates lists only attributes whose values are all unique.
+  - **Note steps** recorded with the panel's Add note now get the profile's URL options.
+  - **Navigation steps**: a change of a kept query key is now one. The previous page's routed path is kept for this, because the stored previous URL has its query hashed.
+  - **The panel's "For this page"** reads the address with the site profiles, as the badge and the launcher do.
+  - **The recorder** starts only once the profile is in: the test marker reads `starting` meanwhile, and the pill already shows recording. Before, a first click could be recorded without the profile.
+  - **The picker** waits for the profile before taking the click.
+  - **Packs**: one with more than 50 profiles was refused whole. It keeps the first 50 now and counts the rest as dropped. `makePack` carries 50 at most, and an empty profile in a pack is not stored.
+  - **Export** carries the profile each site's guides play with: the library's for team guides, the own one for own guides, each falling back to the other.
+  - **Import**: a new site's profile can be skipped (Add / Skip, Add by default). Profiles over the 200-site cap are counted as dropped.
+  - **Save's before / after** tests the same steps both times: those on the page with either profile's URL options. A step that leaves the page with the new options shows as "no longer on this page", where turning hash routing on used to look like "nothing was tested". The tab must still show the site being saved.
+  - **Ignore patterns** take printable characters only. A page's `name` attribute is length-checked before the patterns run.
+- **Limit, by design**: a site's profile from the team library also applies to the author's own guides on that site when they have no own profile (the fallback). Subscribing to a library that turns hash routing on for a site changes how those guides are offered and started; an own profile for the site overrides it.
 - **Tests**:
   - `test/unit/site-profiles.test.ts`: wildcards and backtracking, attribute-limited patterns, refusals, precedence, URL options, stored maps, packs (carried, dropped, export review), messages, candidates, and the service worker (own origin only, save, import keep / replace).
   - `test/browser/profile-matching.test.ts`.

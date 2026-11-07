@@ -19,7 +19,7 @@ import {
   type RecordingState,
   urlKey,
 } from '../core/recorder/session';
-import { originToMatchPattern, stepUrlRule } from '../core/url/url';
+import { originToMatchPattern, routedPath, stepUrlRule } from '../core/url/url';
 import { loadProfiles, urlOptionsFor } from '../core/storage/profiles';
 import { withoutLinks } from '../core/text/markdown';
 import { dlog } from './debug';
@@ -210,7 +210,8 @@ export const recordingHandlers: Handlers = {
     const s = await mutate(async (st) => {
       if (!st) return st;
       const url = (await tabUrl(st.tabIds[0]!)) ?? st.startUrl;
-      const step = noteStep(st, title, note, url);
+      // The site's own profile shapes the note's page rule, as for every recorded step (D213 review).
+      const step = noteStep(st, title, note, url, urlOptionsFor(await loadProfiles(), url, 'local'));
       if (step) st.steps.push(step);
       return st;
     });
@@ -358,6 +359,8 @@ export async function onRouteReport(
       st.leavingAt = { ...(st.leavingAt ?? {}), [key]: eventTime(payload.at) };
       return st;
     }
+    const routeOpts = urlOptionsFor(profiles, payload.url, 'local');
+    const prevRoute = st.lastRoute?.[key];
     const prevUrl = st.lastUrl[key];
     // Navigation start: when the old page started leaving, or the new document's time origin
     // (which survives even when the "leaving" report was lost).
@@ -373,11 +376,20 @@ export async function onRouteReport(
         title: payload.title,
         now: at,
         ...(leavingAt !== undefined ? { leavingAt } : {}),
+        ...(prevRoute !== undefined ? { prevRoute } : {}),
       },
-      urlOptionsFor(profiles, payload.url, 'local'),
+      routeOpts,
     );
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
     st.lastUrl[key] = urlKey(payload.url);
+    // With kept query keys, the page as its URL rule reads it, to tell a change of a kept key (D213 review).
+    if (routeOpts.keepQueryKeys?.length) {
+      try {
+        st.lastRoute = { ...(st.lastRoute ?? {}), [key]: routedPath(new URL(payload.url), routeOpts) };
+      } catch {
+        // not a URL: nothing to compare next time
+      }
+    }
     if (payload.via !== 'leaving') {
       dlog('rec', step ? 'nav.step' : 'nav.no-step', { tab: tabId, frame: 0, o: ctx.sender.origin ?? null }, () => ({
         via: payload.via,

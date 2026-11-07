@@ -24,31 +24,50 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
   const hover = createRecHover(framePath, () => profile);
   let hoverAsk = 0;
 
+  // The recorder starts once the site's profile is in (D213 review): a step recorded before it would
+  // miss the profile's stable attribute and URL options. Until then the pill shows recording, and the
+  // test marker says "starting". A view that turns recording off meanwhile wins.
+  let wanted = false;
+  let lastView: RecordingView | null = null;
+  let profileAsk = 0;
+  const mark = (view: RecordingView) => testMark('recording', view.active ? (view.paused ? 'paused' : recorder ? 'on' : 'starting') : 'off');
+
+  const startRecorder = (p: ProfileOptions) => {
+    if (recorder || !wanted) return;
+    const opts: RecorderOptions = {
+      profile: p,
+      emit: (op) => {
+        send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
+      },
+      isOwnEvent: isOverlayPath,
+      // Its screenshot measures the element itself at capture time (D183), in frames too (D191).
+      onTarget: rememberShotTarget,
+      framePath,
+      debug: (ev, data) => dlog('rec', ev, data),
+      onSkip: () => {
+        skipped++;
+        testMark('rec-skipped', String(skipped));
+        flashPill(SKIP_NOTICE);
+      },
+    };
+    recorder = createRecorder(opts);
+    if (lastView) mark(lastView);
+  };
+
   const apply = (view: RecordingView) => {
     const on = view.active && !view.paused;
+    wanted = on;
+    lastView = view;
     if (on && !recorder) {
-      const opts: RecorderOptions = {
-        emit: (op) => {
-          send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
-        },
-        isOwnEvent: isOverlayPath,
-        // Its screenshot measures the element itself at capture time (D183), in frames too (D191).
-        onTarget: rememberShotTarget,
-        framePath,
-        debug: (ev, data) => dlog('rec', ev, data),
-        onSkip: () => {
-          skipped++;
-          testMark('rec-skipped', String(skipped));
-          flashPill(SKIP_NOTICE);
-        },
-      };
-      recorder = createRecorder(opts);
+      const ask = ++profileAsk;
       void fetchProfile('record').then((p) => {
+        if (ask !== profileAsk) return;
         profile = p;
-        opts.profile = p;
+        startRecorder(p);
       });
-    } else if (!on && recorder) {
-      recorder.stop();
+    } else if (!on) {
+      profileAsk++;
+      recorder?.stop();
       recorder = null;
     }
     // The outline of what a click will record (D153), unless turned off in Settings. Asked on every
@@ -57,7 +76,7 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
       const ask = ++hoverAsk;
       send('recorder.settings.get', {})
         .then((s) => {
-          if (ask !== hoverAsk || !recorder) return;
+          if (ask !== hoverAsk || !wanted) return;
           if (s.hover) hover.start();
           else hover.stop();
         })
@@ -67,7 +86,7 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
       hover.stop();
     }
     showPill(view);
-    testMark('recording', view.active ? (view.paused ? 'paused' : 'on') : 'off');
+    mark(view);
   };
 
   const onMessage = (msg: unknown, sender: chrome.runtime.MessageSender) => {
@@ -81,6 +100,8 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
   return {
     apply,
     dispose() {
+      profileAsk++;
+      wanted = false;
       recorder?.stop();
       recorder = null;
       hoverAsk++;

@@ -44,7 +44,7 @@ export function fromDraft(origin: string, d: Draft): SiteProfile {
 
 /** Counts of a test: found, fragile, not found. */
 export function tally(r: StepCheck[]): Record<StepCheck['result'], number> {
-  const t = { found: 0, fragile: 0, 'not-found': 0 };
+  const t = { found: 0, fragile: 0, 'not-found': 0, 'off-page': 0 };
   for (const x of r) t[x.result]++;
   return t;
 }
@@ -74,14 +74,14 @@ async function save(origin: string, tabId: number | null) {
   busy.value = true;
   const previous = saved.value;
   try {
-    const before = tabId !== null ? (await send('profile.testAll', { tabId })).results : [];
+    const before = tabId !== null ? (await send('profile.testAll', { tabId, origin, compare: next })).results : [];
     const r = await send('profile.site.set', { origin, profile: next });
     if (!r.ok) {
       error.value = r.error ?? 'Couldn’t save.';
       return;
     }
     saved.value = next;
-    const after = tabId !== null ? (await send('profile.testAll', { tabId })).results : [];
+    const after = tabId !== null ? (await send('profile.testAll', { tabId, origin, compare: previous })).results : [];
     outcome.value = { before, after, previous };
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -115,7 +115,7 @@ async function findCandidates(tabId: number) {
   }
 }
 
-const RESULT: Record<StepCheck['result'], string> = { found: 'found', fragile: 'fragile', 'not-found': 'not found' };
+const RESULT: Record<StepCheck['result'], string> = { found: 'found', fragile: 'fragile', 'not-found': 'not found', 'off-page': 'no longer on this page' };
 
 export function AdvancedMatching({ origin, tabId }: { origin: string; tabId: number | null }) {
   useEffect(() => {
@@ -188,7 +188,8 @@ export function AdvancedMatching({ origin, tabId }: { origin: string; tabId: num
           ) : (
             <>
               <p class="small" data-testid="matching-summary">
-                Steps on this page, before → after: {tally(o.before).found} → {tally(o.after).found} found, {tally(o.before).fragile} → {tally(o.after).fragile} fragile, {tally(o.before)['not-found']} → {tally(o.after)['not-found']} not found.
+                Steps on this page, before → after: {tally(o.before).found} → {tally(o.after).found} found, {tally(o.before).fragile} → {tally(o.after).fragile} fragile, {tally(o.before)['not-found']} → {tally(o.after)['not-found']} not found
+                {tally(o.before)['off-page'] + tally(o.after)['off-page'] > 0 ? `, ${tally(o.before)['off-page']} → ${tally(o.after)['off-page']} no longer on this page (their page rules read the address differently)` : ''}.
               </p>
               <ul class="list divided">
                 {o.after.map((a) => {

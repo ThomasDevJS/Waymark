@@ -5,7 +5,7 @@
  */
 import type { HandlerContext, Handlers } from '../core/messaging/router';
 import type { AttrCandidate, ContentPush, StepCheck } from '../core/messaging/protocol';
-import { ATTR_NAME, isEmptyProfile, profileProblem, SiteProfileSchema, type SiteProfile } from '../core/model/profile';
+import { ATTR_NAME, isEmptyProfile, profileProblem, SiteProfileSchema, urlOptionsOf, type SiteProfile } from '../core/model/profile';
 import { GuideSchema, isSiteOrigin, type Guide } from '../core/model/schema';
 import { enqueue } from '../core/storage/queue';
 import { getGuides, listGuides } from '../core/storage/guides';
@@ -85,7 +85,7 @@ export const profileHandlers: Handlers = {
   },
   // Test all steps on this page: the site's guides that use the author's own profile here, every
   // step of theirs whose page this is, tested at once without drawing anything.
-  'profile.testAll': async ({ tabId }, ctx: HandlerContext) => {
+  'profile.testAll': async ({ tabId, origin: site, compare }, ctx: HandlerContext) => {
     const url = await tabUrl(tabId);
     let origin: string | null = null;
     try {
@@ -93,29 +93,36 @@ export const profileHandlers: Handlers = {
     } catch {
       origin = null;
     }
-    if (!url || !origin) return { results: [] };
+    // The tab may have moved on while the panel was open: test only the site being saved.
+    if (!url || !origin || origin !== site) throw new Error('This tab no longer shows that site. Open it again, then save.');
     const profiles = await loadProfiles();
     // A team guide with the library's own profile for this site doesn't use the author's.
     const ids = (await listGuides()).filter((g) => g.appOrigins.includes(origin) && (g.source === 'local' || !profiles.library[origin])).map((g) => g.id);
     const guides: Guide[] = (await getGuides(ids)).filter((g) => GuideSchema.safeParse(g).success);
-    const jobs: { g: Guide; i: number }[] = [];
+    // The same steps before and after: those on this page with either profile's URL options.
+    const now = urlOptionsFor(profiles, url, 'local');
+    const other = urlOptionsOf(compare);
+    const jobs: { g: Guide; i: number; onPage: boolean }[] = [];
     for (const g of guides) {
-      const opts = urlOptionsFor(profiles, url, 'local');
       g.steps.forEach((s, i) => {
-        if (s.target && urlMatches(s.url, url, g.appOrigins, opts) && jobs.length < MAX_TESTED_STEPS) jobs.push({ g, i });
+        if (!s.target || jobs.length >= MAX_TESTED_STEPS) return;
+        const onPage = urlMatches(s.url, url, g.appOrigins, now);
+        if (onPage || urlMatches(s.url, url, g.appOrigins, other)) jobs.push({ g, i, onPage });
       });
     }
     const test = editorHandlers['step.test']!;
     const results = await Promise.all(
-      jobs.map(async ({ g, i }): Promise<StepCheck> => {
+      jobs.map(async ({ g, i, onPage }): Promise<StepCheck> => {
         const step = g.steps[i]!;
+        const base = { guideId: g.id, guideTitle: g.title, stepId: step.id, stepIndex: i, stepTitle: step.title };
+        if (!onPage) return { ...base, result: 'off-page' };
         let r: TestResult | null = null;
         try {
           r = (await test({ tabId, step, origins: g.appOrigins, quiet: true }, ctx)) as TestResult;
         } catch {
           r = null;
         }
-        return { guideId: g.id, guideTitle: g.title, stepId: step.id, stepIndex: i, stepTitle: step.title, result: !r?.found ? 'not-found' : r.fragile ? 'fragile' : 'found' };
+        return { ...base, result: !r?.found ? 'not-found' : r.fragile ? 'fragile' : 'found' };
       }),
     );
     return { results };

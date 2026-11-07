@@ -122,3 +122,42 @@ describe('an ignore pattern (D213)', () => {
     expect(w.wrong).toEqual([]);
   });
 });
+
+// Fixes from the independent review (D213). Each fails on the first version.
+describe('review fixes (D213)', () => {
+  it('a profile attribute whose value is shared on the page is not a test id; the shared value never leads to another element', () => {
+    // data-variant="primary" on two buttons: no hook. Recorded on one, played where only the other is left.
+    const p = profile({ stableAttributes: ['data-variant'] });
+    const keys = render({ attr: null });
+    const save = keys.get('save-order')!;
+    const del = keys.get('cancel-order')!;
+    save.setAttribute('data-variant', 'primary');
+    del.setAttribute('data-variant', 'primary');
+    const fp = buildFingerprint(save, { profile: p });
+    expect(fp.testId).toBeUndefined();
+    save.remove(); // the learner's page: only the other "primary" button is left
+    const r = matchOnce(document, fp, { profile: p });
+    expect(r.status === 'found' ? r.element : null).not.toBe(del);
+  });
+
+  it('Find candidates lists only attributes whose values tell elements apart', async () => {
+    const { scanAttributes } = await import('../../src/core/fingerprint/candidates-scan');
+    const keys = render({});
+    for (const el of keys.values()) el.setAttribute('data-variant', 'primary');
+    keys.get('save-order')!.setAttribute('data-variant', 'main');
+    const attrs = scanAttributes(document).map((c) => c.attr);
+    expect(attrs).toContain('data-automation-id');
+    expect(attrs).not.toContain('data-variant');
+  });
+
+  it('a huge name attribute never reaches the profile’s patterns', () => {
+    const keys = render({});
+    const el = keys.get('save-order')!;
+    el.setAttribute('name', 'a'.repeat(300_000) + 'b');
+    const patterns = Array.from({ length: 20 }, () => '*a*a*a*a*a*a*a*a*a*a*a*a*c');
+    const t = performance.now();
+    const fp = buildFingerprint(el, { profile: profile({ ignorePatterns: patterns }) });
+    expect(fp.name).toBeUndefined();
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
+});

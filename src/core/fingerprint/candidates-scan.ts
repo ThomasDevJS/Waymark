@@ -34,9 +34,11 @@ export function scanAttributes(doc: Document, limit = SCAN_LIMIT): AttrCandidate
   }
   const out: AttrCandidate[] = [];
   for (const [attr, e] of seen) {
-    // Mostly stable-looking values, on at least two elements: a hook, not a one-off or a data field.
-    if (e.elements < 2 || e.generated > e.elements / 5 || e.values.size < 2) continue;
-    out.push({ attr, elements: e.elements, unique: [...e.values.values()].every((c) => c === 1), samples: [...e.values.keys()].slice(0, 3) });
+    // Stable-looking values, on at least two elements, each value used once: a hook that tells
+    // elements apart. A shared value (data-variant="primary") is no hook (review of D213).
+    const unique = [...e.values.values()].every((c) => c === 1);
+    if (e.elements < 2 || e.generated > e.elements / 5 || e.values.size < 2 || !unique) continue;
+    out.push({ attr, elements: e.elements, unique, samples: [...e.values.keys()].slice(0, 3) });
   }
-  return out.sort((a, b) => Number(b.unique) - Number(a.unique) || b.elements - a.elements).slice(0, 30);
+  return out.sort((a, b) => b.elements - a.elements).slice(0, 30);
 }
