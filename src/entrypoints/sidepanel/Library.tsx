@@ -11,6 +11,7 @@ import type { GuideIndexEntry } from '../../core/storage/guides';
 import { guideMatchesUrl } from '../../core/discovery/match';
 import { buildSearch, searchGuides, searchPage } from '../../core/discovery/search';
 import type { Choice, Conflict } from '../../core/sharing/pack';
+import type { ProfileCheck } from '../../core/messaging/protocol';
 import { originToMatchPattern } from '../../core/url/url';
 import { ExportReview } from './ExportReview';
 import { Icon } from '../../ui/Icon';
@@ -26,7 +27,17 @@ const all = signal<GuideIndexEntry[]>([]);
 const query = signal('');
 const selected = signal<Set<string>>(new Set());
 const exporting = signal<Guide[] | null>(null);
-const importState = signal<{ text: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; choices: Record<string, Choice>; origins: string[] } | null>(null);
+const importState = signal<{
+  text: string;
+  guides: { id: string; title: string; steps: number }[];
+  conflicts: Conflict[];
+  choices: Record<string, Choice>;
+  origins: string[];
+  /** The file's site options (D213): new ones are added; one that differs from the own: keep or replace. */
+  profiles: ProfileCheck[];
+  profileChoices: Record<string, 'keep' | 'replace'>;
+  droppedProfiles: number;
+} | null>(null);
 const pending = signal<string[]>([]);
 /** Sites the user unticked in the Allow banner (D48: every site is shown and can be left out). */
 const unticked = signal<Set<string>>(new Set());
@@ -219,7 +230,17 @@ async function readFile(file: File) {
     error.value = check.error ?? 'This file is not a Waymark guide file.';
     return;
   }
-  importState.value = { text, guides: check.guides, conflicts: check.conflicts, choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])), origins: check.origins };
+  const profiles = (check.profiles ?? []).filter((p) => p.status !== 'same');
+  importState.value = {
+    text,
+    guides: check.guides,
+    conflicts: check.conflicts,
+    choices: Object.fromEntries(check.conflicts.map((c) => [c.id, 'keep' as Choice])),
+    origins: check.origins,
+    profiles,
+    profileChoices: Object.fromEntries(profiles.filter((p) => p.status === 'differs').map((p) => [p.origin, 'keep' as const])),
+    droppedProfiles: check.droppedProfiles ?? 0,
+  };
 }
 
 /** Moves focus into the import dialog when it opens, so keyboard and screen reader users land on it. */
@@ -627,6 +648,32 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               </select>
             </label>
           ))}
+          {imp.profiles.map((p) =>
+            p.status === 'new' ? (
+              <p key={p.origin} class="small" data-testid={`import-profile-${p.origin}`}>
+                Adds site options for matching on <span class="mono">{p.origin}</span>.
+              </p>
+            ) : (
+              <label key={p.origin} class="field" data-testid={`import-profile-${p.origin}`}>
+                <span class="label">
+                  Site options for <span class="mono">{p.origin}</span> differ from yours
+                </span>
+                <select
+                  data-testid={`import-profile-choice-${p.origin}`}
+                  value={imp.profileChoices[p.origin] ?? 'keep'}
+                  onChange={(e) => (importState.value = { ...imp, profileChoices: { ...imp.profileChoices, [p.origin]: (e.target as HTMLSelectElement).value as 'keep' | 'replace' } })}
+                >
+                  <option value="keep">Keep mine</option>
+                  <option value="replace">Use the file’s</option>
+                </select>
+              </label>
+            ),
+          )}
+          {imp.droppedProfiles > 0 && (
+            <p class="small muted" data-testid="import-profiles-dropped">
+              {imp.droppedProfiles === 1 ? 'One site’s options in this file are' : `${imp.droppedProfiles} sites’ options in this file are`} not usable and will be left out. The guides import as usual.
+            </p>
+          )}
           <div class="row">
             <button
               type="button"
@@ -634,9 +681,9 @@ export function Library({ tabId, tabUrl, onEdit, onStart }: { tabId: number | nu
               data-testid="import-confirm"
               onClick={() =>
                 void attempt(async () => {
-                  const r = await send('pack.import', { text: imp.text, choices: changedChoices(imp.choices) });
+                  const r = await send('pack.import', { text: imp.text, choices: changedChoices(imp.choices), ...(Object.keys(imp.profileChoices).length ? { profileChoices: imp.profileChoices } : {}) });
                   importState.value = null;
-                  message.value = `Imported ${r.imported} ${r.imported === 1 ? 'guide' : 'guides'}${r.skipped ? `, ${r.skipped} already up to date or kept` : ''}.`;
+                  message.value = `Imported ${r.imported} ${r.imported === 1 ? 'guide' : 'guides'}${r.skipped ? `, ${r.skipped} already up to date or kept` : ''}${r.profiles ? `, and site options for ${r.profiles === 1 ? '1 site' : `${r.profiles} sites`}` : ''}${r.droppedProfiles ? ` (${r.droppedProfiles === 1 ? '1 site’s options' : `${r.droppedProfiles} sites’ options`} left out: not usable)` : ''}.`;
                   await load();
                 })
               }

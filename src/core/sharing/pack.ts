@@ -5,10 +5,31 @@
  */
 import { BASE_FORMAT_VERSION, FORMAT_VERSION, GuidePackSchema, SCHEMA_VERSION, type Guide, type GuidePack } from '../model/schema';
 import { newId } from '../model/ids';
+import { isEmptyProfile, profileProblem, SiteProfileSchema, type SiteProfile } from '../model/profile';
+import { isSiteOrigin } from '../model/schema';
 
 export const MAX_PACK_BYTES = 5 * 1024 * 1024;
 
-export type ParseResult = { ok: true; pack: GuidePack } | { ok: false; error: string };
+export type ParseResult = { ok: true; pack: GuidePack; profiles: SiteProfile[]; droppedProfiles: number } | { ok: false; error: string };
+
+/**
+ * The pack's site profiles that are well formed, for a site of its guides, one per site (D213).
+ * Anything else is dropped and counted, so the import can say so; the guides import anyway.
+ */
+export function packProfiles(pack: Pick<GuidePack, 'guides' | 'profiles'>): { profiles: SiteProfile[]; dropped: number } {
+  const sites = new Set(pack.guides.flatMap((g) => g.appOrigins));
+  const out = new Map<string, SiteProfile>();
+  let dropped = 0;
+  for (const raw of pack.profiles ?? []) {
+    const p = SiteProfileSchema.safeParse(raw);
+    if (!p.success || !isSiteOrigin(p.data.origin) || !sites.has(p.data.origin) || profileProblem(p.data) || out.has(p.data.origin)) {
+      dropped++;
+      continue;
+    }
+    out.set(p.data.origin, p.data);
+  }
+  return { profiles: [...out.values()], dropped };
+}
 
 export function parsePack(text: string): ParseResult {
   if (new Blob([text]).size > MAX_PACK_BYTES) return { ok: false, error: 'This pack is larger than 5 MB.' };
@@ -37,7 +58,8 @@ export function parsePack(text: string): ParseResult {
     if (ids.has(g.id)) return { ok: false, error: 'This pack lists the same guide twice.' };
     ids.add(g.id);
   }
-  return { ok: true, pack: parsed.data };
+  const { profiles, dropped } = packProfiles(parsed.data);
+  return { ok: true, pack: parsed.data, profiles, droppedProfiles: dropped };
 }
 
 /** The oldest format that can hold these guides (D204): 2 only with a hover step. */
@@ -45,8 +67,11 @@ export function packFormatFor(guides: Pick<Guide, 'steps'>[]): GuidePack['format
   return guides.some((g) => g.steps.some((s) => s.kind === 'hover')) ? FORMAT_VERSION : BASE_FORMAT_VERSION;
 }
 
-export function makePack(guides: Guide[], now = new Date()): GuidePack {
-  return { format: 'waymark-pack', formatVersion: packFormatFor(guides), exportedAt: now.toISOString(), guides };
+/** A pack of guides, with the site profiles of their sites when there are any (D213). */
+export function makePack(guides: Guide[], now = new Date(), profiles: SiteProfile[] = []): GuidePack {
+  const sites = new Set(guides.flatMap((g) => g.appOrigins));
+  const carried = profiles.filter((p) => sites.has(p.origin) && !isEmptyProfile(p));
+  return { format: 'waymark-pack', formatVersion: packFormatFor(guides), exportedAt: now.toISOString(), guides, ...(carried.length ? { profiles: carried } : {}) };
 }
 
 export type Choice = 'keep' | 'replace' | 'both';

@@ -11,6 +11,7 @@ import { guideKey, writeGuide } from '../core/storage/guides';
 import { framesAtPath, framesKey, type FrameMap } from '../core/frames/registry';
 import { sessionKV } from '../core/storage/session-kv';
 import { stepUrlRule } from '../core/url/url';
+import { loadProfiles, urlOptionsFor } from '../core/storage/profiles';
 import { withoutLinks } from '../core/text/markdown';
 import { updateAllBadges } from './discovery';
 import { endPick, PICK_TTL_MS, pickKey, pickResultKey } from './pick';
@@ -85,14 +86,14 @@ export const editorHandlers: Handlers = {
       return next;
     });
   },
-  'step.test': async ({ tabId, step, origins, guideId }): Promise<TestResult> => {
+  'step.test': async ({ tabId, step, origins, guideId, quiet }): Promise<TestResult> => {
     const url = await tabOnOrigins(tabId, origins);
     if (!step.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element.' };
     const frameIds = await framesFor(tabId, step.target.framePath);
     if (!frameIds.length) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'The frame of this step is not on the page.' };
     // A guide with screenshots on gets this step's screenshot again (D187).
-    const capture = !!guideId && (await shotsOn(guideId));
-    const msg: ContentPush = { type: 'test.step', payload: { step, ...(capture ? { shot: true } : {}) } };
+    const capture = !quiet && !!guideId && (await shotsOn(guideId));
+    const msg: ContentPush = { type: 'test.step', payload: { step, ...(capture ? { shot: true } : {}), ...(quiet ? { quiet: true } : {}) } };
     // A rebuilt iframe leaves its old frame in the map: try the newest first, then the others (D152).
     for (const frameId of frameIds) {
       let r: TestResult | undefined;
@@ -161,7 +162,7 @@ export const editorHandlers: Handlers = {
     await chrome.storage.session.remove(pickKey(tabId));
     // The step moves to the page the element was picked on (the top page's URL rule).
     const top = ctx.sender.tab?.url;
-    const url = top ? stepUrlRule(top) : undefined;
+    const url = top ? stepUrlRule(top, urlOptionsFor(await loadProfiles(), top, 'local')) : undefined;
     await chrome.storage.session.set({ [pickResultKey(tabId)]: { target: fp, title: withoutLinks(title), url, at: Date.now() } });
     const msg: ContentPush = { type: 'pick.stop' };
     await chrome.tabs.sendMessage(tabId, msg).catch(() => undefined);

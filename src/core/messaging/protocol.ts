@@ -11,6 +11,7 @@ import type { GuideIndexEntry } from '../storage/guides';
 import type { RunView } from '../player/run';
 import type { Problem } from '../storage/problems';
 import type { Reason } from '../stats/plays';
+import { SiteProfileSchema, type SiteProfile } from '../model/profile';
 import type { VoiceSettings } from '../voice/settings';
 import { HD_HOST_PATTERNS, HdStatusSchema, type HdStatus } from '../voice/hd';
 import type { TestResult } from '../../background/editor';
@@ -84,7 +85,8 @@ export const RequestSchemas = {
   // The library's completed checkmark (D101).
   'completions.list': z.object({}),
   'pack.check': z.object({ text: z.string().max(6 * 1024 * 1024) }),
-  'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: boundedRecord(z.string().max(64), z.enum(['keep', 'replace', 'both']), 10_000) }),
+  // profileChoices: a pack's site profile that differs from the own one: keep the own, or replace it (D213).
+  'pack.import': z.object({ text: z.string().max(6 * 1024 * 1024), choices: boundedRecord(z.string().max(64), z.enum(['keep', 'replace', 'both']), 10_000), profileChoices: boundedRecord(z.string().max(500), z.enum(['keep', 'replace']), 50).optional() }),
   'allow.pending': z.object({}),
   'allow.dismiss': z.object({}),
   'site.settings.get': z.object({ origin: z.string().max(500) }),
@@ -96,7 +98,8 @@ export const RequestSchemas = {
   'site.allowed': z.object({ origins: z.array(z.string().max(500)).max(50) }),
   'guide.save': z.object({ guide: GuideSchema, baseRevisionId: z.string().max(64) }),
   // guideId: a guide with screenshots on gets this step's screenshot taken again (D187).
-  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50), guideId: z.string().max(64).optional() }),
+  // quiet: Test all steps on this page (D213): nothing drawn, a shorter wait.
+  'step.test': z.object({ tabId: z.number().int(), step: StepSchema, origins: z.array(z.string().max(500)).max(50), guideId: z.string().max(64).optional(), quiet: z.boolean().optional() }),
   // Step screenshots for the printable how-to (D180): on or off per guide, and which steps have one.
   'shots.get': z.object({ guideId: z.string().max(64) }),
   'shots.set': z.object({ guideId: z.string().max(64), on: z.boolean() }),
@@ -104,6 +107,12 @@ export const RequestSchemas = {
   'pick.cancel': z.object({ tabId: z.number().int() }),
   // The panel's Fix step N for a report link opened in that tab (D212).
   'linkOffer.fix': z.object({ tabId: z.number().int(), guideId: z.string().max(64), stepIndex: z.number().int().min(0).max(MAX_STEPS_PER_GUIDE - 1) }),
+  // Site options → Advanced matching (D213): the site's profiles, save or remove the own one,
+  // attribute candidates on the tab's page (values shown, never stored), and Test all steps.
+  'profile.site.get': z.object({ origin: z.string().max(500) }),
+  'profile.site.set': z.object({ origin: z.string().max(500), profile: SiteProfileSchema.nullable() }),
+  'profile.candidates': z.object({ tabId: z.number().int() }),
+  'profile.testAll': z.object({ tabId: z.number().int() }),
   // The panel's Undo after the player fixed a step (D210): that tab's last fix only.
   'run.fix.undo': z.object({ tabId: z.number().int() }),
   // Steps that may break, from plays on this device (D211): counts per guide, and one guide's steps.
@@ -190,6 +199,8 @@ export const RequestSchemas = {
   'run.mute': z.object({ muted: z.boolean() }),
   // The tooltip's Replay voice and Repeat step (D106): reads the current step again.
   'run.replay': z.object({ stepId: z.string().max(64) }),
+  // The site profile for the sender frame's own origin (D213): for the tab's run, a recording, or the editor.
+  'profile.get': z.object({ purpose: z.enum(['run', 'record', 'edit']) }),
   // Pick the right element from the player (D210): the sender tab's run, its current step only.
   'run.fix.start': z.object({ stepId: z.string().max(64) }),
   'pick.result': z.object({ target: ElementFingerprintSchema, title: z.string().max(500) }),
@@ -271,6 +282,11 @@ export interface ResponseMap {
   'run.fix.start': { ok: boolean; why?: 'step' | 'guide' | 'page' };
   'run.fix.undo': { ok: boolean };
   'stats.summary': { counts: Record<string, number> };
+  'profile.get': { profile: SiteProfile | null };
+  'profile.site.get': { local: SiteProfile | null; library: SiteProfile | null };
+  'profile.site.set': { ok: boolean; error?: string };
+  'profile.candidates': { candidates: AttrCandidate[] };
+  'profile.testAll': { results: StepCheck[] };
   'stats.guide': { steps: Record<string, { t: string; reasons: Reason[] }> };
   'guide.forPage': z.infer<typeof ForPageResponseSchema>;
   'launcher.start': StartResult;
@@ -283,8 +299,8 @@ export interface ResponseMap {
   'guide.restore': { ok: boolean; error?: string };
   'trash.list': { items: TrashItem[] };
   'completions.list': { completed: Record<string, string> };
-  'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[] };
-  'pack.import': { imported: number; skipped: number };
+  'pack.check': { ok: boolean; error?: string; guides: { id: string; title: string; steps: number }[]; conflicts: Conflict[]; origins: string[]; profiles?: ProfileCheck[]; droppedProfiles?: number };
+  'pack.import': { imported: number; skipped: number; profiles?: number; droppedProfiles?: number };
   'allow.pending': { origins: string[] };
   'allow.dismiss': { ok: boolean };
   'site.settings.get': { launcher: boolean };
@@ -307,6 +323,31 @@ export interface ResponseMap {
   'tutorial.stop': { ok: boolean };
   'debug.log': { ok: boolean };
   'debug.copy': { text: string | null };
+}
+
+/** An attribute on this page that could be a stable hook (D213): its name, how many elements, a few values. */
+export interface AttrCandidate {
+  attr: string;
+  elements: number;
+  /** Every value is used once: it can tell elements apart. */
+  unique: boolean;
+  samples: string[];
+}
+
+/** A pack's site profile against the own one (D213): new, the same, or different (keep or replace). */
+export interface ProfileCheck {
+  origin: string;
+  status: 'new' | 'same' | 'differs';
+}
+
+/** One step of Test all steps on this page (D213). */
+export interface StepCheck {
+  guideId: string;
+  guideTitle: string;
+  stepId: string;
+  stepIndex: number;
+  stepTitle: string;
+  result: 'found' | 'fragile' | 'not-found';
 }
 
 /** A guide's screenshot setting, and the steps that have one (ids only, never images). */
@@ -346,6 +387,7 @@ export const CONTENT_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>([
   'run.replay', // the tooltip's Replay voice and Repeat step: the sender tab's current step only (D106)
   'pick.result', // Re-pick element, only while the panel asked for a pick (D38)
   'pick.abort', // Esc in the page cancels the pick everywhere (D41)
+  'profile.get', // the sender frame's own origin only (D213)
   'run.fix.start', // Pick the right element: the sender tab's current step, the author's own guide (D210)
   'launcher.start', // on-page launcher and deep link: only guides of the sender's origin (D42)
   'deeplink.check',
@@ -407,6 +449,10 @@ export const EXTENSION_ALLOWED: ReadonlySet<MessageType> = new Set<MessageType>(
   'pick.start',
   'pick.cancel',
   'run.fix.undo',
+  'profile.site.get',
+  'profile.site.set',
+  'profile.candidates',
+  'profile.testAll',
   'stats.summary',
   'stats.guide',
   'linkOffer.fix',
@@ -444,7 +490,7 @@ export type ContentPush =
   | { type: 'tts.content'; payload: { text: string; lang: string; rate: number } }
   | { type: 'tts.stop' }
   // editor: Test step (answered with a TestResult) and Re-pick element
-  | { type: 'test.step'; payload: { step: Step; shot?: boolean } }
+  | { type: 'test.step'; payload: { step: Step; shot?: boolean; quiet?: boolean } }
   // step screenshots (D183): hide Waymark's UI and field text for a capture, then show it again;
   // the hint when Chrome refused one (D186). No image or setting ever goes to a page.
   // token: per frame and capture; the frame posts it to its parent, which reports it with the
@@ -454,6 +500,8 @@ export type ContentPush =
   | { type: 'shot.check'; payload: { token: string } }
   | { type: 'shot.show' }
   | { type: 'shot.hint' }
+  // Find candidates on this page (D213): answered with AttrCandidate[] (values shown in the panel, never stored)
+  | { type: 'profile.scan' }
   | { type: 'pick.start' }
   | { type: 'pick.stop' }
   // the debug log switch changed (D110)

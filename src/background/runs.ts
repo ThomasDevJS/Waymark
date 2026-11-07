@@ -12,7 +12,8 @@ import { applyRunOp, currentStep, newTabContinuesRun, NO_RUN, onStartPage, runVi
 import { enqueue } from '../core/storage/queue';
 import { guideKey } from '../core/storage/guides';
 import { addCompletion, addProblem, listProblems } from '../core/storage/problems';
-import { normalizePath, urlMatches } from '../core/url/url';
+import { normalizePath, urlMatches, type UrlOptions } from '../core/url/url';
+import { loadProfiles, urlOptionsFor } from '../core/storage/profiles';
 import { getVoiceSettings, setVoiceSettings, speakCurrentStep, stopSpeech } from './voice';
 import { siteAllowed } from './site-access';
 import { dlog } from './debug';
@@ -82,7 +83,8 @@ async function pruneGoneFrames(tabId: number, stepToken: string, tied: { key: st
     await chrome.storage.session.set({ [boardKey(tabId)]: b });
     // The frame that had the element is gone: the card may show now, a not-found play (D211).
     const run = await getRun(tabId);
-    play = run ? decidePlay(run, prev, b, await tabUrl(tabId)) : null;
+    const page = await tabUrl(tabId);
+    play = run ? decidePlay(run, prev, b, page, urlOptionsFor(await loadProfiles(), page, run.guideSnapshot.source)) : null;
     dlog('frame', 'frame.gone', { tab: tabId }, () => ({ dropped: gone.map((g) => g.key).join(','), winnerFrame: b.winner === null ? null : (Object.values(b.reports).find((x) => x.token === b.winner)?.frameId ?? null) }));
     return true;
   });
@@ -288,10 +290,15 @@ function problemUrl(url: string | undefined): string {
 export type StartResult = { status: 'started' } | { status: 'needs-start'; startUrl: string; reachable: boolean; pattern: string; stepIndex?: number };
 
 /** True when the URL is on the page of step `index` (step 0: the start page). */
-function onStepPage(guide: Guide, index: number, url: string): boolean {
-  if (index === 0) return onStartPage(guide, url);
+function onStepPage(guide: Guide, index: number, url: string, opts: UrlOptions): boolean {
+  if (index === 0) return onStartPage(guide, url, opts);
   const step = guide.steps[index];
-  return !!step && urlMatches(step.url, url, guide.appOrigins);
+  return !!step && urlMatches(step.url, url, guide.appOrigins, opts);
+}
+
+/** The URL options of the site profile for a guide on a page (hash routing, kept query keys, D213). */
+async function urlOpts(guide: Pick<Guide, 'source'>, url: string | undefined): Promise<UrlOptions> {
+  return urlOptionsFor(await loadProfiles(), url, guide.source);
 }
 
 /**
@@ -304,11 +311,12 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
   const url = await tabUrl(tabId);
   const origin = new URL(guide.startUrl).origin;
   if (!(await siteAllowed(origin))) throw new Error('Allow Waymark on this site first.');
+  const opts = await urlOpts(guide, url);
   if (stepIndex > 0) {
     const step = guide.steps[stepIndex];
     if (!step) throw new Error(`This guide has no step ${stepIndex + 1}.`);
     let opened = false;
-    if (!url || !onStepPage(guide, stepIndex, url)) {
+    if (!url || !onStepPage(guide, stepIndex, url, opts)) {
       // That step's page, its ids filled in from the page the learner is on (D203).
       const page = fillRule(step.url.value, origin, url);
       if (!openStart || !page) return { status: 'needs-start', startUrl: page ?? guide.startUrl, reachable: !!page, pattern: step.url.value, stepIndex };
@@ -327,17 +335,17 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
     if (!opened) await voiceSync(tabId);
     return { status: 'started' };
   }
-  if (!url || !onStartPage(guide, url)) {
+  if (!url || !onStartPage(guide, url, opts)) {
     // The stored start URL has no ids (D33). When the first page needs one, it is filled in
     // from the page the learner is on, on the same site (D203); only without one does the
     // learner have to open it themselves (D36).
     const firstRule = guide.steps[0]?.url.value ?? '/';
-    const page = onStartPage(guide, guide.startUrl) ? guide.startUrl : fillRule(firstRule, origin, url);
+    const page = onStartPage(guide, guide.startUrl, opts) ? guide.startUrl : fillRule(firstRule, origin, url);
     if (!openStart || !page) return { status: 'needs-start', startUrl: page ?? guide.startUrl, reachable: !!page, pattern: firstRule };
     await chrome.tabs.update(tabId, { url: page });
   }
   const run = startRun(guide);
-  dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url) }));
+  dlog('run', 'run.start', { tab: tabId, o: originOf(url) }, () => ({ guide: guide.id, title: guide.title, ...stepFacts(run), url: redactUrl(url), openedStart: !url || !onStartPage(guide, url, opts) }));
   prep?.(run);
   await enqueue(async () => {
     await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
@@ -345,7 +353,7 @@ export async function startRunInTab(tabId: number, guideId: string, openStart: b
   });
   await broadcast(tabId);
   // With "Open start page", the first step is read when that page arrives (onTopFrameLoad).
-  if (!url || onStartPage(guide, url)) await voiceSync(tabId);
+  if (!url || onStartPage(guide, url, opts)) await voiceSync(tabId);
   return { status: 'started' };
 }
 
@@ -409,6 +417,7 @@ export const runHandlers: Handlers = {
       return { ok: false };
     }
     const frameId = ctx.frameId;
+    const profiles = await loadProfiles();
     const changed = await enqueue(async () => {
       const run = await getRun(tabId);
       if (!run || run.status !== 'running' || run.stepToken !== r.stepToken) {
@@ -423,7 +432,8 @@ export const runHandlers: Handlers = {
       // wins, or "not found" once the top frame gives up on the step's page (the not-found card).
       // Only on a change; one result per run and step (D211).
       // The top frame's own document URL is the page it judged (the tab's URL can lag a navigation).
-      const play = decidePlay(run, prev, board, frameId === 0 ? (ctx.sender.url ?? ctx.sender.tab?.url) : ctx.sender.tab?.url);
+      const page = frameId === 0 ? (ctx.sender.url ?? ctx.sender.tab?.url) : ctx.sender.tab?.url;
+      const play = decidePlay(run, prev, board, page, urlOptionsFor(profiles, page, run.guideSnapshot.source));
       // Two or more frames found it: ask them whether they still exist (D84), once per burst.
       const now = Date.now();
       const check = docsToCheck(board, now);
@@ -473,7 +483,8 @@ export const runHandlers: Handlers = {
       dlog('frame', 'frame.left', { tab: tabId, frame: ctx.frameId ?? null }, () => ({ winnerFrame: b.winner === null ? null : (Object.values(b.reports).find((x) => x.token === b.winner)?.frameId ?? null) }));
       // The frame that had the element left and the top frame had given up: the card shows (D211).
       const run = await getRun(tabId);
-      play = run ? decidePlay(run, prev, b, await tabUrl(tabId)) : null;
+      const page = await tabUrl(tabId);
+      play = run ? decidePlay(run, prev, b, page, urlOptionsFor(await loadProfiles(), page, run.guideSnapshot.source)) : null;
       return true;
     });
     if (dropped) await afterPrune(tabId);
@@ -519,9 +530,10 @@ export async function carryRunToNewTab(tab: chrome.tabs.Tab): Promise<void> {
     return;
   }
   let hadFix = false;
+  const profiles = await loadProfiles();
   const moved = await enqueue(async () => {
     const run = await getRun(opener);
-    if (!run || (await getRun(newId)) || !url || !newTabContinuesRun(run, url)) return false;
+    if (!run || (await getRun(newId)) || !url || !newTabContinuesRun(run, url, urlOptionsFor(profiles, url, run.guideSnapshot.source))) return false;
     const carried: Run = { ...run, cause: 'resume', rev: run.rev + 1 };
     // No picker runs in the new tab: a pick under way ends with the move (review of D210).
     hadFix = !!run.fix;
@@ -573,6 +585,7 @@ export async function resumeRunsMovedTo(closedTabId: number): Promise<void> {
 }
 
 export async function onTopFrameLoad(tabId: number, url: string): Promise<void> {
+  const profiles = await loadProfiles();
   await enqueue(async () => {
     // A report link's offer is for the page it opened (D212); the next page's link sets its own.
     await chrome.storage.session.remove([boardKey(tabId), `linkOffer:${tabId}`]);
@@ -585,7 +598,7 @@ export async function onTopFrameLoad(tabId: number, url: string): Promise<void> 
       dlog('run', 'fix.end', { tab: tabId }, { why: 'a new page loaded' });
     }
     const step = run ? currentStep(run) : undefined;
-    if (run && step && shouldCatchUp(run, url) && applyRunOp(run, 'done', step.id)) {
+    if (run && step && shouldCatchUp(run, url, urlOptionsFor(profiles, url, run.guideSnapshot.source)) && applyRunOp(run, 'done', step.id)) {
       await chrome.storage.session.set({ [runKey(tabId)]: run });
       dlog('run', 'step.catch-up', { tab: tabId }, () => ({ why: 'the page loaded after a link click whose step report was lost (D32)', ...stepFacts(run) }));
     }

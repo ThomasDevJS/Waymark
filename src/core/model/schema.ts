@@ -165,5 +165,8 @@ export const GuidePackSchema = z.object({
   formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
   exportedAt: shortStr(64),
   guides: z.array(GuideSchema),
+  // Site profiles of the guides' sites (D213). Checked one by one in parsePack: a bad one is
+  // dropped with a notice and the guides still import. Older Waymark ignores the field.
+  profiles: z.array(z.unknown()).max(50).optional(),
 });
 export type GuidePack = z.infer<typeof GuidePackSchema>;

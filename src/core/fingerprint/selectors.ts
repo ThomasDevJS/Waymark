@@ -13,14 +13,14 @@ export function testIdAttrs(profile: ProfileOptions = {}): string[] {
 }
 
 /** Ids, test ids and key attributes: stable, and never data such as an email or amount (D66). */
-function attrValueOk(v: string | null, profile: ProfileOptions): v is string {
-  return !!v && v.length <= 200 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLikeAttr(v);
+function attrValueOk(v: string | null, profile: ProfileOptions, attr: string): v is string {
+  return !!v && v.length <= 200 && !isGeneratedToken(v, profile.ignorePatterns, attr) && !isDataLikeAttr(v);
 }
 
 export function stableTestId(el: Element, profile: ProfileOptions = {}): { attr: string; value: string } | undefined {
   for (const attr of testIdAttrs(profile)) {
     const v = el.getAttribute(attr);
-    if (attrValueOk(v, profile)) return { attr, value: v };
+    if (attrValueOk(v, profile, attr)) return { attr, value: v };
   }
   return undefined;
 }
@@ -33,7 +33,7 @@ export function stableGuideId(el: Element): string | undefined {
 /** An id is stable when it does not look generated and is unique in its root. */
 export function stableId(el: Element, profile: ProfileOptions = {}): string | undefined {
   const id = el.getAttribute('id');
-  if (!id || !attrValueOk(id, profile)) return undefined;
+  if (!id || !attrValueOk(id, profile, 'id')) return undefined;
   const root = rootOf(el);
   const same = root.querySelectorAll(`#${cssEscape(id)}`);
   return same.length === 1 ? id : undefined;
@@ -41,7 +41,7 @@ export function stableId(el: Element, profile: ProfileOptions = {}): string | un
 
 export function stableClasses(el: Element, profile: ProfileOptions = {}): string[] {
   return Array.from(el.classList)
-    .filter((c) => c.length <= 60 && !isStateClass(c) && !isGeneratedToken(c, profile.ignorePatterns) && !isDataLikeAttr(c))
+    .filter((c) => c.length <= 60 && !isStateClass(c) && !isGeneratedToken(c, profile.ignorePatterns, 'class') && !isDataLikeAttr(c))
     .slice(0, 4);
 }
 
@@ -69,7 +69,7 @@ function segmentFor(el: Element, isTarget: boolean, profile: ProfileOptions): Se
   if (isTarget) {
     for (const a of KEY_ATTRS) {
       const v = el.getAttribute(a);
-      if (v && v.length <= 60 && !isGeneratedToken(v, profile.ignorePatterns) && !isDataLikeAttr(v)) s += `[${a}="${cssEscape(v)}"]`;
+      if (v && v.length <= 60 && !isGeneratedToken(v, profile.ignorePatterns, a) && !isDataLikeAttr(v)) s += `[${a}="${cssEscape(v)}"]`;
     }
   } else {
     const role = el.getAttribute('role');

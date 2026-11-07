@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals';
+import { AdvancedMatching } from './Matching';
 import { useEffect } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { TabInfo } from '../../core/messaging/protocol';
@@ -282,6 +283,7 @@ function SiteCard({ t }: { t: TabInfo | null }) {
       {open && (
         <div class="site-options stack-sm unfold" id="site-options">
           <LauncherToggle origin={t.origin} />
+          <AdvancedMatching origin={t.origin} tabId={t.tabId} />
           <div class="row">
             <button type="button" class="ghost sm danger" data-testid="revoke-site" onClick={() => void revoke(t.origin!)}>
               Turn off Waymark on this site

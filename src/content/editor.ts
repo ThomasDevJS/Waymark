@@ -17,6 +17,10 @@ import type { TestResult } from '../background/editor';
 import { eventPath, isOverlayPath, mountOverlayIn, overlayLayer, overlayRoot } from './overlay/host';
 import { PlayerUI, openModalDialog } from './player/ui';
 import { testMark } from './test-hooks';
+import { fetchProfile } from './profile';
+import type { ProfileOptions } from '../core/model/profile';
+import type { AttrCandidate } from '../core/messaging/protocol';
+import { scanAttributes } from '../core/fingerprint/candidates-scan';
 
 /** Pick banner after a click on something Waymark could not find again (issue #6). */
 export const PICK_REJECTED = 'Waymark could not find that again. Click a button, link or field · Esc to cancel';
@@ -40,13 +44,15 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   let banner: HTMLElement | null = null;
   let testUi: PlayerUI | null = null;
   let testTimer: ReturnType<typeof setTimeout> | undefined;
+  // The author's own profile for this site (D213), fetched when a pick starts.
+  let profile: ProfileOptions = {};
 
   // What a click here would pick, with the clickable region of D82 applied. Memoized on the
   // hovered element: the promotion builds a fingerprint, too costly for every mouse move.
   let lastHover: { from: Element; pick: { element: Element; fp?: ElementFingerprint; name?: string } } | null = null;
   const pickFor = (t: ResolvedTarget) => {
     if (lastHover?.from === t.element) return lastHover.pick;
-    const up = promoteToRegion(t, (el) => buildFingerprint(el, { framePath: framePath() }));
+    const up = promoteToRegion(t, (el) => buildFingerprint(el, { framePath: framePath(), profile }));
     const pick: { element: Element; fp?: ElementFingerprint; name?: string } = up ?? { element: t.element };
     lastHover = { from: t.element, pick };
     return pick;
@@ -89,7 +95,7 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     lastHover = null;
     const pick = pickFor(t);
     const hint = pick.name;
-    const fp = pick.fp ?? buildFingerprint(pick.element, { framePath: framePath() });
+    const fp = pick.fp ?? buildFingerprint(pick.element, { framePath: framePath(), profile });
     if (!hasStrongSignal(fp)) {
       // It could never be found again (issue #6): keep picking and say why.
       if (banner) banner.textContent = PICK_REJECTED;
@@ -105,6 +111,11 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
   function startPick() {
     if (picking) return;
     picking = true;
+    lastHover = null;
+    void fetchProfile('edit').then((p) => {
+      profile = p;
+      lastHover = null; // the outline is worked out again with the profile
+    });
     const root = overlayRoot();
     mountOverlayIn(openModalDialog());
     if (!root.querySelector('style[data-pick]')) {
@@ -141,9 +152,14 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     testMark('picking', 'off');
   }
 
-  async function testStep(step: Parameters<PlayerUI['showStep']>[0]['step'], wantShot = false): Promise<TestResult> {
+  async function testStep(step: Parameters<PlayerUI['showStep']>[0]['step'], wantShot = false, quiet = false): Promise<TestResult> {
     if (!step?.target) return { found: false, score: 0, margin: 0, matched: [], fragile: false, reason: 'This step has no element to find.' };
-    const r = await waitForMatch(document, step.target, { timeoutMs: 3000 });
+    // With the site's profile, as the player uses it (D213).
+    const r = await waitForMatch(document, step.target, { timeoutMs: quiet ? 1500 : 3000, profile: await fetchProfile('edit') });
+    if (quiet) {
+      // Test all steps on this page (D213): the result only, nothing drawn.
+      return r.status === 'found' ? { found: true, score: r.score, margin: r.margin, matched: r.matched, fragile: isFragile(matchStrength(r)) } : { found: false, score: r.bestScore, margin: 0, matched: r.matched, fragile: false };
+    }
     clearTimeout(testTimer);
     testUi?.clear();
     if (r.status !== 'found') {
@@ -181,8 +197,11 @@ export function startEditorClient(framePath: () => string[]): { dispose(): void 
     if (m?.type === 'pick.start') startPick();
     else if (m?.type === 'pick.stop') stopPick();
     else if (m?.type === 'test.step' && m.payload?.step) {
-      void testStep(m.payload.step, m.payload.shot === true).then(sendResponse);
+      void testStep(m.payload.step, m.payload.shot === true, m.payload.quiet === true).then(sendResponse);
       return true; // async response
+    } else if (m?.type === 'profile.scan' && isTop) {
+      (sendResponse as unknown as (r: AttrCandidate[]) => void)(scanAttributes(document));
+      return false;
     }
     return false;
   };

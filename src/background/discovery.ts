@@ -19,18 +19,20 @@ import { GuideSchema, isSiteOrigin } from '../core/model/schema';
 import { getRecording } from './recording';
 import { startRunInTab } from './runs';
 import { linkOffer, linkOfferKey, type LinkOfferRecord } from './report-link';
+import { LIBRARY_PROFILES_KEY, loadProfiles, LOCAL_PROFILES_KEY, MAX_PROFILES, readProfileMap, type Profiles } from '../core/storage/profiles';
+import { sameProfile } from '../core/model/profile';
 import { fetchOnlyPatterns, setFetchOnly, siteAllowed } from './site-access';
 
 // ---------- toolbar badge ----------
 
 /** What every badge needs from storage, read once per pass. */
-async function badgeInputs(): Promise<{ index: GuideIndexEntry[] }> {
-  return { index: await listGuides() };
+async function badgeInputs(): Promise<{ index: GuideIndexEntry[]; profiles: Profiles }> {
+  return { index: await listGuides(), profiles: await loadProfiles() };
 }
 
-async function writeBadge(tabId: number, url: string | undefined, index: GuideIndexEntry[], recordingTabs: number[]): Promise<void> {
+async function writeBadge(tabId: number, url: string | undefined, index: GuideIndexEntry[], recordingTabs: number[], profiles: Profiles): Promise<void> {
   const recording = recordingTabs.includes(tabId);
-  const count = !recording && url ? guidesForUrl(index, url).length : 0;
+  const count = !recording && url ? guidesForUrl(index, url, profiles).length : 0;
   await chrome.action.setBadgeText({ tabId, text: badgeText(recording, count) });
   await chrome.action.setBadgeBackgroundColor({ tabId, color: recording ? '#c62828' : '#2f5fd0' });
 }
@@ -45,8 +47,8 @@ export async function updateBadge(tabId: number, url?: string): Promise<void> {
   try {
     // A tab whose URL Waymark can no longer read (access removed) gets no count.
     const pageUrl = url ?? (await chrome.tabs.get(tabId).catch(() => undefined))?.url;
-    const { index } = await badgeInputs();
-    await writeBadge(tabId, pageUrl, index, await recordingTabsNow());
+    const { index, profiles } = await badgeInputs();
+    await writeBadge(tabId, pageUrl, index, await recordingTabsNow(), profiles);
   } catch {
     // tab gone
   }
@@ -58,13 +60,13 @@ export async function updateBadge(tabId: number, url?: string): Promise<void> {
  */
 export async function updateAllBadges(): Promise<void> {
   try {
-    const [tabs, { index }] = await Promise.all([chrome.tabs.query({}), badgeInputs()]);
+    const [tabs, { index, profiles }] = await Promise.all([chrome.tabs.query({}), badgeInputs()]);
     const rec = await recordingTabsNow();
     // Tabs without a readable URL (not granted) are cleared too, e.g. after access is removed.
     await Promise.all(
       tabs
         .filter((t) => t.id !== undefined)
-        .map((t) => (t.url ? writeBadge(t.id!, t.url, index, rec) : chrome.action.setBadgeText({ tabId: t.id!, text: '' })).catch(() => undefined)),
+        .map((t) => (t.url ? writeBadge(t.id!, t.url, index, rec, profiles) : chrome.action.setBadgeText({ tabId: t.id!, text: '' })).catch(() => undefined)),
     );
   } catch {
     // Badges are best effort: a failed pass never fails the write that triggered it.
@@ -182,6 +184,8 @@ export async function refreshLibrary(): Promise<LibraryState> {
       if ((await libraryState()).url !== state.url) return false;
       const plan = planImport(await listGuides(), pack, {}, 'library');
       await writeGuides(plan.write, plan.remove);
+      // The library's site profiles replace the last ones (D213): its guides match the way it says.
+      await chrome.storage.local.set({ [LIBRARY_PROFILES_KEY]: Object.fromEntries(parsed.profiles.map((p) => [p.origin, p])) });
       return plan.write.map((g) => g.id);
     });
     if (!applied) return libraryState();
@@ -337,27 +341,44 @@ export const discoveryHandlers: Handlers = {
   'pack.check': async ({ text }) => {
     const parsed = parsePack(text);
     if (!parsed.ok) return { ok: false, error: parsed.error, guides: [], conflicts: [], origins: [] };
+    const own = (await loadProfiles()).local;
     return {
       ok: true,
       guides: parsed.pack.guides.map((g) => ({ id: g.id, title: g.title, steps: g.steps.length })),
       conflicts: findConflicts(await listGuides(), parsed.pack),
       origins: packOrigins(parsed.pack.guides),
+      profiles: parsed.profiles.map((p) => ({ origin: p.origin, status: !own[p.origin] ? ('new' as const) : sameProfile(own[p.origin]!, p) ? ('same' as const) : ('differs' as const) })),
+      droppedProfiles: parsed.droppedProfiles,
     };
   },
-  'pack.import': async ({ text, choices }) => {
+  'pack.import': async ({ text, choices, profileChoices }) => {
     const parsed = parsePack(text);
     if (!parsed.ok) throw new Error(parsed.error);
     const pack = parsed.pack;
+    let profilesWritten = 0;
     const plan = await enqueue(async () => {
       const p = planImport(await listGuides(), pack, choices as Record<string, Choice>, 'local');
       await writeGuides(p.write, []);
+      // The pack's site profiles become the learner's own (D213): a new site's at once; one that
+      // differs from the own only when the user chose to replace it (keep is the default).
+      if (parsed.profiles.length) {
+        const map = readProfileMap((await chrome.storage.local.get(LOCAL_PROFILES_KEY))[LOCAL_PROFILES_KEY]);
+        for (const prof of parsed.profiles) {
+          const mine = map[prof.origin];
+          if (mine && (sameProfile(mine, prof) || profileChoices?.[prof.origin] !== 'replace')) continue;
+          if (!mine && Object.keys(map).length >= MAX_PROFILES) continue;
+          map[prof.origin] = prof;
+          profilesWritten++;
+        }
+        if (profilesWritten) await chrome.storage.local.set({ [LOCAL_PROFILES_KEY]: map });
+      }
       return p;
     });
     await addPendingAllow(packOrigins(pack.guides));
     await updateAllBadges();
     // A replaced guide's screenshots showed the old content (D185).
     await dropShotsOf(plan.write.map((g) => g.id));
-    return { imported: plan.write.length, skipped: plan.skipped };
+    return { imported: plan.write.length, skipped: plan.skipped, profiles: profilesWritten, droppedProfiles: parsed.droppedProfiles };
   },
   'allow.pending': async () => ({ origins: await pendingAllow() }),
   'allow.dismiss': async () => {
@@ -391,8 +412,11 @@ export const discoveryHandlers: Handlers = {
     const before = (await libraryState()).url;
     await setLibraryState({ url, lastError: null, ...(url === null ? { count: 0, lastFetchAt: null } : {}) });
     if (url === null) {
-      // Unsubscribing removes the library guides.
-      await enqueue(async () => writeGuides([], (await listGuides()).filter((g) => g.source === 'library').map((g) => g.id)));
+      // Unsubscribing removes the library guides, and the library's site profiles (D213).
+      await enqueue(async () => {
+        await writeGuides([], (await listGuides()).filter((g) => g.source === 'library').map((g) => g.id));
+        await chrome.storage.local.remove(LIBRARY_PROFILES_KEY);
+      });
       await updateAllBadges();
     }
     await releaseFetchOnly(before, url);
@@ -422,8 +446,9 @@ export const discoveryHandlers: Handlers = {
     if (!url || !origin || ctx.frameId !== 0) return { guides: [], launcher: false };
     // Only this origin's guides that match this page, with their tags for the ? menu's search,
     // capped and checked against the schema (D171).
+    const profiles = await loadProfiles();
     const guides = (await listGuides())
-      .filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url))
+      .filter((g) => g.appOrigins.includes(origin) && guideMatchesUrl(g, url, profiles))
       .slice(0, MAX_FOR_PAGE)
       .map(forPageEntry);
     const launcher = ownSetting(await siteSettings(), origin)?.launcher ?? true; // on unless turned off (D150)

@@ -25,6 +25,7 @@ import { HD_IDLE_ALARM, hdEnable, hdRemove, hdStatusForSettings, onHdIdle, onHdR
 import { broadcastAllRuns, carryRunToNewTab, dropRun, getRun, resumeRunsMovedTo, endRunsOnRevokedSites, onRunCommand, onTopFrameLoad, runHandlers, viewFor } from '../background/runs';
 import { tutorialHandlers } from '../background/tutorials';
 import { statsHandlers } from '../background/stats';
+import { profileHandlers } from '../background/profiles';
 import { debugHandlers, debugReady, debugTextForTab, dlog, onDebugTabRemoved } from '../background/debug';
 import { redactUrl } from '../core/debug/log';
 import { getPlayerSettings, setPlayerSettings } from '../background/player-settings';
@@ -68,6 +69,7 @@ const handlers: Handlers = {
   ...debugHandlers,
   ...tutorialHandlers,
   ...statsHandlers,
+  ...profileHandlers,
   // The not-found card's Copy log (D111): the top frame of a tab with a run on its own site only.
   'debug.copy': async (_p, ctx) => {
     if (ctx.tabId === undefined || ctx.frameId !== 0 || !ctx.sender.origin) return { text: null };

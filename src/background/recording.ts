@@ -20,6 +20,7 @@ import {
   urlKey,
 } from '../core/recorder/session';
 import { originToMatchPattern, stepUrlRule } from '../core/url/url';
+import { loadProfiles, urlOptionsFor } from '../core/storage/profiles';
 import { withoutLinks } from '../core/text/markdown';
 import { dlog } from './debug';
 import { redactUrl } from '../core/debug/log';
@@ -164,7 +165,8 @@ export const recordingHandlers: Handlers = {
     const intoShots = into ? await shotsOn(into.id) : false;
     const state = await enqueue(async () => {
       if (await getRecording()) throw new Error('A recording is already running.');
-      const s = startRecording(into ? into.title : title, tabId, url);
+      // The site's own profile: a recording makes the author's own guide (D213).
+      const s = startRecording(into ? into.title : title, tabId, url, Date.now(), urlOptionsFor(await loadProfiles(), url, 'local'));
       if (into && insertInto) {
         // The guide's own id: its screenshots, if on, are keyed to it already (D185).
         s.guideId = into.id;
@@ -290,7 +292,7 @@ export const recordingHandlers: Handlers = {
       if (st.status !== 'recording') return refused('recording is paused');
       const step = clean;
       // Steps belong to the page: a step recorded in a frame gets the top page's URL rule.
-      if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top);
+      if (ctx.frameId !== 0 && top) step.url = stepUrlRule(top, urlOptionsFor(await loadProfiles(), top, 'local'));
       if (top) addOrigin(st, new URL(top).origin);
       // The action's own time, not when this message got here: a route report it caused may
       // have been handled first (D67).
@@ -347,6 +349,8 @@ export async function onRouteReport(
 ): Promise<ReturnType<typeof viewOf>> {
   const tabId = ctx.tabId;
   let changed = false;
+  // Hash routing and kept query keys of the site's own profile shape the step's URL rule (D213).
+  const profiles = await loadProfiles();
   const state = await mutate((st) => {
     if (!st || !isRecordingTab(st, tabId) || ctx.frameId !== 0) return st;
     const key = String(tabId);
@@ -360,14 +364,18 @@ export async function onRouteReport(
     const marks = [st.leavingAt?.[key], payload.timeOrigin].filter((x): x is number => typeof x === 'number');
     const leavingAt = payload.via === 'load' && marks.length ? Math.min(...marks) : undefined;
     const at = eventTime(payload.at);
-    const step = navigationStep(st, {
-      url: payload.url,
-      prevUrl,
-      navigationType: payload.navigationType,
-      title: payload.title,
-      now: at,
-      ...(leavingAt !== undefined ? { leavingAt } : {}),
-    });
+    const step = navigationStep(
+      st,
+      {
+        url: payload.url,
+        prevUrl,
+        navigationType: payload.navigationType,
+        title: payload.title,
+        now: at,
+        ...(leavingAt !== undefined ? { leavingAt } : {}),
+      },
+      urlOptionsFor(profiles, payload.url, 'local'),
+    );
     if (payload.via === 'load' && st.leavingAt) delete st.leavingAt[key];
     st.lastUrl[key] = urlKey(payload.url);
     if (payload.via !== 'leaving') {

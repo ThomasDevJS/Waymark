@@ -6,6 +6,7 @@
  * animation frame; the choice is memoized on the hovered element and made only once the pointer
  * rests on a new element (it builds fingerprints, which scan the page for look-alikes).
  */
+import type { ProfileOptions } from '../core/model/profile';
 import { buildFingerprint } from '../core/fingerprint';
 import { previewClick, type ClickPreview } from '../core/recorder/preview';
 import { eventPath, isOverlayPath, overlayLayer, overlayRoot } from './overlay/host';
@@ -31,7 +32,7 @@ const CSS = `
 @media (forced-colors: active) { .rec-box { border-color: Highlight; } }
 `;
 
-export function createRecHover(framePath: () => string[]): { start(): void; stop(): void } {
+export function createRecHover(framePath: () => string[], profile: () => ProfileOptions = () => ({})): { start(): void; stop(): void } {
   let on = false;
   let box: HTMLElement | null = null;
   let label: HTMLElement | null = null;
@@ -47,8 +48,8 @@ export function createRecHover(framePath: () => string[]): { start(): void; stop
   let shown: ClickPreview | null = null;
   let style: HTMLStyleElement | null = null;
 
-  const fpOf = (el: Element) => buildFingerprint(el, { framePath: framePath() });
-  const lightFpOf = (el: Element) => buildFingerprint(el, { light: true });
+  const fpOf = (el: Element) => buildFingerprint(el, { framePath: framePath(), profile: profile() });
+  const lightFpOf = (el: Element) => buildFingerprint(el, { light: true, profile: profile() });
 
   const hide = () => {
     shown = null;

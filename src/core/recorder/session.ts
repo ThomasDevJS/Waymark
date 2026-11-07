@@ -103,7 +103,7 @@ export function urlKey(url: string): string {
   }
 }
 
-export function startRecording(title: string, tabId: number, url: string, now = Date.now()): RecordingState {
+export function startRecording(title: string, tabId: number, url: string, now = Date.now(), opts: UrlOptions = {}): RecordingState {
   return {
     guideId: newId(),
     title: title.trim() || 'Untitled guide',
@@ -113,7 +113,7 @@ export function startRecording(title: string, tabId: number, url: string, now = 
     steps: [],
     startedAt: new Date(now).toISOString(),
     startUrl: safeStartUrl(url),
-    startRule: stepUrlRule(url),
+    startRule: stepUrlRule(url, opts),
     appOrigins: [new URL(url).origin],
     lastActionAt: 0,
     lastUrl: { [tabId]: urlKey(url) },

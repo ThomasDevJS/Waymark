@@ -1,7 +1,9 @@
 /** Content side of recording: starts and stops the recorder as the service worker says. */
 import { send } from '../core/messaging/client';
 import type { ContentPush } from '../core/messaging/protocol';
-import { createRecorder, type Recorder } from '../core/recorder/recorder';
+import { createRecorder, type Recorder, type RecorderOptions } from '../core/recorder/recorder';
+import type { ProfileOptions } from '../core/model/profile';
+import { fetchProfile } from './profile';
 import type { RecordingView } from '../core/recorder/session';
 import { isOverlayPath } from './overlay/host';
 import { flashPill, hidePill, showPill } from './overlay/pill';
@@ -16,13 +18,16 @@ export const SKIP_NOTICE = 'Not recorded: Waymark could not find this again. Cli
 export function startRecordingClient(framePath: () => string[]): { apply(view: RecordingView): void; dispose(): void } {
   let recorder: Recorder | null = null;
   let skipped = 0;
-  const hover = createRecHover(framePath);
+  // The site's own profile (D213): filled in as soon as the service worker answers; the recorder
+  // and the outline read it at each step.
+  let profile: ProfileOptions = {};
+  const hover = createRecHover(framePath, () => profile);
   let hoverAsk = 0;
 
   const apply = (view: RecordingView) => {
     const on = view.active && !view.paused;
     if (on && !recorder) {
-      recorder = createRecorder({
+      const opts: RecorderOptions = {
         emit: (op) => {
           send('rec.step', { ...op, at: op.at ?? Date.now() }).catch(() => undefined);
         },
@@ -36,6 +41,11 @@ export function startRecordingClient(framePath: () => string[]): { apply(view: R
           testMark('rec-skipped', String(skipped));
           flashPill(SKIP_NOTICE);
         },
+      };
+      recorder = createRecorder(opts);
+      void fetchProfile('record').then((p) => {
+        profile = p;
+        opts.profile = p;
       });
     } else if (!on && recorder) {
       recorder.stop();

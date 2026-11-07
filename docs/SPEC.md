@@ -239,7 +239,7 @@ Finding the recorded element again on a changed page is the product; every other
 7. Still nothing: show the not-found card. Never fall back to a guess.
 8. Across frames: each frame's matcher reports its best score and margin to the service worker, which picks one winner by `frameId`. Only the winning frame draws the spotlight and tooltip.
 
-**Per-site profiles** let an author add stable attributes (such as `data-qa`), extra ignore patterns, hash routing, and query keys to keep. Each successful match also logs which signals matched, so the editor can flag fragile steps that matched on a single strong signal.
+**Per-site profiles** let an author add stable attributes (such as `data-qa`), extra ignore patterns, hash routing, and query keys to keep. They are set in the side panel (Site options → Advanced matching), travel in packs and the team library, and team guides use the library's profile (D213). Ignore patterns are wildcards (`id=gen-*`), not regular expressions (D213). Each successful match also logs which signals matched, so the editor can flag fragile steps that matched on a single strong signal.
 
 ## Recorder
 
