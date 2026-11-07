@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-07
+
 ### Added
 - Reorder steps in the editor by dragging a step's handle, or by keyboard (Space, the arrow keys, Space). **Move to top** and **Move to bottom** are in a step's More options (D205, #108).
 
@@ -253,7 +255,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.10.0
 [0.9.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.9.0
 [0.8.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.8.0
 [0.7.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.7.0
