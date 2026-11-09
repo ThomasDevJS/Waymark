@@ -15,10 +15,14 @@ import { DUR, EASE, reducedMotion } from '../../ui/motion';
 import { testMark } from '../test-hooks';
 import { DEFAULT_SHADE, isShade, type Shade } from '../../core/player/shade';
 
-/** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
 /** A docked tooltip (D206): this far from the right edge, and above the launcher in the corner. */
 const DOCK_GAP_PX = 16;
 const DOCK_BOTTOM_PX = 84;
+/** Smaller than this, a docked tooltip would sit on the grid's top-left anyway: it floats next to the Name Box. */
+const DOCK_MIN_W = 720;
+const DOCK_MIN_H = 520;
+
+/** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
 const motionCount = { glide: 0, ripple: 0 };
 function countMotion(kind: keyof typeof motionCount): void {
   if (!__WAYMARK_TEST__) return;
@@ -346,7 +350,8 @@ export class PlayerUI {
     if (step.optional) buttons.append(this.button('Skip', 'skip', this.h.skip, 'ghost'));
     // A hover step whose trigger can't take keyboard focus: Next, so keyboard users are not stuck (D204).
     const unfocusable = step.kind === 'hover' && !(target instanceof HTMLElement && target.tabIndex >= 0);
-    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable) {
+    // A Sheets cell step (D206): Next too, for a sheet renamed since or a cell out of reach.
+    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable || step.kind === 'cell') {
       const last = view.stepIndex === view.total - 1;
       buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
     }
@@ -385,7 +390,7 @@ export class PlayerUI {
     // A Sheets cell step (D206) rings the Name Box, which sits right above the grid's top-left
     // cells, the ones learners pick most. Next to it the tooltip would cover them (there is no room
     // above it), so it docks in the bottom-right corner instead, unless the author placed it.
-    const docked = step.kind === 'cell' && (!step.placement || step.placement === 'auto');
+    const docked = step.kind === 'cell' && (!step.placement || step.placement === 'auto') && window.innerWidth >= DOCK_MIN_W && window.innerHeight >= DOCK_MIN_H;
     if (docked) tip.classList.add('docked');
     const update = () => {
       if (!target.isConnected) {

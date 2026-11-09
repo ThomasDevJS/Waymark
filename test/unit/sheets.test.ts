@@ -5,6 +5,7 @@ import { makePack, packFormatFor, parsePack } from '../../src/core/sharing/pack'
 import { stepTitle } from '../../src/core/text/templates';
 import { recorderStep } from '../../src/background/recording';
 import { GuideSchema, type Guide, type Step } from '../../src/core/model/schema';
+import { applyRemovals, packStrings } from '../../src/core/sharing/review';
 
 const target = { instance: 'unique' as const, matchCount: 1, tag: 'input', id: 't-name-box', cssPath: 'input#t-name-box', xpath: '/html[1]/body[1]/input[1]', ancestors: [], shadowPath: [], framePath: [], rect: { x: 0, y: 0, w: 1, h: 1, vw: 1, vh: 1 } };
 const step = (kind: Step['kind'], id: string, extra: Partial<Step> = {}): Step => ({ id, kind, title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target, ...extra });
@@ -109,5 +110,27 @@ describe('cell steps in guides and packs', () => {
     expect(recorderStep(step('cell', 's1', { cell: { ref: 'B8', sheet: 'Budget' } }))?.cell).toEqual({ ref: 'B8', sheet: 'Budget' });
     expect(recorderStep(step('cell', 's1'))).toBeNull();
     expect(recorderStep(step('click', 's1', { cell: { ref: 'B8' } }))).toBeNull();
+  });
+});
+
+describe('review fixes (D206)', () => {
+  it('review fix: a step that names a sheet does not advance when the sheet can\'t be read', () => {
+    sheetsPage('B8', []);
+    expect(isCellSelected(document, { ref: 'B8', sheet: 'Budget' })).toBe(false);
+    expect(isCellSelected(document, { ref: 'B8' })).toBe(true);
+  });
+
+  it('review fix: the export review lists a cell step\'s sheet name and can remove it', () => {
+    const g = guide('g', [step('cell', 's1', { cell: { ref: 'B8', sheet: 'Salaries' } })]);
+    const item = packStrings([g]).find((x) => x.field === 'cell.sheet');
+    expect(item).toMatchObject({ value: 'Salaries', removable: true });
+    const [out] = applyRemovals([g], new Set([item!.key]));
+    expect(out!.steps[0]!.cell).toEqual({ ref: 'B8' });
+    expect(GuideSchema.safeParse(out).success).toBe(true);
+  });
+
+  it('review fix: the schema needs the cell exactly on cell steps', () => {
+    expect(GuideSchema.safeParse(guide('g', [step('cell', 's1')])).success).toBe(false);
+    expect(GuideSchema.safeParse(guide('g', [step('click', 's1', { cell: { ref: 'B8' } })])).success).toBe(false);
   });
 });

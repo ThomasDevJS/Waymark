@@ -148,7 +148,11 @@ export const GuideSchema = z.object({
   appOrigins: z.array(SiteOriginSchema).min(1).max(50),
   startUrl: shortStr(2000),
   matchUrls: z.array(UrlRuleSchema).max(50),
-  steps: z.array(StepSchema).max(MAX_STEPS_PER_GUIDE),
+  // A Sheets cell step carries its cell, and only it does (D206): one without would never advance.
+  steps: z
+    .array(StepSchema)
+    .max(MAX_STEPS_PER_GUIDE)
+    .refine((steps) => steps.every((s) => (s.kind === 'cell') === !!s.cell), 'a cell step needs its cell, and only a cell step has one'),
   version: z.number().int().nonnegative(),
   source: z.enum(['local', 'library']),
   updatedAt: shortStr(64),

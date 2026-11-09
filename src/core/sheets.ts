@@ -50,9 +50,12 @@ export function readCell(doc: Document): CellRef | null {
   return sheet ? { ref, sheet } : { ref };
 }
 
-/** The selection is the step's cell (and its sheet, when the step names one). */
+/**
+ * The selection is the step's cell, and its sheet when the step names one. A sheet that can't be
+ * read then counts as another sheet: never advance on what might be the wrong cell.
+ */
 export function isCellSelected(doc: Document, want: CellRef): boolean {
   const now = readCell(doc);
   if (!now || now.ref !== normalizeRef(want.ref)) return false;
-  return !want.sheet || !now.sheet || now.sheet === want.sheet;
+  return !want.sheet || now.sheet === want.sheet;
 }

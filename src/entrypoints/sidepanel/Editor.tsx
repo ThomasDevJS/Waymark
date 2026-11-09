@@ -4,7 +4,7 @@
  * Save bumps the guide version.
  */
 import { signal } from '@preact/signals';
-import { useEffect, useLayoutEffect } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { ElementFingerprint, Guide, Step } from '../../core/model/schema';
 import { newId } from '../../core/model/ids';
@@ -132,8 +132,6 @@ function move(index: number, by: number) {
 
 /** Keyboard reordering (D205): the step picked up with Space on its handle, and where it was. */
 const lifted = signal<{ id: string; from: number } | null>(null);
-/** A cell typed that isn't a cell reference, per step (D206). */
-const cellErrors = signal<Record<string, string>>({});
 /** What a screen reader hears about reordering. */
 const reorderNote = signal('');
 /** The dragged row keeps its offset until the new order is rendered, so it glides from where it was dropped. */
@@ -481,15 +479,15 @@ function AddStepButtons({ after, testid, label, g, tabId, readOnly }: { after: s
  */
 function CellField({ step, index, readOnly }: { step: Step; index: number; readOnly: boolean }) {
   const cell = step.cell!;
-  const error = cellErrors.value[step.id];
+  // Kept here: the field is keyed by the step and its cell, so an undo or another cell starts clean.
+  const [error, setError] = useState<string | null>(null);
   const commit = (raw: string) => {
     const ref = normalizeRef(raw);
     if (!ref) {
-      cellErrors.value = { ...cellErrors.value, [step.id]: 'Use a cell like B8, or a range like B5:D9.' };
+      setError('Use a cell like B8, or a range like B5:D9.');
       return;
     }
-    const { [step.id]: _, ...rest } = cellErrors.value;
-    cellErrors.value = rest;
+    setError(null);
     if (ref === cell.ref) return;
     const sheet = cell.sheet ? { sheet: cell.sheet } : {};
     const fromTemplate = step.title === stepTitle('cell', { name: cell.ref, ...sheet });
@@ -886,7 +884,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     </span>
                     <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
                   </label>
-                  {s.kind === 'cell' && s.cell && <CellField step={s} index={i} readOnly={readOnly} />}
+                  {s.kind === 'cell' && s.cell && <CellField key={`${s.id}:${s.cell.ref}`} step={s} index={i} readOnly={readOnly} />}
                   <label class="field">
                     <span class="label">Note</span>
                     <textarea

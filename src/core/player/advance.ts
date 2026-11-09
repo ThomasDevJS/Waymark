@@ -14,11 +14,11 @@
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
 import { isCellSelected } from '../sheets';
+import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
+import { ariaRole } from '../debug/log';
 
 /** How often a Sheets cell step reads the Name Box (D206). */
 const CELL_POLL_MS = 250;
-import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
-import { ariaRole } from '../debug/log';
 
 export const SUBMIT_NAV_MS = 1500;
 /** A press on the target and a click on its ancestor within this time are one click (D61). */
