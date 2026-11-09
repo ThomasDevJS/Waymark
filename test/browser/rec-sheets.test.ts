@@ -258,3 +258,109 @@ describe('#115: typing steps in a cell that clears on commit', () => {
     stop();
   });
 });
+
+describe('#115 review fixes', () => {
+  it('a Tab the app keeps (indenting) does not move a typing step on; Tab that leaves the field does', async () => {
+    const code = Object.assign(document.createElement('div'), { contentEditable: 'true' });
+    code.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') e.preventDefault(); // indents, keeps focus
+    });
+    const next = document.createElement('input');
+    root.append(code, next);
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'input', title: 'Enter code', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(code) };
+    const stop = watchAdvance({ step, targets: [code], onAdvance: () => advanced++ });
+    code.focus();
+    await userEvent.keyboard('if x');
+    await userEvent.keyboard('{Tab}');
+    await settle(50);
+    expect(advanced).toBe(0);
+    stop();
+    const plain = document.createElement('input');
+    root.append(plain);
+    const stop2 = watchAdvance({ step: { ...step, target: buildFingerprint(plain) }, targets: [plain], onAdvance: () => advanced++ });
+    plain.focus();
+    await userEvent.keyboard('Ada{Tab}');
+    await settle(50);
+    expect(advanced).toBe(1);
+    stop2();
+  });
+
+  it('Enter in a filled Sheets cell editor moves the typing step on', async () => {
+    const editor = Object.assign(document.createElement('div'), { contentEditable: 'true' });
+    editor.setAttribute('aria-label', 'A1');
+    canvas.parentElement!.append(editor);
+    editor.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        editor.textContent = '';
+      }
+      if (e.key === 'Tab') e.preventDefault(); // focus stays: only the next-tick check could move on
+    });
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'input', title: 'Enter A1', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(editor) };
+    const stop = watchAdvance({ step, targets: [editor], onAdvance: () => advanced++ });
+    editor.focus();
+    await userEvent.keyboard('5{Enter}');
+    expect(advanced).toBe(1);
+    stop();
+  });
+
+  it('content that appears more than a second after a skipped click is not "in a menu"', async () => {
+    const blank = document.createElement('div');
+    blank.style.cssText = 'width:20px;height:20px';
+    const late = document.createElement('div');
+    late.hidden = true;
+    const button = Object.assign(document.createElement('button'), { textContent: 'Save report' });
+    late.append(button);
+    root.append(blank, late);
+    await userEvent.click(blank); // nothing to find it by: skipped (D47)
+    await settle(1200);
+    late.hidden = false; // loaded later, not opened by the click
+    await settle();
+    await userEvent.click(button);
+    await settle();
+    expect(steps().map((s) => [s.title, s.flags])).toEqual([['Click **Save report**', undefined]]);
+  });
+
+  it('a grid click that selects a cell opens no menu: what it shows is not flagged', async () => {
+    const panel = document.createElement('div');
+    panel.hidden = true;
+    const button = Object.assign(document.createElement('button'), { textContent: 'Insert note' });
+    panel.append(button);
+    root.append(panel);
+    canvas.addEventListener('mousedown', () => (panel.hidden = false));
+    await userEvent.click(canvas, { position: { x: 50, y: 50 } });
+    await settle(400);
+    await userEvent.click(button);
+    await settle();
+    expect(steps().map((s) => [s.kind, s.flags])).toEqual([
+      ['cell', undefined],
+      ['click', undefined],
+    ]);
+  });
+
+  it('a slow sheet: typing before the second read records one cell step, not two', async () => {
+    const editor = Object.assign(document.createElement('div'), { contentEditable: 'true' });
+    editor.setAttribute('aria-label', 'A1');
+    root.append(editor);
+    // Only the slow update: the shared handler (which sets B2 at once) is kept out.
+    canvas.addEventListener(
+      'mousedown',
+      (e) => {
+        e.stopImmediatePropagation();
+        setTimeout(() => {
+          box.value = 'C3';
+          editor.setAttribute('aria-label', 'C3');
+        }, 100);
+      },
+      { capture: true },
+    );
+    await userEvent.click(canvas, { position: { x: 50, y: 50 } });
+    await settle(150);
+    editor.focus();
+    await userEvent.keyboard('9');
+    await settle(400);
+    expect(steps().map((s) => `${s.kind}: ${s.title}`)).toEqual(['cell: Select cell **C3** on **Budget**', 'input: Enter C3']);
+  });
+});

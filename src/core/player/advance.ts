@@ -10,6 +10,7 @@
  * | note     | Next                                                                            |
  * | hover    | the pointer is on the target, keyboard focus reaches it, or a click on it (D204) |
  * | cell     | the Sheets Name Box shows the step's cell (and sheet), however it was selected (D206) |
+ * | input+   | also Tab out of a filled field (focus left it), and Tab or Enter in Sheets' cell editor (D207) |
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
@@ -197,10 +198,18 @@ export function watchAdvance(w: AdvanceWatch): () => void {
     on(doc, 'keydown', (e) => {
       const k = e as KeyboardEvent;
       if (k.isComposing || k.ctrlKey || k.metaKey || k.altKey || !trusted(e)) return;
-      // Tab out of a filled field, checked before an app that clears on Tab (Sheets' cell editor, #115).
+      // Tab out of a filled field, for an app that clears it on Tab (Sheets' cell editor, #115):
+      // the value is noted before the app sees the key; the step moves on only once focus has
+      // left the field, or in Sheets' cell editor (it commits the cell). A Tab the app keeps
+      // (indenting in a code or rich-text editor) never does.
       if (k.key === 'Tab') {
         const t = hits(e.composedPath(), w.targets);
-        if (t && hasValue(t)) advance('Tab out of a filled field');
+        if (!t || !hasValue(t)) return;
+        setTimeout(() => {
+          const active = doc.activeElement;
+          const left = !active || !(t === active || t.contains(active));
+          if (left || isCellEditor(t, doc)) advance(left ? 'Tab out of a filled field' : 'Tab in a filled spreadsheet cell (#115)');
+        }, 0);
         return;
       }
       if (k.key !== 'Enter' || k.shiftKey) return;
@@ -252,6 +261,7 @@ export function watchAdvance(w: AdvanceWatch): () => void {
     tags: [...new Set(w.targets.map((t) => tagOf(t)))],
   }));
   return () => {
+    fired = true; // a check still pending (the Tab rule's next tick) must not move a later step on
     for (const [t, type, fn] of listeners) t.removeEventListener(type, fn, { capture: true });
   };
 }

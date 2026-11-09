@@ -57,6 +57,12 @@ describe('run helpers (D210)', () => {
     expect(fixedStep(makeGuide(), 'gone', fp('Download'))).toBeNull();
   });
 
+  it('#115 review fix: fixedStep keeps "in a menu" (where the item is), and drops the other warnings', () => {
+    const g = makeGuide();
+    g.steps[1]!.flags = ['low-confidence', 'in-menu'];
+    expect(fixedStep(g, 's2', fp('Download'))?.flags).toEqual(['in-menu']);
+  });
+
   it('applyRunStep restarts the current step with a new token, keeps it read, and leaves other steps alone', () => {
     const run = startRun(makeGuide(), Date.now(), 1);
     run.spokenToken = run.stepToken;

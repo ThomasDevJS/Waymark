@@ -29,6 +29,8 @@ const CELL_REREAD_MS = 300;
 const IN_MENU_MS = 15_000;
 /** A press this long before a click is that click's press. */
 const PRESS_TO_CLICK_MS = 1500;
+/** ...and its menu appeared within this long of the press. */
+const MENU_OPENS_MS = 1000;
 
 export type RecorderOp = { op: 'add'; step: Step; at?: number } | { op: 'replace'; stepId: string; step: Step; at?: number };
 
@@ -218,7 +220,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (opener === null || now() - opener > IN_MENU_MS) return false;
     // A step recorded since the opener (other than the grid click's own cell step) opened it.
     if (last && !last.skipped && last.kind !== 'cell' && last.time > opener) return false;
-    return hover.revealedSince(el, opener);
+    // Revealed by that click: within a second of it, not content that loaded later.
+    return hover.revealedBetween(el, opener, opener + MENU_OPENS_MS);
   };
 
   // Google Sheets cells (D206): the grid is a canvas, so a click there (or a reference typed into
@@ -269,6 +272,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         dbg('skip', () => ({ why: 'Sheets: the Name Box shows no cell reference (a named range?), so there is nothing to select again (D206)', via }));
         return;
       }
+      // Already the guide's cell: typing into it recorded its cell step meanwhile (a slow sheet).
+      if (lastCell && sameCell(lastCell, c) && before && !sameCell(before, c)) return;
       // Unchanged: Sheets may not have updated the Name Box yet (a heavy sheet); look again. Still
       // unchanged then: a filter button drawn on the grid, or the selected cell again (#115).
       if (before && sameCell(before, c)) {
@@ -276,6 +281,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
         else later(() => attempt(true), CELL_REREAD_MS);
         return;
       }
+      opener = null; // the click selected a cell: it opened no menu
       if (last && last.kind === 'cell' && !last.skipped && last.id && lastCell && cellQuiet && lastCell.sheet === c.sheet) {
         const step = cellStep(box, c, when);
         step.id = last.id;

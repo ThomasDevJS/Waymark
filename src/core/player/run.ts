@@ -208,9 +208,10 @@ export function withStep(guide: Guide, step: Step): Guide | null {
 export function fixedStep(guide: Guide, stepId: string, target: ElementFingerprint): Step | null {
   const step = guide.steps.find((s) => s.id === stepId);
   if (!step?.target) return null;
-  // An element the author chose: the recorder's warnings about the old one no longer apply.
-  const { flags: _flags, ...rest } = step;
-  return { ...rest, target };
+  // An element the author chose: the recorder's warnings about the old one no longer apply, but
+  // "in a menu" is about where the item is, not which element was picked (#115).
+  const { flags, ...rest } = step;
+  return { ...rest, target, ...(flags?.includes('in-menu') ? { flags: ['in-menu' as const] } : {}) };
 }
 
 /**
