@@ -80,6 +80,10 @@ Not built yet (M6): browser matrix, `docs/BROWSERS.md` and pilot guides. The pri
 - Schema, caps, wildcard ignore patterns (`wildcardMatch`, never a regex) and `compileProfile`: `src/core/model/profile.ts`. Storage and precedence (`siteProfiles`, `libraryProfiles`, `profileFor`, `urlOptionsFor`): `src/core/storage/profiles.ts`. Service worker: `src/background/profiles.ts` (`profile.get` for a frame's own origin; the panel's get / set / candidates / Test all steps). Content: `src/content/profile.ts` (recorder, outline, picker, Test step, player). URL options reach the recorder, runs, badges and the launcher. Packs: `profiles[]` (`packProfiles`, `makePack`), import keep / replace, the library's replace `libraryProfiles`. Panel: `sidepanel/Matching.tsx`; export review lists them.
 - Tests: `test/unit/site-profiles.test.ts`, `test/browser/profile-matching.test.ts`, e2e `test/e2e/f4-site-profiles.spec.ts` (fixture `automation.html`).
 
+## Google Sheets cells (D206, issue #114)
+- `src/core/sheets.ts` (the Name Box `#t-name-box`, the active tab, A1 references). Recorder: `recordCell`, `refreshCell` and `onCellActivity` in `src/core/recorder/recorder.ts`. Player: the `cell` rule in `src/core/player/advance.ts` (polls the Name Box), the docked tooltip and Next in `src/content/player/ui.ts`. Editor: `CellField`. Fixture: `test/fixtures/site/sheet.html` (Sheets' ids and classes on a canvas grid).
+- Tests: `test/unit/sheets.test.ts`, `test/browser/rec-sheets.test.ts`, e2e `test/e2e/r8-sheets-cells.spec.ts`. The real Sheets was checked by hand on a public view-only sheet; a signed-in sheet needs the owner.
+
 ## Known limitations (deliberate)
 - **D47:** a click with nothing to find it by again (no name, text, label or id) is not recorded; the REC pill says so. Not announced when it happens inside an iframe.
 - **D37:** clicking the tooltip can still close some of the app's own menus. Handlers in the capture phase and `popover=auto` light dismiss see the click.

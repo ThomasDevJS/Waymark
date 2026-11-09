@@ -9,11 +9,13 @@ import { SHADES } from '../player/shade';
 
 export const SCHEMA_VERSION = 1 as const;
 /**
- * Pack format. 2 since hover steps (D204): a pack with one is written as 2, so an older Waymark
- * says it was made by a newer version instead of failing on the unknown step kind. Packs without
- * hover steps are still written as 1, which every version reads.
+ * Pack format. A pack is written in the oldest format that holds its steps, so an older Waymark
+ * says it was made by a newer version instead of failing on an unknown step kind: 2 with a hover
+ * step (D204), 3 with a Sheets cell step (D206). Packs without either are still written as 1,
+ * which every version reads.
  */
-export const FORMAT_VERSION = 2 as const;
+export const FORMAT_VERSION = 3 as const;
+export const HOVER_FORMAT_VERSION = 2 as const;
 export const BASE_FORMAT_VERSION = 1 as const;
 export const MAX_STEPS_PER_GUIDE = 500;
 
@@ -105,7 +107,7 @@ export const ElementFingerprintSchema = z.object({
 });
 export type ElementFingerprint = z.infer<typeof ElementFingerprintSchema>;
 
-export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note', 'hover']);
+export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note', 'hover', 'cell']);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
 export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas']);
@@ -124,6 +126,13 @@ export const StepSchema = z.object({
   placement: z.enum(['auto', 'top', 'bottom', 'left', 'right']).optional(),
   /** Recorder warnings shown in the editor (see docs/DECISIONS.md D15). */
   flags: z.array(StepFlagSchema).max(5).optional(),
+  /** A Google Sheets cell or range to select (kind `cell`, D206); the target is the Name Box. */
+  cell: z
+    .object({
+      ref: z.string().regex(/^[A-Z]{1,3}[1-9]\d{0,6}(?::[A-Z]{1,3}[1-9]\d{0,6})?$/),
+      sheet: shortStr(200).optional(),
+    })
+    .optional(),
 });
 export type Step = z.infer<typeof StepSchema>;
 
@@ -139,7 +148,11 @@ export const GuideSchema = z.object({
   appOrigins: z.array(SiteOriginSchema).min(1).max(50),
   startUrl: shortStr(2000),
   matchUrls: z.array(UrlRuleSchema).max(50),
-  steps: z.array(StepSchema).max(MAX_STEPS_PER_GUIDE),
+  // A Sheets cell step carries its cell, and only it does (D206): one without would never advance.
+  steps: z
+    .array(StepSchema)
+    .max(MAX_STEPS_PER_GUIDE)
+    .refine((steps) => steps.every((s) => (s.kind === 'cell') === !!s.cell), 'a cell step needs its cell, and only a cell step has one'),
   version: z.number().int().nonnegative(),
   source: z.enum(['local', 'library']),
   updatedAt: shortStr(64),
@@ -162,7 +175,7 @@ export type RunState = z.infer<typeof RunStateSchema>;
 
 export const GuidePackSchema = z.object({
   format: z.literal('waymark-pack'),
-  formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
+  formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(HOVER_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
   exportedAt: shortStr(64),
   guides: z.array(GuideSchema),
   // Site profiles of the guides' sites (D213). Checked one by one in parsePack: a bad one is

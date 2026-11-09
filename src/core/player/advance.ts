@@ -9,11 +9,16 @@
  * | navigate | the URL matches the step's URL rule (handled by the controller)                |
  * | note     | Next                                                                            |
  * | hover    | the pointer is on the target, keyboard focus reaches it, or a click on it (D204) |
+ * | cell     | the Sheets Name Box shows the step's cell (and sheet), however it was selected (D206) |
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
+import { isCellSelected } from '../sheets';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { ariaRole } from '../debug/log';
+
+/** How often a Sheets cell step reads the Name Box (D206). */
+const CELL_POLL_MS = 250;
 
 export const SUBMIT_NAV_MS = 1500;
 /** A press on the target and a click on its ancestor within this time are one click (D61). */
@@ -110,6 +115,18 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       clearTimeout(already);
       for (const [t, type, fn] of listeners) t.removeEventListener(type, fn, { capture: true });
     };
+  }
+
+  // A Google Sheets cell (D206): the target is the Name Box, which shows the selected cell after a
+  // click on the grid, the arrow keys or a reference typed into it. Sheets sets its value from
+  // script (no events), so it is read a few times a second. Already selected when drawn: it moves
+  // on after a short look.
+  if (kind === 'cell' && w.step.cell) {
+    const want = w.step.cell;
+    const timer = setInterval(() => {
+      if (isCellSelected(doc, want)) advance('the Name Box shows the step\'s cell');
+    }, CELL_POLL_MS);
+    return () => clearInterval(timer);
   }
 
   if (kind === 'click' || (kind === 'select' && primary && !isNativeSelect(primary)) || (kind === 'check' && primary && !isNativeCheck(primary))) {

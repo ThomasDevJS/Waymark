@@ -22,7 +22,7 @@ Waymark (working name) is a Chromium extension that records a click-by-click wal
 - A JS snippet embedded in a website, or customer-facing distribution.
 - Analytics dashboards, SSO, Firefox or Safari.
 - Automatic "user is stuck" detection.
-- Apps that draw their UI on a canvas (Google Sheets, Figma): there is no element to target.
+- Apps that draw their UI on a canvas (Figma, the Google Docs page): there is no element to target. Google Sheets cells are the exception: a "Select cell" step through the Name Box (D206).
 
 ## Users, scope and assumptions
 
@@ -139,7 +139,7 @@ interface UrlRule { kind: 'prefix' | 'pattern'; value: string } // pattern: /ord
 
 interface Step {
   id: string;
-  kind: 'click' | 'input' | 'select' | 'check' | 'submit' | 'navigate' | 'note' | 'hover'; // hover: D204
+  kind: 'click' | 'input' | 'select' | 'check' | 'submit' | 'navigate' | 'note' | 'hover' | 'cell'; // hover: D204; cell (with `cell: { ref, sheet? }`): D206
   title: string;              // "Click **Save**"
   note?: string;              // limited markdown
   voiceText?: string;         // default: title + note
@@ -181,7 +181,7 @@ interface RunState {          // chrome.storage.session, key run:<tabId>
 
 interface GuidePack {         // export / import / library file
   format: 'waymark-pack';
-  formatVersion: 1 | 2; // 2 only when a guide has a hover step (D204)
+  formatVersion: 1 | 2 | 3; // the oldest that holds the steps: 2 with a hover step (D204), 3 with a Sheets cell step (D206)
   exportedAt: string;
   guides: Guide[];
 }
@@ -264,6 +264,7 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 - A custom dropdown stays two steps: open it, then "Choose **{option}**". Options rendered in a portal are matched by role and name, not position.
 - A click on a non-interactive area is kept only if it has no interactive ancestor, and it is flagged low-confidence in the editor.
 - A click on an item of a menu that opened while the pointer rested on another element gets a hover step ("Point at **{trigger}**") before it, under the strict rules of D204. Menus shown by CSS `:hover` alone are not detected.
+- A click on the Google Sheets grid becomes "Select cell **B8**", read from the Name Box, and so does a reference typed into the Name Box, then Enter (D206).
 
 **Navigation**
 
@@ -319,6 +320,7 @@ The player draws on top of the real app without touching its styles, and the lea
 | navigate | The URL matches the step's URL rule |
 | note | Next |
 | hover | A trusted `pointerover` on the target, keyboard focus (`:focus-visible`) reaching it, a click on it, or the pointer already there; Next when it can't take focus (D204) |
+| cell | The Sheets Name Box shows the step's cell (and sheet); the tooltip docks bottom-right (D206) |
 
 Optional steps also show Skip. After any action, wait 300 ms before searching for the next target.
 
@@ -369,6 +371,7 @@ Voice and step text are free: the browser's on-device voices read each step, and
 | submit | Submit the form |
 | navigate | Go to {page title} |
 | hover | Point at **{name}** |
+| cell | Select cell **{ref}** (on **{sheet}**) |
 
 `{name}` falls back in order: accessible name, own text, placeholder, `name` attribute, `title` attribute, then a role word such as "the button". Templates are keyed by the guide's `lang`; v1 ships English, and other languages fall back to it.
 

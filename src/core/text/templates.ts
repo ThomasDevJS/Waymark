@@ -13,6 +13,8 @@ export interface TemplateVars {
   checked?: boolean;
   /** Password, credit-card and one-time-code fields. */
   sensitive?: boolean;
+  /** For Sheets cell steps (D206): the sheet tab, when known. */
+  sheet?: string;
 }
 
 type Templates = Record<Exclude<StepKind, 'note'>, (v: Required<Pick<TemplateVars, 'name'>> & TemplateVars) => string>;
@@ -26,6 +28,8 @@ const en: Templates = {
   navigate: (v) => `Go to ${v.pageTitle ?? 'the next page'}`,
   // A menu that opens when the pointer rests on its trigger (D204).
   hover: (v) => `Point at **${v.name}**`,
+  // A Google Sheets cell or range (D206); `name` is its A1 reference.
+  cell: (v) => `Select ${v.name.includes(':') ? 'cells' : 'cell'} **${v.name}**${v.sheet ? ` on **${v.sheet}**` : ''}`,
 };
 
 const TEMPLATES: Record<string, Templates> = { en };
@@ -37,6 +41,7 @@ export function stepTitle(kind: Exclude<StepKind, 'note'>, vars: TemplateVars, l
     name: escapeMd(vars.name ?? 'the element'),
     ...(vars.option !== undefined ? { option: escapeMd(vars.option) } : {}),
     ...(vars.pageTitle !== undefined ? { pageTitle: escapeMd(vars.pageTitle) } : {}),
+    ...(vars.sheet !== undefined ? { sheet: escapeMd(vars.sheet) } : {}),
   });
 }
 

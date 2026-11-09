@@ -37,6 +37,8 @@ export function packStrings(guides: Guide[]): PackString[] {
       push(g, i, 'url', 'url', s.url.value, false, s.id);
       push(g, i, 'note', 'note', s.note, true, s.id);
       push(g, i, 'voice', 'voiceText', s.voiceText, true, s.id);
+      // A Sheets tab's name can hold a person's name (D206): shown, and removable.
+      push(g, i, 'label', 'cell.sheet', s.cell?.sheet, true, s.id);
       const t = s.target as Record<string, unknown> | undefined;
       if (t) {
         for (const f of LABEL_FIELDS) push(g, i, 'label', `target.${f}`, typeof t[f] === 'string' ? (t[f] as string) : undefined, true, s.id);
@@ -65,6 +67,8 @@ export function applyRemovals(guides: Guide[], removed: Set<string>): Guide[] {
     for (const s of copy.steps) {
       if (has(s.id, 'note')) delete s.note;
       if (has(s.id, 'voiceText')) delete s.voiceText;
+      // Without its sheet, a cell step matches the cell on any sheet.
+      if (has(s.id, 'cell.sheet') && s.cell) s.cell = { ref: s.cell.ref };
       const t = s.target as (Record<string, unknown> & NonNullable<Step['target']>) | undefined;
       if (!t) continue;
       for (const f of LABEL_FIELDS) if (has(s.id, `target.${f}`)) delete t[f];

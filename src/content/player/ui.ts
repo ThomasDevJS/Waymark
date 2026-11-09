@@ -15,6 +15,13 @@ import { DUR, EASE, reducedMotion } from '../../ui/motion';
 import { testMark } from '../test-hooks';
 import { DEFAULT_SHADE, isShade, type Shade } from '../../core/player/shade';
 
+/** A docked tooltip (D206): this far from the right edge, and above the launcher in the corner. */
+const DOCK_GAP_PX = 16;
+const DOCK_BOTTOM_PX = 84;
+/** Smaller than this, a docked tooltip would sit on the grid's top-left anyway: it floats next to the Name Box. */
+const DOCK_MIN_W = 720;
+const DOCK_MIN_H = 520;
+
 /** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
 const motionCount = { glide: 0, ripple: 0 };
 function countMotion(kind: keyof typeof motionCount): void {
@@ -216,6 +223,8 @@ export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'ad
       return 'Go to that page to continue.';
     case 'hover':
       return 'Point at the highlighted item (or Tab to it) to continue.';
+    case 'cell':
+      return 'Click that cell in the sheet, or type it in the highlighted box and press Enter.';
     default:
       return null;
   }
@@ -341,7 +350,8 @@ export class PlayerUI {
     if (step.optional) buttons.append(this.button('Skip', 'skip', this.h.skip, 'ghost'));
     // A hover step whose trigger can't take keyboard focus: Next, so keyboard users are not stuck (D204).
     const unfocusable = step.kind === 'hover' && !(target instanceof HTMLElement && target.tabIndex >= 0);
-    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable) {
+    // A Sheets cell step (D206): Next too, for a sheet renamed since or a cell out of reach.
+    if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable || step.kind === 'cell') {
       const last = view.stepIndex === view.total - 1;
       buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
     }
@@ -377,6 +387,11 @@ export class PlayerUI {
     layer.append(this.spot, this.ring);
     this.watchPress(target, step);
     const placement: Placement = step.placement && step.placement !== 'auto' ? step.placement : 'bottom';
+    // A Sheets cell step (D206) rings the Name Box, which sits right above the grid's top-left
+    // cells, the ones learners pick most. Next to it the tooltip would cover them (there is no room
+    // above it), so it docks in the bottom-right corner instead, unless the author placed it.
+    const docked = step.kind === 'cell' && (!step.placement || step.placement === 'auto') && window.innerWidth >= DOCK_MIN_W && window.innerHeight >= DOCK_MIN_H;
+    if (docked) tip.classList.add('docked');
     const update = () => {
       if (!target.isConnected) {
         onLost?.();
@@ -396,6 +411,12 @@ export class PlayerUI {
         glideFrom = null; // only the first draw glides; later updates follow the target
       }
       this.lastHole = { ...hole, run, token: view.stepToken, at: performance.now() };
+      if (docked) {
+        const t = tip.getBoundingClientRect();
+        Object.assign(tip.style, { left: `${Math.max(8, window.innerWidth - t.width - DOCK_GAP_PX)}px`, top: `${Math.max(8, window.innerHeight - t.height - DOCK_BOTTOM_PX)}px` });
+        arrowEl.hidden = true;
+        return;
+      }
       void computePosition(target, tip, {
         strategy: 'fixed',
         placement,

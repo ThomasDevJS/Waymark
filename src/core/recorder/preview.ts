@@ -7,6 +7,7 @@ import type { ElementFingerprint } from '../model/schema';
 import { isInteractive, resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { hasStrongSignal } from '../matcher/signals';
 import { hasInteractiveAncestor, promoteToRegion } from './region';
+import { isSheetsGrid } from '../sheets';
 
 /** ok: found again reliably; warn: recorded but "hard to find" (D82); skip: not recorded (D47). */
 export type PreviewTone = 'ok' | 'warn' | 'skip';
@@ -21,6 +22,9 @@ export interface ClickPreview {
  * ignores the click, so the outline never promises a step that will not come (review of D153).
  */
 export function previewClick(path: EventTarget[], fpOf: (el: Element) => ElementFingerprint, lightFpOf: (el: Element) => ElementFingerprint = fpOf): ClickPreview | null {
+  const first = path.find((n): n is Element => n instanceof Element);
+  // The Sheets grid records the selected cell from the Name Box (D206): no outline over the grid.
+  if (first && isSheetsGrid(path, first.ownerDocument)) return null;
   const t = resolveTargetFromPath(path);
   if (!t) return null;
   // The card of D82 needs the full fingerprint (is it one of a kind?); clickableRegion bails out

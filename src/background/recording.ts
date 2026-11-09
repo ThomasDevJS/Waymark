@@ -72,13 +72,16 @@ async function tabUrl(tabId: number): Promise<string | undefined> {
   }
 }
 
-const RECORDER_KINDS = new Set<Step['kind']>(['hover', 'click', 'input', 'select', 'check', 'submit']);
+const RECORDER_KINDS = new Set<Step['kind']>(['hover', 'click', 'input', 'select', 'check', 'submit', 'cell']);
 
 /** Keeps only what the recorder produces: no notes, voice text or placement from a page. */
 export function recorderStep(step: Step): Step | null {
   if (!RECORDER_KINDS.has(step.kind) || !step.target) return null;
+  // A Sheets cell step carries its cell, and only it does (D206).
+  if ((step.kind === 'cell') !== !!step.cell) return null;
   const out: Step = { id: step.id, kind: step.kind, title: withoutLinks(step.title), url: step.url, target: step.target, advance: 'action' };
   if (step.flags?.length) out.flags = step.flags;
+  if (step.cell) out.cell = step.cell.sheet ? { ref: step.cell.ref, sheet: step.cell.sheet } : { ref: step.cell.ref };
   return out;
 }
 

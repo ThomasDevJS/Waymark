@@ -4,7 +4,7 @@
  * Save bumps the guide version.
  */
 import { signal } from '@preact/signals';
-import { useEffect, useLayoutEffect } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { send } from '../../core/messaging/client';
 import type { ElementFingerprint, Guide, Step } from '../../core/model/schema';
 import { newId } from '../../core/model/ids';
@@ -18,6 +18,8 @@ import { UNDO_MS } from '../../core/storage/trash';
 import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
 import { dropIndex, edgeScroll, moveItem } from '../../core/editor/reorder';
+import { normalizeRef } from '../../core/sheets';
+import { stepTitle } from '../../core/text/templates';
 import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
 import type { ShotsStatus } from '../../core/messaging/protocol';
@@ -471,6 +473,50 @@ function AddStepButtons({ after, testid, label, g, tabId, readOnly }: { after: s
   );
 }
 
+/**
+ * The cell of a Sheets cell step (D206), like B8 or B5:D9. A title still made from the template
+ * follows the new cell; a title the author wrote stays.
+ */
+function CellField({ step, index, readOnly }: { step: Step; index: number; readOnly: boolean }) {
+  const cell = step.cell!;
+  // Kept here: the field is keyed by the step and its cell, so an undo or another cell starts clean.
+  const [error, setError] = useState<string | null>(null);
+  const commit = (raw: string) => {
+    const ref = normalizeRef(raw);
+    if (!ref) {
+      setError('Use a cell like B8, or a range like B5:D9.');
+      return;
+    }
+    setError(null);
+    if (ref === cell.ref) return;
+    const sheet = cell.sheet ? { sheet: cell.sheet } : {};
+    const fromTemplate = step.title === stepTitle('cell', { name: cell.ref, ...sheet });
+    patchStep(step.id, { cell: { ...cell, ref }, ...(fromTemplate ? { title: stepTitle('cell', { name: ref, ...sheet }) } : {}) });
+  };
+  return (
+    <label class="field">
+      <span class="label">
+        Cell <span class="hint">· like B8, or B5:D9 for a range{cell.sheet ? `, on the sheet “${cell.sheet}”` : ''}</span>
+      </span>
+      <input
+        data-testid={`step-${index}-cell`}
+        value={cell.ref}
+        disabled={readOnly}
+        spellcheck={false}
+        autocomplete="off"
+        aria-invalid={!!error}
+        aria-describedby={error ? `cell-error-${step.id}` : undefined}
+        onChange={(e) => commit((e.target as HTMLInputElement).value)}
+      />
+      {error && (
+        <span class="field-error" id={`cell-error-${step.id}`} role="alert" data-testid={`step-${index}-cell-error`}>
+          {error}
+        </span>
+      )}
+    </label>
+  );
+}
+
 export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: number | null; onClose: () => void }) {
   const stepFlip = useFlipList<HTMLOListElement>(draft.value?.steps.map((s) => s.id) ?? []);
   useLayoutEffect(() => {
@@ -824,7 +870,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                             <Icon name="test" />
                             Test step
                           </button>
-                          <button type="button" class={`sm${isPicking ? ' primary' : ' ghost'}`} data-testid={`step-${i}-plays-repick`} aria-pressed={isPicking} disabled={readOnly || tabId === null} onClick={repick}>
+                          <button type="button" class={`sm${isPicking ? ' primary' : ' ghost'}`} data-testid={`step-${i}-plays-repick`} aria-pressed={isPicking} disabled={readOnly || tabId === null || s.kind === 'cell'} onClick={repick}>
                             <Icon name={isPicking ? 'close' : 'crosshair'} />
                             {isPicking ? 'Cancel picking' : 'Re-pick element'}
                           </button>
@@ -838,6 +884,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     </span>
                     <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
                   </label>
+                  {s.kind === 'cell' && s.cell && <CellField key={`${s.id}:${s.cell.ref}`} step={s} index={i} readOnly={readOnly} />}
                   <label class="field">
                     <span class="label">Note</span>
                     <textarea
@@ -868,8 +915,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                           class={`sm${isPicking ? ' primary' : ''}`}
                           data-testid={`step-${i}-repick`}
                           aria-pressed={isPicking}
-                          disabled={readOnly || tabId === null}
-                          title="Choose a different element on the page for this step"
+                          disabled={readOnly || tabId === null || s.kind === 'cell'}
+                          title={s.kind === 'cell' ? 'A cell step always points at the Name Box; change the cell below' : 'Choose a different element on the page for this step'}
                           onClick={repick}
                         >
                           <Icon name={isPicking ? 'close' : 'crosshair'} />

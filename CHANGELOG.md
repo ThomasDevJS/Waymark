@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+- Google Sheets: clicking a cell while recording adds a **Select cell B8** step (read from the Name Box). Playing it highlights the Name Box and moves on when that cell is selected, by click, arrow keys or typing. Guide files with such steps need this version of Waymark (D206, #114).
+
 ## [0.10.0] - 2026-11-07
 
 ### Added

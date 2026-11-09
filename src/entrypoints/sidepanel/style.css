@@ -795,3 +795,9 @@ button.step-toggle > .wm-icon {
 .review-list .shot-row { align-items: center; }
 .shot-thumb { width: 120px; max-height: 90px; object-fit: contain; flex: none; border: 1px solid var(--wm-border); border-radius: var(--wm-radius-sm, 4px); background: var(--wm-surface-2, transparent); }
 .review-list .shot-row.removed .shot-thumb { opacity: .35; }
+
+/* A cell step's cell that isn't a cell reference (D206). */
+.field-error {
+  color: var(--wm-danger);
+  font-size: var(--wm-text-sm);
+}

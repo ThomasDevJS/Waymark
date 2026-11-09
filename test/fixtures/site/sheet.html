@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Budget - spreadsheet</title>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      /* D206: the parts of Google Sheets a cell step relies on, with its element ids and classes. */
+      body { margin: 0; }
+      .sheet-head h1 { font-size: 18px; margin: 8px; }
+      .toolbar { min-height: 40px; }
+      .bar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid #ccc; }
+      .waffle-name-box { width: 80px; }
+      #waffle-grid-container { position: relative; height: 420px; overflow: hidden; }
+      #waffle-grid-container canvas { display: block; }
+      .tabs { display: flex; gap: 4px; padding: 4px 8px; border-top: 1px solid #ccc; }
+      .docs-sheet-tab { padding: 4px 10px; border: 1px solid #ccc; cursor: pointer; }
+      .docs-sheet-active-tab { background: #e8f0fe; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <!-- As in Sheets, the title, the menus and the toolbar sit above the Name Box. -->
+    <header class="sheet-head">
+      <h1>Budget</h1>
+      <div class="bar" role="menubar" aria-label="Menus">
+        <span role="menuitem">File</span><span role="menuitem">Edit</span><span role="menuitem">View</span><span role="menuitem">Data</span>
+      </div>
+      <div class="bar toolbar" role="toolbar" aria-label="Main toolbar">
+        <button type="button" id="undo">Undo</button><button type="button" id="bold">Bold</button>
+      </div>
+    </header>
+    <div class="bar" role="banner" aria-label="Menu bar">
+      <div class="waffle-name-box-container" aria-label="Name box (Ctrl + J)">
+        <input class="jfk-textinput waffle-name-box" id="t-name-box" type="text" spellcheck="false" autocomplete="off" value="A1" />
+      </div>
+      <button type="button" id="sort-asc">Sort A to Z</button>
+      <span id="last-action"></span>
+    </div>
+    <div id="waffle-grid-container">
+      <div class="grid4-inner-container"><canvas id="grid" width="760" height="420"></canvas></div>
+    </div>
+    <div class="tabs">
+      <div class="docs-sheet-tab docs-sheet-active-tab" role="button" tabindex="0"><span class="docs-sheet-tab-name">Budget</span></div>
+      <div class="docs-sheet-tab" role="button" tabindex="0"><span class="docs-sheet-tab-name">Totals</span></div>
+    </div>
+    <script type="module">
+      // A canvas grid: column headers A..H, row headers 1..16. Selection moves on mousedown, as in Sheets.
+      const W = 90, H = 24, HEAD_W = 40, HEAD_H = 24, COLS = 8, ROWS = 16;
+      const canvas = document.getElementById('grid');
+      const box = document.getElementById('t-name-box');
+      const ctx = canvas.getContext('2d');
+      const col = (c) => String.fromCharCode(65 + c);
+      let sel = { c0: 0, r0: 0, c1: 0, r1: 0 };
+      const refOf = (s) => {
+        const a = `${col(s.c0)}${s.r0 + 1}`;
+        const b = `${col(s.c1)}${s.r1 + 1}`;
+        return a === b ? a : `${a}:${b}`;
+      };
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = '12px sans-serif';
+        ctx.strokeStyle = '#ddd';
+        for (let c = 0; c < COLS; c++) ctx.fillText(col(c), HEAD_W + c * W + W / 2 - 4, 16);
+        for (let r = 0; r < ROWS; r++) ctx.fillText(String(r + 1), 12, HEAD_H + r * H + 16);
+        for (let c = 0; c <= COLS; c++) ctx.strokeRect(HEAD_W + c * W, 0, 0, HEAD_H + ROWS * H);
+        for (let r = 0; r <= ROWS; r++) ctx.strokeRect(0, HEAD_H + r * H, HEAD_W + COLS * W, 0);
+        const [c0, c1] = [Math.min(sel.c0, sel.c1), Math.max(sel.c0, sel.c1)];
+        const [r0, r1] = [Math.min(sel.r0, sel.r1), Math.max(sel.r0, sel.r1)];
+        ctx.strokeStyle = '#1a73e8';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(HEAD_W + c0 * W, HEAD_H + r0 * H, (c1 - c0 + 1) * W, (r1 - r0 + 1) * H);
+        ctx.lineWidth = 1;
+      }
+      function select(s) {
+        sel = s;
+        box.value = refOf({ c0: Math.min(s.c0, s.c1), r0: Math.min(s.r0, s.r1), c1: Math.max(s.c0, s.c1), r1: Math.max(s.r0, s.r1) });
+        draw();
+      }
+      const cellAt = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const c = Math.floor((e.clientX - r.left - HEAD_W) / W);
+        const row = Math.floor((e.clientY - r.top - HEAD_H) / H);
+        return c >= 0 && c < COLS && row >= 0 && row < ROWS ? { c, r: row } : null;
+      };
+      let dragging = false;
+      canvas.addEventListener('mousedown', (e) => {
+        const at = cellAt(e);
+        if (!at) return;
+        dragging = true;
+        select({ c0: at.c, r0: at.r, c1: at.c, r1: at.r });
+      });
+      canvas.addEventListener('mousemove', (e) => {
+        const at = dragging && cellAt(e);
+        if (at) select({ ...sel, c1: at.c, r1: at.r });
+      });
+      addEventListener('mouseup', () => (dragging = false));
+      canvas.tabIndex = 0;
+      canvas.addEventListener('keydown', (e) => {
+        const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        const c = Math.max(0, Math.min(COLS - 1, sel.c0 + d[0]));
+        const r = Math.max(0, Math.min(ROWS - 1, sel.r0 + d[1]));
+        select({ c0: c, r0: r, c1: c, r1: r });
+      });
+      // A reference typed into the Name Box, then Enter, selects it (a named range is left as typed).
+      box.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        const m = /^([A-H])([1-9]\d?)(?::([A-H])([1-9]\d?))?$/i.exec(box.value.trim());
+        if (!m) return;
+        const c0 = m[1].toUpperCase().charCodeAt(0) - 65;
+        const r0 = Number(m[2]) - 1;
+        const c1 = m[3] ? m[3].toUpperCase().charCodeAt(0) - 65 : c0;
+        const r1 = m[4] ? Number(m[4]) - 1 : r0;
+        select({ c0, r0, c1, r1 });
+        canvas.focus();
+      });
+      for (const tab of document.querySelectorAll('.docs-sheet-tab')) {
+        tab.addEventListener('click', () => {
+          document.querySelector('.docs-sheet-active-tab')?.classList.remove('docs-sheet-active-tab');
+          tab.classList.add('docs-sheet-active-tab');
+          select({ c0: 0, r0: 0, c1: 0, r1: 0 });
+        });
+      }
+      document.getElementById('sort-asc').addEventListener('click', () => (document.getElementById('last-action').textContent = `Sorted ${box.value}`));
+      draw();
+    </script>
+  </body>
+</html>
