@@ -16,6 +16,9 @@ import { testMark } from '../test-hooks';
 import { DEFAULT_SHADE, isShade, type Shade } from '../../core/player/shade';
 
 /** Test builds: how many glides and ripples ran (`data-waymark-test-motion`), since e2e can't see into the closed root. */
+/** A docked tooltip (D206): this far from the right edge, and above the launcher in the corner. */
+const DOCK_GAP_PX = 16;
+const DOCK_BOTTOM_PX = 84;
 const motionCount = { glide: 0, ripple: 0 };
 function countMotion(kind: keyof typeof motionCount): void {
   if (!__WAYMARK_TEST__) return;
@@ -216,6 +219,8 @@ export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'ad
       return 'Go to that page to continue.';
     case 'hover':
       return 'Point at the highlighted item (or Tab to it) to continue.';
+    case 'cell':
+      return 'Click that cell in the sheet, or type it in the highlighted box and press Enter.';
     default:
       return null;
   }
@@ -377,6 +382,11 @@ export class PlayerUI {
     layer.append(this.spot, this.ring);
     this.watchPress(target, step);
     const placement: Placement = step.placement && step.placement !== 'auto' ? step.placement : 'bottom';
+    // A Sheets cell step (D206) rings the Name Box, which sits right above the grid's top-left
+    // cells, the ones learners pick most. Next to it the tooltip would cover them (there is no room
+    // above it), so it docks in the bottom-right corner instead, unless the author placed it.
+    const docked = step.kind === 'cell' && (!step.placement || step.placement === 'auto');
+    if (docked) tip.classList.add('docked');
     const update = () => {
       if (!target.isConnected) {
         onLost?.();
@@ -396,6 +406,12 @@ export class PlayerUI {
         glideFrom = null; // only the first draw glides; later updates follow the target
       }
       this.lastHole = { ...hole, run, token: view.stepToken, at: performance.now() };
+      if (docked) {
+        const t = tip.getBoundingClientRect();
+        Object.assign(tip.style, { left: `${Math.max(8, window.innerWidth - t.width - DOCK_GAP_PX)}px`, top: `${Math.max(8, window.innerHeight - t.height - DOCK_BOTTOM_PX)}px` });
+        arrowEl.hidden = true;
+        return;
+      }
       void computePosition(target, tip, {
         strategy: 'fixed',
         placement,

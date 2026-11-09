@@ -6,6 +6,7 @@
  * a click on a submit button becomes a submit step when the form's submit event follows.
  */
 import { createHoverTracker } from './hover';
+import { isSheetsGrid, nameBox, readCell } from '../sheets';
 import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
@@ -20,6 +21,9 @@ import { stepUrlRule } from '../url/url';
 import { checkedState, isCheckLike, isCustomOption, isNativeCheck, isNativeSelect, isSensitiveField, isTextField, submitForm } from './classify';
 
 /** `at`: when the action happened (ms since epoch), for the navigation rule (D67). */
+/** Sheets moves the selection in its own handlers; the Name Box is read a moment later (D206). */
+const CELL_READ_MS = 60;
+
 export type RecorderOp = { op: 'add'; step: Step; at?: number } | { op: 'replace'; stepId: string; step: Step; at?: number };
 
 export interface RecorderOptions {
@@ -154,20 +158,20 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   /** The page and time of an action, taken when it happens (a handler may change the route). */
   type When = { at: number; url: string };
   const whenNow = (): When => ({ at: now(), url: doc.URL });
-  const makeStep = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when?: When): Step => {
-    const step: Step = { id: newId(), kind, title, url: stepUrlRule(when?.url ?? doc.URL, opts.profile), target: fp, advance: 'action' };
+  const makeStep = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when?: When, extra?: Pick<Step, 'cell'>): Step => {
+    const step: Step = { id: newId(), kind, title, url: stepUrlRule(when?.url ?? doc.URL, opts.profile), target: fp, advance: 'action', ...extra };
     if (flags) step.flags = flags;
     return step;
   };
 
-  const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when: When = whenNow()) => {
+  const add = (kind: Step['kind'], el: Element, fp: ElementFingerprint, title: string, flags?: StepFlag[], when: When = whenNow(), extra?: Pick<Step, 'cell'>) => {
     if (!hasStrongSignal(fp)) {
       dbg('skip', () => ({ why: 'nothing to find it by again (D47)', kind, ...fpFacts(fp) }));
       opts.onSkip?.('unfindable');
       last = { id: '', kind, el, time: now(), form: null, fp, skipped: true };
       return null;
     }
-    const step = makeStep(kind, el, fp, title, flags, when);
+    const step = makeStep(kind, el, fp, title, flags, when, extra);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
     dbg('emit', () => ({ op: 'add', kind, title: title.replace(/\*\*/g, ''), flags: flags ?? [], ...fpFacts(fp) }));
     opts.onTarget?.(step.id, el);
@@ -187,6 +191,36 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   };
 
   const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
+
+  // Google Sheets cells (D206): the grid is a canvas, so a click there (or a reference typed into
+  // the Name Box, then Enter) becomes "Select cell B8", read from the Name Box once Sheets has
+  // moved the selection. Clicking around the grid before acting keeps only the last selection.
+  const isSheetsNameBox = (el: Element) => el === nameBox(doc) && !!doc.getElementById('waffle-grid-container');
+  const recordCell = (via: string) => {
+    const when = whenNow();
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      const c = readCell(doc);
+      const box = nameBox(doc);
+      if (!c || !box) {
+        dbg('skip', () => ({ why: 'Sheets: the Name Box shows no cell reference (a named range?), so there is nothing to select again (D206)', via }));
+        return;
+      }
+      const fp = fpOf(box);
+      const title = stepTitle('cell', { name: c.ref, ...(c.sheet ? { sheet: c.sheet } : {}) }, lang);
+      if (last && last.kind === 'cell' && !last.skipped && last.id) {
+        const step = makeStep('cell', box, fp, title, undefined, when, { cell: c });
+        step.id = last.id;
+        last.time = now();
+        dbg('merge', () => ({ why: 'Sheets: another cell selected right after: the step keeps the last one (D206)', via }));
+        opts.emit({ op: 'replace', stepId: last.id, step });
+        return;
+      }
+      dbg('cell', () => ({ why: 'Sheets: a cell selected on the grid is read from the Name Box (D206)', via, sheet: c.sheet ? 'yes' : 'no' }));
+      add('cell', box, fp, title, undefined, when, { cell: c });
+    }, CELL_READ_MS);
+    timers.add(timer);
+  };
 
   // Menus that open while the pointer rests on their trigger (D204): what changed in the page,
   // and where the pointer rested, so a click on such a menu's item gets a "Point at" step first.
@@ -255,6 +289,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     }
     const path = e.composedPath();
     watchRoots(path);
+    if (isSheetsGrid(path, doc)) {
+      flushFieldClick();
+      return recordCell('click');
+    }
     let t: Resolved | null = resolveTarget(path);
     if (!t) {
       dbg('ignored', () => ({ why: 'no element on the click path' }));
@@ -346,6 +384,11 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     // (`change` does not). See D35.
     if (isNativeSelect(el)) return recordSelect(el);
     if (!isTextField(el)) return; // checkboxes and radios are handled by click/change
+    // A reference typed into the Sheets Name Box is a cell step on Enter, not an input step (D206).
+    if (isSheetsNameBox(el)) {
+      if (fieldClick?.el === el) fieldClick = null;
+      return;
+    }
     typedAt = now();
     if (last && last.kind === 'input' && last.el === el) {
       if (fieldClick?.el === el) fieldClick = null;
@@ -411,6 +454,10 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const k = e as KeyboardEvent;
     if (k.key !== 'Enter') return;
     const t = resolveTargetFromPath(e.composedPath());
+    if (t && isSheetsNameBox(t.element)) {
+      if (fieldClick?.el === t.element) fieldClick = null;
+      return recordCell('name box');
+    }
     if (t && isTextField(t.element)) enter = { el: t.element, time: now() };
   };
 
