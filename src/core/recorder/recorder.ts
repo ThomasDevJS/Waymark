@@ -6,7 +6,7 @@
  * a click on a submit button becomes a submit step when the form's submit event follows.
  */
 import { createHoverTracker } from './hover';
-import { isSheetsGrid, nameBox, readCell, type CellRef } from '../sheets';
+import { isSheetsGrid, nameBox, normalizeRef, readCell, type CellRef } from '../sheets';
 import type { ElementFingerprint, Step, StepFlag } from '../model/schema';
 import type { ProfileOptions } from '../model/profile';
 import { newId } from '../model/ids';
@@ -25,6 +25,10 @@ import { checkedState, isCheckLike, isCustomOption, isNativeCheck, isNativeSelec
 const CELL_READ_MS = 60;
 /** ...and once more, in case it was updated late (review of D206). */
 const CELL_REREAD_MS = 300;
+/** A step this soon after an unrecorded click that revealed its menu is flagged "in a menu" (#115). */
+const IN_MENU_MS = 15_000;
+/** A press this long before a click is that click's press. */
+const PRESS_TO_CLICK_MS = 1500;
 
 export type RecorderOp = { op: 'add'; step: Step; at?: number } | { op: 'replace'; stepId: string; step: Step; at?: number };
 
@@ -171,8 +175,13 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!hasStrongSignal(fp)) {
       dbg('skip', () => ({ why: 'nothing to find it by again (D47)', kind, ...fpFacts(fp) }));
       opts.onSkip?.('unfindable');
+      if (kind === 'click') opener = openedAt(); // it may open a menu the next steps are in (#115)
       last = { id: '', kind, el, time: now(), form: null, fp, skipped: true };
       return null;
+    }
+    if (kind !== 'cell' && inUnrecordedMenu(el)) {
+      dbg('flag', () => ({ why: 'in a menu that opened after a click Waymark could not record: learners must open it first (#115)', kind }));
+      flags = [...(flags ?? []), 'in-menu'];
     }
     const step = makeStep(kind, el, fp, title, flags, when, extra);
     last = { id: step.id, kind, el, time: now(), form: kind === 'click' || kind === 'submit' ? submitForm(el) : null, fp };
@@ -195,6 +204,23 @@ export function createRecorder(opts: RecorderOptions): Recorder {
 
   const trusted = (e: Event) => e.isTrusted && !isOwn(e.composedPath());
 
+  /**
+   * The last click that opened something without being recorded as the step that opens it: a
+   * click with nothing to find it by (D47), or on the Sheets grid (a filter button drawn on the
+   * canvas). A step inside what it revealed is flagged "in a menu" (#115): playing it, the item
+   * stays hidden until the learner opens the menu, and the guide has no step that does.
+   */
+  let opener: number | null = null;
+  /** When the pointer was last pressed: menus open on the press, before the click (#115). */
+  let lastPressAt = -Infinity;
+  const openedAt = () => (now() - lastPressAt <= PRESS_TO_CLICK_MS ? lastPressAt : now());
+  const inUnrecordedMenu = (el: Element) => {
+    if (opener === null || now() - opener > IN_MENU_MS) return false;
+    // A step recorded since the opener (other than the grid click's own cell step) opened it.
+    if (last && !last.skipped && last.kind !== 'cell' && last.time > opener) return false;
+    return hover.revealedSince(el, opener);
+  };
+
   // Google Sheets cells (D206): the grid is a canvas, so a click there (or a reference typed into
   // the Name Box, then Enter) becomes "Select cell B8", read from the Name Box once Sheets has
   // moved the selection. Selecting again right after, with nothing done in between on that sheet,
@@ -205,6 +231,8 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   let lastCell: CellRef | null = null;
   /** Nothing but selecting happened since the last cell step: the next selection replaces it. */
   let cellQuiet = false;
+  /** The selection when the grid was pressed (#115). */
+  let cellAtPress: CellRef | null = null;
   const sameCell = (a: CellRef, b: CellRef) => a.ref === b.ref && a.sheet === b.sheet;
   const cellStep = (box: Element, c: CellRef, when?: When) =>
     makeStep('cell', box, fpOf(box), stepTitle('cell', { name: c.ref, ...(c.sheet ? { sheet: c.sheet } : {}) }, lang), undefined, when, { cell: c });
@@ -232,12 +260,20 @@ export function createRecorder(opts: RecorderOptions): Recorder {
   };
   const recordCell = (via: string) => {
     const when = whenNow();
-    const timer = setTimeout(() => {
-      timers.delete(timer);
+    const before = via === 'click' ? cellAtPress : null;
+    cellAtPress = null;
+    const attempt = (final: boolean) => {
       const c = readCell(doc);
       const box = nameBox(doc);
       if (!c || !box) {
         dbg('skip', () => ({ why: 'Sheets: the Name Box shows no cell reference (a named range?), so there is nothing to select again (D206)', via }));
+        return;
+      }
+      // Unchanged: Sheets may not have updated the Name Box yet (a heavy sheet); look again. Still
+      // unchanged then: a filter button drawn on the grid, or the selected cell again (#115).
+      if (before && sameCell(before, c)) {
+        if (final) dbg('skip', () => ({ why: 'Sheets: the click left the selection as it was (a filter button?): no cell step (#115)', via }));
+        else later(() => attempt(true), CELL_REREAD_MS);
         return;
       }
       if (last && last.kind === 'cell' && !last.skipped && last.id && lastCell && cellQuiet && lastCell.sheet === c.sheet) {
@@ -254,13 +290,36 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       }
       cellQuiet = true;
       // Sheets may update the Name Box later on a heavy sheet: look once more.
-      const again = setTimeout(() => {
-        timers.delete(again);
-        refreshCell('read again');
-      }, CELL_REREAD_MS);
-      timers.add(again);
-    }, CELL_READ_MS);
+      if (!final) later(() => refreshCell('read again'), CELL_REREAD_MS);
+    };
+    later(() => attempt(false), CELL_READ_MS);
+  };
+  /** A timer the recorder clears on stop. */
+  const later = (fn: () => void, ms: number) => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      fn();
+    }, ms);
     timers.add(timer);
+  };
+  /** Before an input step into the Sheets cell editor: a cell step for the selected cell, unless the guide is already there. */
+  const ensureCellFor = (el: Element) => {
+    const box = nameBox(doc);
+    if (!box || !doc.getElementById('waffle-grid-container')) return;
+    const c = readCell(doc);
+    if (!c) return;
+    // Cheap on every keystroke: the editor's label, not a fingerprint.
+    const isCellEditor = normalizeRef(el.getAttribute('aria-label') ?? '') === c.ref || !!el.closest('#waffle-grid-container');
+    if (!isCellEditor) return;
+    if (lastCell && sameCell(lastCell, c)) return;
+    refreshCell('typing into a cell');
+    if (lastCell && sameCell(lastCell, c)) return;
+    dbg('cell', () => ({ why: 'Sheets: typing into a cell the guide has not selected: a cell step first (#115)' }));
+    const step = add('cell', box, fpOf(box), cellStep(box, c).title, undefined, undefined, { cell: c });
+    if (step) {
+      lastCell = c;
+      cellQuiet = false; // the typing that follows is an action on this cell
+    }
   };
   /** Keys that only move or extend the selection keep the next cell selection a replacement. */
   const SELECTION_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Tab', 'Shift', 'Control', 'Meta', 'Alt']);
@@ -322,6 +381,9 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     if (!trusted(e)) return;
     const path = e.composedPath();
     watchRoots(path);
+    lastPressAt = now();
+    // The selection before Sheets handles the press: a click that leaves it as it was selects nothing.
+    if (isSheetsGrid(path, doc)) cellAtPress = readCell(doc);
     const t = resolveTarget(path);
     if (!t || t.lowConfidence) {
       pending = null;
@@ -347,6 +409,7 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       // Clicked into the Name Box, then on the grid without typing: no "Click Name box" step.
       if (fieldClick && isSheetsNameBox(fieldClick.el)) fieldClick = null;
       flushFieldClick();
+      opener = openedAt(); // a filter button on the grid opens a menu (#115)
       return recordCell('click');
     }
     let t: Resolved | null = resolveTarget(path);
@@ -445,6 +508,9 @@ export function createRecorder(opts: RecorderOptions): Recorder {
       if (fieldClick?.el === el) fieldClick = null;
       return;
     }
+    // Typing into a Sheets cell: its editor is named after the selected cell, so the guide must
+    // select that cell first (#115). Reached by Tab or the arrow keys, it has no cell step yet.
+    ensureCellFor(el); // before the "many input events, one step" merge: Tab to D3 uses the same editor
     typedAt = now();
     if (last && last.kind === 'input' && last.el === el) {
       if (fieldClick?.el === el) fieldClick = null;

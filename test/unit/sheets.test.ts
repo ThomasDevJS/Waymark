@@ -1,6 +1,6 @@
 /** D206 (#114): Google Sheets cell steps, read from and checked against the Name Box. */
 import { describe, expect, it } from 'vitest';
-import { activeSheet, isCellSelected, isSheetsGrid, normalizeRef, readCell } from '../../src/core/sheets';
+import { activeSheet, isCellEditor, isCellSelected, isSheetsGrid, normalizeRef, readCell } from '../../src/core/sheets';
 import { makePack, packFormatFor, parsePack } from '../../src/core/sharing/pack';
 import { stepTitle } from '../../src/core/text/templates';
 import { recorderStep } from '../../src/background/recording';
@@ -132,5 +132,26 @@ describe('review fixes (D206)', () => {
   it('review fix: the schema needs the cell exactly on cell steps', () => {
     expect(GuideSchema.safeParse(guide('g', [step('cell', 's1')])).success).toBe(false);
     expect(GuideSchema.safeParse(guide('g', [step('click', 's1', { cell: { ref: 'B8' } })])).success).toBe(false);
+  });
+});
+
+describe('#115', () => {
+  it('an "in a menu" flag needs pack format 3, so an older Waymark says "newer version" instead of failing', () => {
+    expect(packFormatFor([guide('a', [step('click', 's1', { flags: ['in-menu'] })])])).toBe(3);
+    expect(GuideSchema.safeParse(guide('a', [step('click', 's1', { flags: ['in-menu'] })])).success).toBe(true);
+  });
+
+  it('the cell editor: named after the selected cell, or inside the grid; nothing on other pages', () => {
+    const { grid } = sheetsPage('C3');
+    const editor = document.createElement('div');
+    editor.setAttribute('aria-label', 'C3');
+    document.body.append(editor);
+    expect(isCellEditor(editor, document)).toBe(true);
+    editor.setAttribute('aria-label', 'Search');
+    expect(isCellEditor(editor, document)).toBe(false);
+    grid.append(editor);
+    expect(isCellEditor(editor, document)).toBe(true);
+    document.getElementById('t-name-box')!.remove();
+    expect(isCellEditor(editor, document)).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ type Flag = NonNullable<Step['flags']>[number];
 export const FLAG_HELP: Record<Flag, { label: string; help: string }> = {
   'low-confidence': { label: 'Hard to find', help: 'This isn’t a button, link or field, so the guide may not find it next time. Use Re-pick element to choose the real button, or delete the step.' },
   canvas: { label: 'Drawing area', help: 'Charts and maps have nothing inside them to point at. Delete this step, or add a note that explains it.' },
+  'in-menu': { label: 'In a menu', help: 'This item is in a menu that opened from something Waymark couldn’t record (a click with nothing to find again, or on a spreadsheet grid). Learners must open the menu first: say how in this step’s note, or add a note before it.' },
   'closed-shadow': { label: 'Closed component', help: 'Waymark can’t see inside this part of the page, so it points at the whole box. Press Test step to check it.' },
 };
 

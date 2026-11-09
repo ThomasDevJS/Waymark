@@ -4,7 +4,7 @@
  * is built with DOM APIs (user strings never reach innerHTML).
  */
 import { arrow, autoUpdate, computePosition, flip, offset, shift, size, type Placement } from '@floating-ui/dom';
-import { ChevronLeft, ChevronRight, CircleCheck, Copy, Crosshair, MapPin, RotateCcw, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
+import { ChevronLeft, ChevronRight, CircleCheck, Copy, Crosshair, MapPin, RotateCcw, Search, Speech, TriangleAlert, Volume2, VolumeX, X, type IconNode } from 'lucide';
 import { buildSvg } from '../../ui/svg';
 import type { RunView } from '../../core/player/run';
 import { spotlightPanels } from '../../core/player/spotlight';
@@ -166,7 +166,7 @@ export interface UiHandlers {
   fix?(): void;
 }
 
-export type Card = 'not-found' | 'off-track' | 'done';
+export type Card = 'not-found' | 'off-track' | 'done' | 'searching';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -484,6 +484,15 @@ export class PlayerUI {
         this.button('Skip', 'skip', this.h.skip),
         this.button('Retry', 'retry', this.h.retry, 'primary', undefined, true),
       );
+    } else if (kind === 'searching') {
+      // Still looking (#115): say so, instead of nothing until the not-found card. Items in a
+      // menu are hidden until it opens; a step flagged "in a menu" says it plainly.
+      icon.append(buildSvg(Search));
+      title.textContent = 'Looking for this step…';
+      note.append('Step: ', ...(view.step ? renderInline(view.step.title) : []));
+      const inMenu = view.step?.flags?.includes('in-menu');
+      note.append(el('span', 'menu-hint', inMenu ? ' It’s in a menu: open the menu first.' : ' If it’s in a menu, open the menu first.'));
+      buttons.append(el('span', 'spacer'), this.button('Skip', 'skip', this.h.skip));
     } else {
       icon.append(buildSvg(MapPin));
       title.textContent = 'This step is on another page.';

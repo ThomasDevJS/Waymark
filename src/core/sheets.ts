@@ -59,3 +59,13 @@ export function isCellSelected(doc: Document, want: CellRef): boolean {
   if (!now || now.ref !== normalizeRef(want.ref)) return false;
   return !want.sheet || now.sheet === want.sheet;
 }
+
+/**
+ * Sheets' cell editor (#115): the field typing on the grid goes into, named after the selected
+ * cell. Enter and Tab commit it and clear it, so they count as finishing the typing step.
+ */
+export function isCellEditor(el: Element, doc: Document): boolean {
+  if (!nameBox(doc) || !doc.getElementById('waffle-grid-container')) return false;
+  const label = normalizeRef(el.getAttribute('aria-label') ?? '');
+  return (!!label && label === readCell(doc)?.ref) || !!el.closest('#waffle-grid-container');
+}

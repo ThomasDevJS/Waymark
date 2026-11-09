@@ -13,7 +13,7 @@
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
-import { isCellSelected } from '../sheets';
+import { isCellEditor, isCellSelected } from '../sheets';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { ariaRole } from '../debug/log';
 
@@ -196,9 +196,17 @@ export function watchAdvance(w: AdvanceWatch): () => void {
     // Checked at keydown, before the app clears it. A textarea or rich editor gets a new line.
     on(doc, 'keydown', (e) => {
       const k = e as KeyboardEvent;
-      if (k.key !== 'Enter' || k.isComposing || k.shiftKey || k.ctrlKey || k.metaKey || k.altKey || !trusted(e)) return;
+      if (k.isComposing || k.ctrlKey || k.metaKey || k.altKey || !trusted(e)) return;
+      // Tab out of a filled field, checked before an app that clears on Tab (Sheets' cell editor, #115).
+      if (k.key === 'Tab') {
+        const t = hits(e.composedPath(), w.targets);
+        if (t && hasValue(t)) advance('Tab out of a filled field');
+        return;
+      }
+      if (k.key !== 'Enter' || k.shiftKey) return;
       const t = hits(e.composedPath(), w.targets);
       if (t && tagOf(t) === 'input' && hasValue(t)) advance('Enter in a filled one-line field (D60)');
+      else if (t && isCellEditor(t, doc) && hasValue(t)) advance('Enter in a filled spreadsheet cell (#115)');
       else if (t && w.debug) dbg('input.wait', () => ({ why: tagOf(t) === 'input' ? 'Enter in an empty field' : 'Enter in a multi-line field adds a line' }));
     });
   }

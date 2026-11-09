@@ -13,6 +13,10 @@
       .waffle-name-box { width: 80px; }
       #waffle-grid-container { position: relative; height: 420px; overflow: hidden; }
       #waffle-grid-container canvas { display: block; }
+      #waffle-rich-text-editor { position: absolute; min-width: 80px; height: 20px; outline: none; font: 12px sans-serif; background: transparent; }
+      #filter-menu { position: absolute; background: #fff; border: 1px solid #999; padding: 4px; width: 140px; }
+      #filter-menu [role='menuitemcheckbox'] { padding: 4px; cursor: pointer; }
+      #filter-menu [aria-checked='true']::before { content: '✓ '; }
       .tabs { display: flex; gap: 4px; padding: 4px 8px; border-top: 1px solid #ccc; }
       .docs-sheet-tab { padding: 4px 10px; border: 1px solid #ccc; cursor: pointer; }
       .docs-sheet-active-tab { background: #e8f0fe; font-weight: 600; }
@@ -38,6 +42,13 @@
     </div>
     <div id="waffle-grid-container">
       <div class="grid4-inner-container"><canvas id="grid" width="760" height="420"></canvas></div>
+      <!-- #115: as in Sheets, typing goes into a cell editor named after the selected cell. -->
+      <div id="waffle-rich-text-editor" class="cell-input" contenteditable="true" role="combobox" aria-label="A1" spellcheck="false"></div>
+    </div>
+    <!-- #115: the filter button is drawn in column C's header; its menu is an ordinary element. -->
+    <div id="filter-menu" role="menu" aria-label="Filter" style="display: none">
+      <div role="menuitemcheckbox" aria-checked="true" tabindex="-1" data-value="done">Done</div>
+      <div role="menuitemcheckbox" aria-checked="true" tabindex="-1" data-value="open">Open</div>
     </div>
     <div class="tabs">
       <div class="docs-sheet-tab docs-sheet-active-tab" role="button" tabindex="0"><span class="docs-sheet-tab-name">Budget</span></div>
@@ -71,9 +82,18 @@
         ctx.strokeRect(HEAD_W + c0 * W, HEAD_H + r0 * H, (c1 - c0 + 1) * W, (r1 - r0 + 1) * H);
         ctx.lineWidth = 1;
       }
+      const editor = document.getElementById('waffle-rich-text-editor');
+      const values = new Map();
+      function placeEditor() {
+        const r = canvas.getBoundingClientRect();
+        const g = canvas.parentElement.parentElement.getBoundingClientRect();
+        Object.assign(editor.style, { left: `${r.left - g.left + HEAD_W + sel.c0 * W + 4}px`, top: `${r.top - g.top + HEAD_H + sel.r0 * H + 2}px` });
+        editor.setAttribute('aria-label', `${col(sel.c0)}${sel.r0 + 1}`);
+      }
       function select(s) {
         sel = s;
         box.value = refOf({ c0: Math.min(s.c0, s.c1), r0: Math.min(s.r0, s.r1), c1: Math.max(s.c0, s.c1), r1: Math.max(s.r0, s.r1) });
+        placeEditor();
         draw();
       }
       const cellAt = (e) => {
@@ -83,7 +103,18 @@
         return c >= 0 && c < COLS && row >= 0 && row < ROWS ? { c, r: row } : null;
       };
       let dragging = false;
+      const menu = document.getElementById('filter-menu');
       canvas.addEventListener('mousedown', (e) => {
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        // The filter button: column C's header. It opens the filter menu below it; the selection stays.
+        if (y < HEAD_H && x > HEAD_W + 2 * W && x < HEAD_W + 3 * W) {
+          Object.assign(menu.style, { left: `${r.left + HEAD_W + 2 * W}px`, top: `${r.top + HEAD_H + scrollY}px` });
+          menu.style.display = 'block';
+          return;
+        }
+        menu.style.display = 'none';
         const at = cellAt(e);
         if (!at) return;
         dragging = true;
@@ -95,6 +126,30 @@
       });
       addEventListener('mouseup', () => (dragging = false));
       canvas.tabIndex = 0;
+      for (const item of menu.querySelectorAll('[role=menuitemcheckbox]')) {
+        item.addEventListener('click', () => item.setAttribute('aria-checked', String(item.getAttribute('aria-checked') !== 'true')));
+      }
+      addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') menu.style.display = 'none';
+      });
+      // Typing on the grid goes into the cell editor; Tab and Enter commit it and move on.
+      canvas.addEventListener('keydown', (e) => {
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+          editor.textContent = '';
+          editor.focus();
+        }
+      });
+      editor.addEventListener('keydown', (e) => {
+        if (e.key !== 'Tab' && e.key !== 'Enter') return;
+        e.preventDefault();
+        values.set(`${col(sel.c0)}${sel.r0 + 1}`, editor.textContent);
+        editor.textContent = '';
+        const c = Math.min(COLS - 1, sel.c0 + (e.key === 'Tab' ? 1 : 0));
+        const r = Math.min(ROWS - 1, sel.r0 + (e.key === 'Enter' ? 1 : 0));
+        select({ c0: c, r0: r, c1: c, r1: r });
+        canvas.focus();
+        document.getElementById('last-action').textContent = [...values].map(([k, v]) => `${k}=${v}`).join(' ');
+      });
       canvas.addEventListener('keydown', (e) => {
         const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
         if (!d) return;
@@ -123,6 +178,7 @@
         });
       }
       document.getElementById('sort-asc').addEventListener('click', () => (document.getElementById('last-action').textContent = `Sorted ${box.value}`));
+      placeEditor();
       draw();
     </script>
   </body>
