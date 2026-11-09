@@ -74,7 +74,7 @@ An author records by doing the task once; a learner plays it on the real page an
 3. For each step, Waymark finds the element, scrolls to it, dims the page around it, shows the tooltip, and speaks the note.
 4. The guide advances when the learner clicks or fills the element, or presses Next on note-only steps.
 5. Page loads and in-app route changes keep the run going.
-6. If the element is not found within 8 seconds, the learner sees Retry, Skip, Exit, and Report broken step.
+6. If the element is not found within 8 seconds, the learner sees Retry, Skip, Exit, and Report broken step. Before that, a "Looking for this step…" card says so, with "If it's in a menu, open the menu first": from 1.5 s for a step flagged "in a menu", from 3 s for others (#115, D207).
 7. The last step shows a Done card; completion is saved locally.
 
 **Discover and share**
@@ -264,7 +264,8 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 - A custom dropdown stays two steps: open it, then "Choose **{option}**". Options rendered in a portal are matched by role and name, not position.
 - A click on a non-interactive area is kept only if it has no interactive ancestor, and it is flagged low-confidence in the editor.
 - A click on an item of a menu that opened while the pointer rested on another element gets a hover step ("Point at **{trigger}**") before it, under the strict rules of D204. Menus shown by CSS `:hover` alone are not detected.
-- A click on the Google Sheets grid becomes "Select cell **B8**", read from the Name Box, and so does a reference typed into the Name Box, then Enter (D206).
+- A click on the Google Sheets grid becomes "Select cell **B8**", read from the Name Box, and so does a reference typed into the Name Box, then Enter (D206). Typing into a cell the guide hasn't selected (reached by Tab or the arrow keys) adds its cell step first; a grid click that leaves the selection as it was records none (D207).
+- A step inside a menu that appeared within 1 s of a click that was not recorded (D47, or on the Sheets grid without selecting a cell) is flagged `in-menu`: the editor says to explain how to open it (D207).
 
 **Navigation**
 
@@ -322,7 +323,7 @@ The player draws on top of the real app without touching its styles, and the lea
 | hover | A trusted `pointerover` on the target, keyboard focus (`:focus-visible`) reaching it, a click on it, or the pointer already there; Next when it can't take focus (D204) |
 | cell | The Sheets Name Box shows the step's cell (and sheet); the tooltip docks bottom-right (D206) |
 
-Optional steps also show Skip. After any action, wait 300 ms before searching for the next target.
+Optional steps also show Skip. After any action, wait 300 ms before searching for the next target. An input step also moves on at Tab out of a filled field (its value noted before an app that clears it, focus gone the next tick), and at Tab or Enter in Sheets' cell editor (D207).
 
 **Runs across pages**
 

@@ -597,8 +597,10 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
         insertPicked(stepId.slice(4), { target: r.target, ...(r.title ? { title: r.title } : {}), ...(r.url ? { url: r.url } : {}) });
         return;
       }
-      // The explicitly chosen element replaces the target; recorder warnings no longer apply.
-      patchStep(stepId, { target: r.target, flags: undefined, ...(r.url ? { url: r.url } : {}) });
+      // The explicitly chosen element replaces the target; recorder warnings no longer apply,
+      // except "in a menu", which is about where the item is (#115).
+      const keep = draft.value?.steps.find((x) => x.id === stepId)?.flags?.includes('in-menu');
+      patchStep(stepId, { target: r.target, flags: keep ? ['in-menu'] : undefined, ...(r.url ? { url: r.url } : {}) });
       if (r.title) suggested.value = { ...suggested.value, [stepId]: r.title };
       tests.value = { ...tests.value, [stepId]: { found: true, score: 100, margin: 100, matched: ['re-picked'], fragile: false } };
     };

@@ -1558,6 +1558,26 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - Fixes from the independent review, each with a test that fails on the first version (`rec-sheets.test.ts`, `sheets.test.ts`, "review fix"): keyboard selection recorded; no merge across a copy or another sheet; a late Name Box read again; no stray Name Box click; the sheet name in the export review; an unreadable sheet doesn't advance; the schema rule; Next on cell steps; the editor's error kept per cell; a docked tooltip only on windows big enough.
   - `test/e2e/r8-sheets-cells.spec.ts`: records a click, a tab, a drag (B2:D5), a button and a typed F9. Plays in a closed root: the cells near the Name Box stay clickable, the wrong cell doesn't move on, then by mouse and by keyboard. Another sheet doesn't move on; the arrow keys do.
 
+### D207. Google Sheets: guides recorded on an editable sheet play (bug #115)
+*9 Nov 2026 · SPEC: User flows (Play, step 6), Recorder (merge rules), Player (advancing); issue #115; builds on D206*
+
+- **Finding** (the owner's debug log, 0.10.0, an editable sheet; the log is not in the repo because its step titles hold a person's name): when the guide played, nothing was highlighted.
+  - Every click on the grid was skipped (D47), including the click on a column's filter button, which is drawn on the canvas. So the guide started on an item of the filter menu ("Uncheck …", `menuitemcheckbox`), which stays hidden until that menu opens.
+  - The typing steps "Enter C3", "Enter D3" and "Enter E3" target Sheets' cell editor, which is named after the selected cell, with no cell selected before them. The cells were reached with Tab.
+  - Playback searched every frame and found nothing, and showed nothing for 8 s; the owner stopped each try after 0.5 to 4 s.
+- **Changes**:
+  - **Cell steps (D206)** are recorded for grid clicks. A grid click that leaves the selection as it was (a filter button, or the selected cell again; read again at 300 ms first) records no cell step.
+  - **Typing into a cell** the guide hasn't selected first adds "Select cell D3", before the "many input events, one step" merge (Tab to the next cell reuses the same editor). The editor is recognized by its label matching the Name Box, or by sitting in the grid container.
+  - **In a menu**: a step inside something revealed (`revealedBetween`, D204's tracker) within 1 s of a click that was not recorded (a D47 skip, or a grid click that selected nothing; timed from the press, since menus open on mousedown), recorded within 15 s with no recorded step since, gets the new flag `in-menu`. Content that loads later, or what a grid click that selected a cell shows, is not flagged. Re-picking the step's element keeps the flag (it says where the item is). The editor shows "In a menu" and says to explain in a note how to open it. A pack with the flag is format 3 (D206's version).
+  - **"Looking for this step…"**: without a match on the step's page after 1.5 s for a step flagged "in a menu", 3 s for others (so a page that is only slow to render doesn't flash it), the top frame shows a card with the step and "If it's in a menu, open the menu first" ("It's in a menu: open the menu first" when flagged), and Skip. The match, another frame's match, the not-found card at 8 s, or the off-track card replaces it.
+  - **Typing steps in the cell editor move on**: Sheets commits and clears the editor on Tab or Enter, so "blur with a value" never happened. The value is now noted at Tab's keydown, and the step moves on the next tick if focus has left the field, or in Sheets' cell editor. A Tab the app keeps (indenting in a code or rich-text editor) never moves it on. Enter in a filled Sheets cell moves it on too. A watch stopped before that tick can't fire (defensive; not testable in browser mode, where the key's tick has passed when the simulated key returns).
+- **Not fixed here**: the filter button itself still can't be pointed at (it is drawn). The flag and the card tell the author and the learner instead.
+- **Tests**:
+  - `test/e2e/r9-sheets-menus.spec.ts`: the fixture adds a cell editor and a filter button drawn in column C's header with its menu. Recording gives the flagged item, then cell, typing, cell (by Tab), typing; the editor shows "In a menu". Playing shows the "Looking for…" card, then the menu item once the menu is open, then the cells by mouse and by Tab.
+  - `test/browser/rec-sheets.test.ts` ("#115"): Tab to the next cell; the flag from a grid click; no flag after a recorded opener; Tab out of a field that clears itself.
+  - `test/unit/sheets.test.ts` ("#115"): pack format 3 for the flag; `isCellEditor`.
+  - Fixes from the independent review, each with a test that fails on the first version (`rec-sheets.test.ts` "#115 review fixes", `fix-step.test.ts`): Tab no longer moves a typing step on in fields that keep Tab (code and rich-text editors), was any Tab with a value; no false "in a menu" for content that loads later or after a grid click that selected a cell; no second cell step when typing beats a slow sheet's second read; re-pick keeps the flag; the "Looking for" card waits 3 s unless the step is in a menu.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides

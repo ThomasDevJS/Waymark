@@ -67,10 +67,11 @@ export function parsePack(text: string): ParseResult {
   return { ok: true, pack: parsed.data, profiles, droppedProfiles: dropped };
 }
 
-/** The oldest format that can hold these guides: 3 with a Sheets cell step (D206), 2 with a hover step (D204), else 1. */
+/** The oldest format that can hold these guides: 3 with a Sheets cell step (D206) or an "in a menu" flag (#115), 2 with a hover step (D204), else 1. */
 export function packFormatFor(guides: Pick<Guide, 'steps'>[]): GuidePack['formatVersion'] {
   const kinds = new Set(guides.flatMap((g) => g.steps.map((s) => s.kind)));
-  if (kinds.has('cell')) return FORMAT_VERSION;
+  const inMenu = guides.some((g) => g.steps.some((s) => s.flags?.includes('in-menu')));
+  if (kinds.has('cell') || inMenu) return FORMAT_VERSION;
   if (kinds.has('hover')) return HOVER_FORMAT_VERSION;
   return BASE_FORMAT_VERSION;
 }

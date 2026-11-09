@@ -9,6 +9,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 ### Added
 - Google Sheets: clicking a cell while recording adds a **Select cell B8** step (read from the Name Box). Playing it highlights the Name Box and moves on when that cell is selected, by click, arrow keys or typing. Guide files with such steps need this version of Waymark (D206, #114).
 
+### Fixed
+- Google Sheets: guides recorded on an editable sheet now play. Typing into a cell is preceded by **Select cell** for it, a step in a menu Waymark couldn't record opening is marked **In a menu**, typing steps move on at Tab or Enter, and while a step is still being looked for, a card says so (and to open the menu first) instead of nothing for 8 s (D207, #115).
+
 ## [0.10.0] - 2026-11-07
 
 ### Added

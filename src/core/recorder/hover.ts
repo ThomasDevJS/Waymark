@@ -48,6 +48,8 @@ export interface HoverTracker {
   mutated(records: MutationRecord[], at: number): void;
   /** The trigger the clicked element's menu opened from, or null. `since`: the last recorded step's (or typing's) time. */
   triggerFor(clicked: Element, at: number, since: number): Element | null;
+  /** The element, or a container of it (10 levels up, not `<body>`), was revealed between `from` and `to` (#115). */
+  revealedBetween(el: Element, from: number, to: number): boolean;
 }
 
 const HIDDEN_STYLE = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?\s*(?:!important)?\s*(?:;|$))/i;
@@ -176,6 +178,15 @@ export function createHoverTracker(): HoverTracker {
           } else if (isReveal(r, r.target)) mark(r.target, at);
         }
       }
+    },
+    revealedBetween(el, from, to) {
+      const root = el.ownerDocument;
+      let a: Element | null = el;
+      for (let i = 0; a && i < MAX_LEVELS; i++, a = composedParent(a)) {
+        if (a === root.documentElement || a === root.body) break;
+        if (revealed.get(a)?.some((t) => t >= from && t <= to)) return true;
+      }
+      return false;
     },
     triggerFor(clicked, at, since) {
       const root = clicked.ownerDocument;

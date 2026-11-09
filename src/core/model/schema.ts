@@ -110,7 +110,7 @@ export type ElementFingerprint = z.infer<typeof ElementFingerprintSchema>;
 export const StepKindSchema = z.enum(['click', 'input', 'select', 'check', 'submit', 'navigate', 'note', 'hover', 'cell']);
 export type StepKind = z.infer<typeof StepKindSchema>;
 
-export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas']);
+export const StepFlagSchema = z.enum(['low-confidence', 'closed-shadow', 'canvas', 'in-menu']);
 export type StepFlag = z.infer<typeof StepFlagSchema>;
 
 export const StepSchema = z.object({

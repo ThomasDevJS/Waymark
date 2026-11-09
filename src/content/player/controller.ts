@@ -52,6 +52,13 @@ async function copyText(text: string): Promise<boolean> {
 export const AFTER_ACTION_MS = 300;
 /** Off track: the page does not match the step's URL rule and the target is missing for 3 s. */
 export const OFF_TRACK_MS = 3000;
+/**
+ * Still searching on the step's page after this long: a "Looking for this step…" card (#115).
+ * Sooner for a step flagged "in a menu" (it waits for the learner); later for others, so a page
+ * that is only slow to render doesn't flash it.
+ */
+export const LOOKING_MENU_MS = 1500;
+export const LOOKING_MS = 3000;
 
 export interface PlayerDeps {
   frameToken: string;
@@ -286,6 +293,15 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
           testMark('player', `off-track:${v.stepIndex}`);
         }
       }, OFF_TRACK_MS);
+      // On the step's page but not found yet: say so instead of nothing until the not-found card.
+      const lookingMs = v.step?.flags?.includes('in-menu') ? LOOKING_MENU_MS : LOOKING_MS;
+      later(() => {
+        if (view?.stepToken === v.stepToken && !view.winner && drawnFor !== v.stepToken && !ui.card && onStartPageUrl(view)) {
+          dlog('play', 'card.searching', () => ({ step: v.stepIndex + 1, why: `not found yet after ${lookingMs / 1000} s`, inMenu: !!v.step?.flags?.includes('in-menu') }));
+          ui.showCard('searching', view);
+          testMark('player', `searching-card:${v.stepIndex}`);
+        }
+      }, lookingMs);
     }
     const started = Date.now();
     const fp = step.target;
@@ -352,7 +368,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       return;
     }
     // Another frame found the target: the top frame's off-track or not-found card goes away.
-    if (!mine && v.winner && (ui.card === 'off-track' || ui.card === 'not-found')) {
+    if (!mine && v.winner && (ui.card === 'off-track' || ui.card === 'not-found' || ui.card === 'searching')) {
       dlog('play', 'card.cleared', { step: v.stepIndex + 1, why: 'another frame found the element' });
       ui.clear();
       testMark('player', `elsewhere:${v.stepIndex}`);

@@ -72,7 +72,7 @@ test('Sheets cells: record a click, a drag and a typed reference; play them by m
   // The tooltip docks away from the grid: the cells near the Name Box stay clickable.
   for (const [c, r] of [[0, 0], [2, 4], [4, 6]] as const) {
     const p = await cellPoint(app, c, r);
-    expect(await app.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, p)).toBe('grid');
+    expect(await app.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, p)).toMatch(/^(grid|waffle-rich-text-editor)$/); // the page's own grid or cell editor
   }
   if (process.env.WAYMARK_SHOT) await app.screenshot({ path: process.env.WAYMARK_SHOT });
   await clickCell(app, 2, 3); // C4: not the step's cell
