@@ -6,6 +6,9 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+- Google Sheets: a step on a cell now highlights the cell itself. Waymark selects it when the step starts (only the selection, never a value, and never while you're typing), and **Show again** selects it again. Selecting a cell and typing into it is one step, "Enter a value in B8", which moves on at Enter or Tab. Guide files with such steps need this version of Waymark (D208, #119).
+
 ## [0.11.0] - 2026-11-09
 
 ### Added

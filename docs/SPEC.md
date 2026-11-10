@@ -23,6 +23,7 @@ Waymark (working name) is a Chromium extension that records a click-by-click wal
 - Analytics dashboards, SSO, Firefox or Safari.
 - Automatic "user is stuck" detection.
 - Apps that draw their UI on a canvas (Figma, the Google Docs page): there is no element to target. Google Sheets cells are the exception: a "Select cell" step through the Name Box (D206).
+- Waymark points; it does not act on the page. One exception (D208): on Google Sheets, a step on a cell selects that cell through the Name Box (the selection only, never a value, never while a cell is being typed into), because a cell drawn on a canvas can't be pointed at until it is selected.
 
 ## Users, scope and assumptions
 
@@ -264,7 +265,7 @@ The recorder turns raw browser events into a short list of human-sized steps, an
 - A custom dropdown stays two steps: open it, then "Choose **{option}**". Options rendered in a portal are matched by role and name, not position.
 - A click on a non-interactive area is kept only if it has no interactive ancestor, and it is flagged low-confidence in the editor.
 - A click on an item of a menu that opened while the pointer rested on another element gets a hover step ("Point at **{trigger}**") before it, under the strict rules of D204. Menus shown by CSS `:hover` alone are not detected.
-- A click on the Google Sheets grid becomes "Select cell **B8**", read from the Name Box, and so does a reference typed into the Name Box, then Enter (D206). Typing into a cell the guide hasn't selected (reached by Tab or the arrow keys) adds its cell step first; a grid click that leaves the selection as it was records none (D207).
+- A click on the Google Sheets grid becomes "Select cell **B8**", read from the Name Box, and so does a reference typed into the Name Box, then Enter (D206). Typing into that cell right after makes it one step, "Enter a value in **B8**" (D208). Typing into a cell the guide hasn't selected (reached by Tab or the arrow keys) adds its cell step first; a grid click that leaves the selection as it was records none (D207).
 - A step inside a menu that appeared within 1 s of a click that was not recorded (D47, or on the Sheets grid without selecting a cell) is flagged `in-menu`: the editor says to explain how to open it (D207).
 
 **Navigation**
@@ -321,7 +322,8 @@ The player draws on top of the real app without touching its styles, and the lea
 | navigate | The URL matches the step's URL rule |
 | note | Next |
 | hover | A trusted `pointerover` on the target, keyboard focus (`:focus-visible`) reaching it, a click on it, or the pointer already there; Next when it can't take focus (D204) |
-| cell | The Sheets Name Box shows the step's cell (and sheet); the tooltip docks bottom-right (D206) |
+| cell | The player selects the Sheets cell (D208) and rings it; then a click on it or typing into it, the cell still selected. A range: Next. The tooltip docks bottom-right (D206) |
+| input on a Sheets cell | Enter or Tab in Sheets' cell editor with something typed, the step's cell selected (the player selected it, D208) |
 
 Optional steps also show Skip. After any action, wait 300 ms before searching for the next target. An input step also moves on at Tab out of a filled field (its value noted before an app that clears it, focus gone the next tick), and at Tab or Enter in Sheets' cell editor (D207).
 

@@ -3,8 +3,8 @@
  * then cells typed into with Tab between them. Before, the click that opened the menu was not
  * recorded, the guide started on a hidden menu item, the "Enter C3" steps had no cell selected
  * first, and playback showed nothing for 8 s. Now: the menu item is flagged "in a menu", a
- * "Looking for this step…" card says to open the menu first, and each typed cell gets a
- * "Select cell" step before it.
+ * "Looking for this step…" card says to open the menu first, and each typed cell is one step
+ * that selects it (D208).
  */
 import type { Page } from '@playwright/test';
 import { canGrant, expect, marker, test } from './fixtures';
@@ -52,10 +52,9 @@ test('a filter menu opened from the grid and cells typed with Tab: flagged, expl
   const rec = await ext.message<{ guideId: string; steps: { kind: string; title: string; flags?: string[] }[] }>('rec.stop', {});
   expect(rec.steps.map((s) => `${s.kind}: ${s.title}${s.flags?.length ? ` [${s.flags.join(',')}]` : ''}`)).toEqual([
     'check: Uncheck **Done** [in-menu]',
-    'cell: Select cell **C3** on **Budget**',
-    'input: Enter C3',
-    'cell: Select cell **D3** on **Budget**',
-    'input: Enter D3',
+    // D208: selecting a cell and typing into it is one step
+    'input: Enter a value in **C3** on **Budget**',
+    'input: Enter a value in **D3** on **Budget**',
   ]);
 
   // The editor explains the flag.
@@ -75,13 +74,14 @@ test('a filter menu opened from the grid and cells typed with Tab: flagged, expl
   await app.getByRole('menuitemcheckbox', { name: 'Done' }).click();
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:1');
   await app.keyboard.press('Escape');
-  await clickCell(app, 2, 2);
-  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:2');
+  // D208: the player selects C3; the learner types and presses Tab, which selects D3.
+  await expect(app.locator('#t-name-box')).toHaveValue('C3');
   await app.keyboard.type('42');
   await app.keyboard.press('Tab');
-  // D3 is selected by the Tab: its cell step moves on by itself, then the typing step is drawn.
-  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:4');
+  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:2');
+  await expect(app.locator('#t-name-box')).toHaveValue('D3');
   await app.keyboard.type('7');
   await app.keyboard.press('Tab');
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
+  await expect(app.locator('#last-action')).toHaveText('C3=42 D3=7');
 });

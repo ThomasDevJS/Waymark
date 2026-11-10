@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { activeSheet, isCellEditor, isCellSelected, isSheetsGrid, normalizeRef, readCell } from '../../src/core/sheets';
 import { makePack, packFormatFor, parsePack } from '../../src/core/sharing/pack';
-import { stepTitle } from '../../src/core/text/templates';
+import { cellInputTitle, stepTitle } from '../../src/core/text/templates';
 import { recorderStep } from '../../src/background/recording';
 import { GuideSchema, type Guide, type Step } from '../../src/core/model/schema';
 import { applyRemovals, packStrings } from '../../src/core/sharing/review';
@@ -103,7 +103,7 @@ describe('cell steps in guides and packs', () => {
     const pack = makePack([guide('a', [step('cell', 's1', { cell: { ref: 'B8', sheet: 'Budget' } })])]);
     const r = parsePack(JSON.stringify(pack));
     expect(r.ok && r.pack.guides[0]!.steps[0]!.cell).toEqual({ ref: 'B8', sheet: 'Budget' });
-    expect(parsePack(JSON.stringify({ ...pack, formatVersion: 4 }))).toEqual({ ok: false, error: expect.stringContaining('newer version') });
+    expect(parsePack(JSON.stringify({ ...pack, formatVersion: 5 }))).toEqual({ ok: false, error: expect.stringContaining('newer version') });
   });
 
   it('a recorded cell step keeps its cell; a cell step without one, or a cell on another kind, is dropped', () => {
@@ -153,5 +153,27 @@ describe('#115', () => {
     expect(isCellEditor(editor, document)).toBe(true);
     document.getElementById('t-name-box')!.remove();
     expect(isCellEditor(editor, document)).toBe(false);
+  });
+});
+
+describe('D208: typing into a Sheets cell as one step', () => {
+  it('a typing step may carry its cell; pack format 4, so 0.11.0 says "newer version"', () => {
+    const typing = step('input', 's1', { title: 'Enter a value in **B8**', cell: { ref: 'B8', sheet: 'Budget' } });
+    expect(GuideSchema.safeParse(guide('g', [typing])).success).toBe(true);
+    expect(packFormatFor([guide('g', [typing])])).toBe(4);
+    expect(packFormatFor([guide('g', [step('cell', 's1', { cell: { ref: 'B8' } })])])).toBe(3);
+    const r = parsePack(JSON.stringify(makePack([guide('g', [typing])])));
+    expect(r.ok && r.pack.guides[0]!.steps[0]!.cell).toEqual({ ref: 'B8', sheet: 'Budget' });
+  });
+
+  it('the service worker keeps a recorded typing step\'s cell; a click with a cell is still dropped', () => {
+    expect(recorderStep(step('input', 's1', { cell: { ref: 'B8', sheet: 'Budget' } }))?.cell).toEqual({ ref: 'B8', sheet: 'Budget' });
+    expect(recorderStep(step('input', 's1'))?.cell).toBeUndefined();
+    expect(recorderStep(step('click', 's1', { cell: { ref: 'B8' } }))).toBeNull();
+  });
+
+  it('the title', () => {
+    expect(cellInputTitle('B8')).toBe('Enter a value in **B8**');
+    expect(cellInputTitle('B8', 'Q1 *draft*')).toBe('Enter a value in **B8** on **Q1 \\*draft\\***');
   });
 });

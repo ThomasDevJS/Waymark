@@ -19,7 +19,7 @@ import { dismissScope, showToast, ToastSlot } from './Toast';
 import { useFlipList } from '../../ui/useMotion';
 import { dropIndex, edgeScroll, moveItem } from '../../core/editor/reorder';
 import { normalizeRef } from '../../core/sheets';
-import { stepTitle } from '../../core/text/templates';
+import { cellInputTitle, stepTitle } from '../../core/text/templates';
 import { DEFAULT_SHADE, withGuideShade } from '../../core/player/shade';
 import { SHADE_LABEL, SHADE_NAME } from '../../ui/shadeCopy';
 import type { ShotsStatus } from '../../core/messaging/protocol';
@@ -490,8 +490,10 @@ function CellField({ step, index, readOnly }: { step: Step; index: number; readO
     setError(null);
     if (ref === cell.ref) return;
     const sheet = cell.sheet ? { sheet: cell.sheet } : {};
-    const fromTemplate = step.title === stepTitle('cell', { name: cell.ref, ...sheet });
-    patchStep(step.id, { cell: { ...cell, ref }, ...(fromTemplate ? { title: stepTitle('cell', { name: ref, ...sheet }) } : {}) });
+    // A typing step on a cell (D208) has its own template.
+    const title = (r: string) => (step.kind === 'input' ? cellInputTitle(r, cell.sheet) : stepTitle('cell', { name: r, ...sheet }));
+    const fromTemplate = step.title === title(cell.ref);
+    patchStep(step.id, { cell: { ...cell, ref }, ...(fromTemplate ? { title: title(ref) } : {}) });
   };
   return (
     <label class="field">
@@ -872,7 +874,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                             <Icon name="test" />
                             Test step
                           </button>
-                          <button type="button" class={`sm${isPicking ? ' primary' : ' ghost'}`} data-testid={`step-${i}-plays-repick`} aria-pressed={isPicking} disabled={readOnly || tabId === null || s.kind === 'cell'} onClick={repick}>
+                          <button type="button" class={`sm${isPicking ? ' primary' : ' ghost'}`} data-testid={`step-${i}-plays-repick`} aria-pressed={isPicking} disabled={readOnly || tabId === null || !!s.cell} onClick={repick}>
                             <Icon name={isPicking ? 'close' : 'crosshair'} />
                             {isPicking ? 'Cancel picking' : 'Re-pick element'}
                           </button>
@@ -886,7 +888,7 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                     </span>
                     <input data-testid={`step-${i}-title`} value={s.title} disabled={readOnly} onInput={(e) => patchStep(s.id, { title: (e.target as HTMLInputElement).value })} />
                   </label>
-                  {s.kind === 'cell' && s.cell && <CellField key={`${s.id}:${s.cell.ref}`} step={s} index={i} readOnly={readOnly} />}
+                  {s.cell && <CellField key={`${s.id}:${s.cell.ref}`} step={s} index={i} readOnly={readOnly} />}
                   <label class="field">
                     <span class="label">Note</span>
                     <textarea
@@ -917,8 +919,8 @@ export function Editor({ guideId, tabId, onClose }: { guideId: string; tabId: nu
                           class={`sm${isPicking ? ' primary' : ''}`}
                           data-testid={`step-${i}-repick`}
                           aria-pressed={isPicking}
-                          disabled={readOnly || tabId === null || s.kind === 'cell'}
-                          title={s.kind === 'cell' ? 'A cell step always points at the Name Box; change the cell below' : 'Choose a different element on the page for this step'}
+                          disabled={readOnly || tabId === null || !!s.cell}
+                          title={s.cell ? 'A Sheets cell step finds its cell by name: change the cell below' : 'Choose a different element on the page for this step'}
                           onClick={repick}
                         >
                           <Icon name={isPicking ? 'close' : 'crosshair'} />

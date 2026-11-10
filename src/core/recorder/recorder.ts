@@ -16,7 +16,7 @@ import { ariaRole } from '../debug/log';
 import { isInteractive, resolveTargetFromPath, tagOf, type ResolvedTarget } from '../fingerprint/dom';
 import { hasInteractiveAncestor, promoteToRegion } from './region';
 import { safeLabel } from '../fingerprint/filters';
-import { chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
+import { cellInputTitle, chooseOptionTitle, roleWord, stepTitle } from '../text/templates';
 import { stepUrlRule } from '../url/url';
 import { checkedState, isCheckLike, isCustomOption, isNativeCheck, isNativeSelect, isSensitiveField, isTextField, submitForm } from './classify';
 
@@ -309,23 +309,46 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     timers.add(timer);
   };
   /** Before an input step into the Sheets cell editor: a cell step for the selected cell, unless the guide is already there. */
-  const ensureCellFor = (el: Element) => {
-    const box = nameBox(doc);
-    if (!box || !doc.getElementById('waffle-grid-container')) return;
+  /** The Sheets cell being typed into, when `el` is Sheets' cell editor; null elsewhere. */
+  const cellTypedInto = (el: Element): CellRef | null => {
+    if (!nameBox(doc) || !doc.getElementById('waffle-grid-container')) return null;
     const c = readCell(doc);
-    if (!c) return;
+    if (!c) return null;
     // Cheap on every keystroke: the editor's label, not a fingerprint.
     const isCellEditor = normalizeRef(el.getAttribute('aria-label') ?? '') === c.ref || !!el.closest('#waffle-grid-container');
-    if (!isCellEditor) return;
-    if (lastCell && sameCell(lastCell, c)) return;
-    refreshCell('typing into a cell');
-    if (lastCell && sameCell(lastCell, c)) return;
-    dbg('cell', () => ({ why: 'Sheets: typing into a cell the guide has not selected: a cell step first (#115)' }));
-    const step = add('cell', box, fpOf(box), cellStep(box, c).title, undefined, undefined, { cell: c });
-    if (step) {
-      lastCell = c;
-      cellQuiet = false; // the typing that follows is an action on this cell
+    return isCellEditor ? c : null;
+  };
+  /**
+   * Typing into a Sheets cell is one step with selecting it (D208): "Enter a value in **B8**". The
+   * player selects the cell when the step is drawn, so selecting it can't be a step of its own.
+   * The cell's step is recorded first if the guide has none for it (Tab or the arrow keys, #115),
+   * then turned into the typing step. Returns true when the typing is that step now.
+   */
+  const typeIntoCell = (el: Element): boolean => {
+    const c = cellTypedInto(el);
+    const box = nameBox(doc);
+    if (!c || !box) return false;
+    if (last && last.kind === 'input' && last.el === el && lastCell && sameCell(lastCell, c)) return true; // still typing
+    // The guide's last step is this cell's step; anything else (another step since, another cell) needs one.
+    const atCell = () => !!last && last.kind === 'cell' && !last.skipped && !!lastCell && sameCell(lastCell, c);
+    if (!atCell()) {
+      refreshCell('typing into a cell');
+      if (!atCell()) {
+        dbg('cell', () => ({ why: 'Sheets: typing into a cell the guide has not selected: its step first (#115)' }));
+        const step = add('cell', box, fpOf(box), cellStep(box, c).title, undefined, undefined, { cell: c });
+        if (!step) return false;
+        lastCell = c;
+      }
     }
+    cellQuiet = false; // the typing is an action on this cell
+    // A range is typed into at its first cell: kept as a cell step and a typing step.
+    if (!last || last.kind !== 'cell' || last.skipped || !last.id || c.ref.includes(':')) return false;
+    const step = makeStep('input', box, fpOf(box), cellInputTitle(c.ref, c.sheet), undefined, undefined, { cell: c });
+    step.id = last.id;
+    last = { ...last, kind: 'input', el, time: now() };
+    dbg('merge', () => ({ why: 'Sheets: typing into the cell just selected: one step, "Enter a value in" (D208)' }));
+    opts.emit({ op: 'replace', stepId: step.id, step });
+    return true;
   };
   /** Keys that only move or extend the selection keep the next cell selection a replacement. */
   const SELECTION_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Tab', 'Shift', 'Control', 'Meta', 'Alt']);
@@ -516,8 +539,12 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     }
     // Typing into a Sheets cell: its editor is named after the selected cell, so the guide must
     // select that cell first (#115). Reached by Tab or the arrow keys, it has no cell step yet.
-    ensureCellFor(el); // before the "many input events, one step" merge: Tab to D3 uses the same editor
     typedAt = now();
+    // Before the "many input events, one step" merge: Tab to D3 uses the same editor (#115).
+    if (typeIntoCell(el)) {
+      if (fieldClick?.el === el) fieldClick = null;
+      return;
+    }
     if (last && last.kind === 'input' && last.el === el) {
       if (fieldClick?.el === el) fieldClick = null;
       return; // many input events, one step

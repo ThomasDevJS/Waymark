@@ -17,6 +17,7 @@ import { bestSpeechVoice } from '../../core/voice/voice';
 import { presentSignals } from '../../core/matcher/signals';
 import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
+import { activeCellRect, activeSheet, createEditTracker, isCellSelected, isEditingCell, isRange, isSheetsPage, selectViaNameBox, sheetNames } from '../../core/sheets';
 import { fetchProfile } from '../profile';
 import type { ProfileOptions } from '../../core/model/profile';
 import { matchStrength } from '../../core/stats/plays';
@@ -59,6 +60,10 @@ export const OFF_TRACK_MS = 3000;
  */
 export const LOOKING_MENU_MS = 1500;
 export const LOOKING_MS = 3000;
+/** A Sheets cell step waiting for its sheet tab or an empty cell editor looks again this often (D208). */
+const CELL_WAIT_MS = 250;
+/** ...and checks Sheets took the selection this long after (D208). */
+const CELL_CHECK_MS = 400;
 
 export interface PlayerDeps {
   frameToken: string;
@@ -100,6 +105,102 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   let searchDone = false;
   let stopAdvance: (() => void) | null = null;
   let drawnFor: string | null = null;
+  /** A Sheets cell step's wait for its sheet tab or for the cell editor to be empty (D208). */
+  let cellTimer: ReturnType<typeof setInterval> | null = null;
+  /** The step whose cell the player selected or gave up on (D208): once per step. */
+  let cellDoneFor: string | null = null;
+  /** The step whose cell the player is waiting to select (its sheet tab, or a cell being edited). */
+  let cellWaitFor: string | null = null;
+  /** The hint the wait put up, put back after a redraw. */
+  let cellHint: { token: string; text: string } | null = null;
+  /**
+   * The learner's own editing (D208), followed from the start: a cell opened before the guide
+   * started must count too. Three capture listeners, read only by Sheets cell steps.
+   */
+  let editTracker: { editing(): boolean; stop(): void } | null = createEditTracker(document);
+  const stopCellAssist = () => {
+    if (cellTimer) clearInterval(cellTimer);
+    cellTimer = null;
+  };
+  /**
+   * A step on a Google Sheets cell (D208, the owner's decision D-10 b): the player selects the cell
+   * once, the way a person would (its reference into the Name Box, then Enter), and rings the real
+   * cell. The first action Waymark takes on a page, so it is held to: the selection only, never a
+   * value; a page with Sheets' Name Box and grid only; never while the cell editor holds typed text
+   * (that would commit it); and on another sheet tab, "Open the … tab" and nothing selected. Once
+   * selected, it is not selected again if the learner moves away; Show again does.
+   */
+  function selectCellOnce(v: RunView, again = false) {
+    const cell = v.step?.cell;
+    const token = v.stepToken;
+    if (!cell || !token || !isSheetsPage(document)) return stopCellAssist();
+    // Once per step: a redraw (the Name Box re-rendered) neither selects again nor ends a wait;
+    // its hint comes back. Show again and Repeat select again.
+    if (!again && (cellDoneFor === token || (cellTimer && cellWaitFor === token))) {
+      if (cellHint?.token === token) ui.setHint(cellHint.text);
+      return;
+    }
+    stopCellAssist();
+    cellWaitFor = token;
+    const hint = (text: string | null) => {
+      cellHint = text ? { token, text } : null;
+      ui.setHint(text);
+    };
+    const done = () => {
+      cellDoneFor = token;
+      stopCellAssist();
+    };
+    const attempt = () => {
+      if (view?.stepToken !== token) return stopCellAssist();
+      if (cell.sheet && activeSheet(document) !== cell.sheet) {
+        const names = sheetNames(document);
+        if (names && !names.includes(cell.sheet)) {
+          // Renamed or deleted since the guide was made: nothing to wait for.
+          dlog('play', 'cell.no-sheet', { step: v.stepIndex + 1 });
+          testMark('cell-wait', 'failed');
+          hint(`Waymark couldn’t find the “${cell.sheet}” tab. Select ${cell.ref} yourself, then press Next.`);
+          return done();
+        }
+        testMark('cell-wait', 'sheet');
+        return hint(`Open the “${cell.sheet}” tab first.`);
+      }
+      // Never over a cell being edited: Sheets would save what is in its editor, even nothing.
+      if (isEditingCell(document) || editTracker?.editing()) {
+        testMark('cell-wait', 'editing');
+        return hint('Finish the cell you’re typing in (Enter, or Esc to cancel) first.');
+      }
+      hint(null);
+      done();
+      const what = `${isRange(cell.ref) ? 'Cells' : 'Cell'} ${cell.ref}`;
+      if (isCellSelected(document, cell)) {
+        ui.say(`${what} is selected.`);
+        return;
+      }
+      const box = document.getElementById('t-name-box') as HTMLInputElement | null;
+      const before = box?.value ?? '';
+      const ok = selectViaNameBox(document, cell);
+      dlog('play', 'cell.select', () => ({ step: v.stepIndex + 1, again, nameBox: ok }));
+      testMark('cell-selected', `${v.stepIndex}`);
+      // Sheets didn't take it (a cell beyond the grid): leave the Name Box as it was, and its focus,
+      // so the learner's typing doesn't land there.
+      setTimeout(() => {
+        if (view?.stepToken !== token) return;
+        if (isCellSelected(document, cell)) {
+          ui.say(`${what} selected.`);
+          return;
+        }
+        if (box && document.activeElement === box) {
+          box.value = before;
+          box.blur();
+        }
+        dlog('play', 'cell.select.failed', { step: v.stepIndex + 1 });
+        testMark('cell-wait', 'failed');
+        hint(`Waymark couldn’t select ${cell.ref}. Select it yourself, then press Next.`);
+      }, CELL_CHECK_MS);
+    };
+    cellTimer = setInterval(attempt, CELL_WAIT_MS);
+    attempt();
+  }
   /** The step token a pick from the player is under way for (D210); the player hides meanwhile. */
   let fixingFor: string | null = null;
   let fixTimer: ReturnType<typeof setTimeout> | undefined;
@@ -148,6 +249,14 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
         })
         .catch(() => undefined);
     },
+    // "Show again" on a Sheets cell step (D208): the learner moved away from the cell the player
+    // selected; select it again, under the same rules as the first time.
+    showCell: () => {
+      const v = view;
+      if (!v?.step?.cell || drawnFor !== v.stepToken) return;
+      dlog('play', 'cell.again', { step: v.stepIndex + 1 });
+      selectCellOnce(v, true);
+    },
     mute: (muted) => {
       send('run.mute', { muted }).catch(() => undefined);
     },
@@ -161,6 +270,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       if (!v?.step || v.status !== 'running') return;
       testMark('repeat', String(Number(document.documentElement.getAttribute('data-waymark-test-repeat') ?? 0) + 1));
       dlog('play', 'repeat', { step: v.stepIndex + 1 });
+      cellDoneFor = null; // the learner asked: a Sheets cell is selected again (D208)
       startSearch(v);
       send('run.replay', { stepId: v.step.id }).catch(() => undefined);
     },
@@ -360,7 +470,20 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       stopAdvance?.();
       // A click on the spotlighted box (e.g. the label of a hidden checkbox) also counts.
       const targets = r.tied.includes(target) ? r.tied : [...r.tied, target];
-      stopAdvance = watchAdvance({ step: v.step, targets, isOwnEvent: isOverlayPath, onAdvance: () => op('done'), ...(debugOn() ? { debug: (ev: string, d: () => Record<string, unknown>) => dlog('play', ev, d) } : {}) });
+      stopAdvance = watchAdvance({
+        step: v.step,
+        targets,
+        isOwnEvent: isOverlayPath,
+        onAdvance: () => op('done'),
+        ...(debugOn() ? { debug: (ev: string, d: () => Record<string, unknown>) => dlog('play', ev, d) } : {}),
+      });
+      // A Sheets cell (D208): select it once and ring the real cell, the Name Box until then.
+      const cell = v.step.cell;
+      if (cell) {
+        selectCellOnce(v);
+        // A single cell: its own box. A range keeps the ring on the Name Box (Sheets' border is the active cell's only).
+        if (!isRange(cell.ref)) ui.pointAt(() => (isCellSelected(document, cell) ? activeCellRect(document) : null));
+      } else stopCellAssist();
       dlog('play', 'draw', () => ({ step: v.stepIndex + 1, why: 'this frame won', spotlight: target === r.element ? 'element' : 'its label or box' }));
       testSpot(target, v.stepIndex);
       testMark('player', `drawn:${v.stepIndex}`);
@@ -508,6 +631,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       offReleased();
       endFixing();
       clearStep();
+      stopCellAssist();
+      editTracker?.stop();
+      editTracker = null;
       removeEventListener('pagehide', onHide);
       try {
         chrome.runtime.onMessage.removeListener(onMessage);

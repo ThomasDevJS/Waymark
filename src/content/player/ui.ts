@@ -14,9 +14,14 @@ import { claimOverlay, eventPath, isOverlayPath, mountOverlayIn, overlayLayer, o
 import { DUR, EASE, reducedMotion } from '../../ui/motion';
 import { testMark } from '../test-hooks';
 import { DEFAULT_SHADE, isShade, type Shade } from '../../core/player/shade';
+import { isRange } from '../../core/sheets';
 
 /** A docked tooltip (D206): this far from the right edge, and above the launcher in the corner. */
 const DOCK_GAP_PX = 16;
+/** How often the ring follows a box that moves on its own (a Sheets cell, D208). */
+const FOLLOW_MS = 150;
+/** A screen-reader message waits this long, so the step's own announcement is heard first (D208). */
+const SAY_AFTER_MS = 1500;
 const DOCK_BOTTOM_PX = 84;
 /** Smaller than this, a docked tooltip would sit on the grid's top-left anyway: it floats next to the Name Box. */
 const DOCK_MIN_W = 720;
@@ -164,6 +169,8 @@ export interface UiHandlers {
   copyLog?(): void;
   /** Pick the right element (D210): only in a real run of the author's own guide (`view.fixable`). */
   fix?(): void;
+  /** A Sheets cell step's "Show again" (D208): select the step's cell again and point at it. */
+  showCell?(): void;
 }
 
 export type Card = 'not-found' | 'off-track' | 'done' | 'searching';
@@ -206,8 +213,11 @@ export function modalDialogOf(target: Element): Element | null {
  * What the learner does on the page to move on, for steps without a Next button (D127). First-time
  * learners waited for a Next button that action steps don't have.
  */
-export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'advance'>): string | null {
+export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'advance' | 'cell'>): string | null {
   if (step.advance !== 'action') return null;
+  if (step.kind === 'cell' && step.cell && isRange(step.cell.ref)) return 'Waymark selected these cells. Press Next to continue.';
+  // Typing into a Sheets cell the player selected (D208).
+  if (step.kind === 'input' && step.cell) return 'Type into the highlighted cell, then press Enter or Tab.';
   switch (step.kind) {
     case 'click':
       return 'Click the highlighted item to continue.';
@@ -224,7 +234,7 @@ export function actionHint(step: Pick<NonNullable<RunView['step']>, 'kind' | 'ad
     case 'hover':
       return 'Point at the highlighted item (or Tab to it) to continue.';
     case 'cell':
-      return 'Click that cell in the sheet, or type it in the highlighted box and press Enter.';
+      return 'Waymark selected the highlighted cell. Click it to continue, or press Next.';
     default:
       return null;
   }
@@ -245,6 +255,12 @@ export class PlayerUI {
   /** A keyboard user pressed this tooltip button; it gets focus back when this step is redrawn. */
   private refocus: { action: string; stepToken: string | null } | null = null;
   private stopAuto: (() => void) | null = null;
+  /** The spotlight and ring follow this box instead of the target (a Sheets cell, D208), while it gives one. */
+  private boxOverride: (() => DOMRect | null) | null = null;
+  private redraw: (() => void) | null = null;
+  /** The step's action hint, and its own words, so a note can replace them for a while (D208). */
+  private hintLine: { el: HTMLElement; text: string } | null = null;
+  private followTimer: ReturnType<typeof setInterval> | null = null;
   /** Motion memory (D133): where the ring last was, and the progress bar's last value, per run. */
   private lastHole: (Box & { run: string; token: string | null; at: number }) | null = null;
   private lastProgress: { run: string; frac: number } | null = null;
@@ -340,6 +356,7 @@ export class PlayerUI {
       const line = el('p', 'hint', hint);
       line.id = 'waymark-step-hint';
       line.dataset.testid = 'action-hint';
+      this.hintLine = { el: line, text: hint };
       tip.append(line);
       // Screen readers hear it with the tooltip, after the note.
       tip.setAttribute('aria-describedby', [tip.getAttribute('aria-describedby'), line.id].filter(Boolean).join(' '));
@@ -351,6 +368,12 @@ export class PlayerUI {
     // A hover step whose trigger can't take keyboard focus: Next, so keyboard users are not stuck (D204).
     const unfocusable = step.kind === 'hover' && !(target instanceof HTMLElement && target.tabIndex >= 0);
     // A Sheets cell step (D206): Next too, for a sheet renamed since or a cell out of reach.
+    // The player selected the step's cell (D208); "Show again" selects it again if the learner moved away.
+    if (step.cell && this.h.showCell) {
+      const again = this.button('Show again', 'show-cell', this.h.showCell, 'ghost', MapPin);
+      again.setAttribute('aria-label', `Select ${isRange(step.cell.ref) ? 'cells' : 'cell'} ${step.cell.ref} again`);
+      buttons.append(again);
+    }
     if (step.kind === 'note' || step.kind === 'input' || step.advance === 'next' || unfocusable || step.kind === 'cell') {
       const last = view.stepIndex === view.total - 1;
       buttons.append(this.button(last ? 'Done' : 'Next', 'next', this.h.next, 'primary', last ? undefined : ChevronRight, true));
@@ -390,14 +413,14 @@ export class PlayerUI {
     // A Sheets cell step (D206) rings the Name Box, which sits right above the grid's top-left
     // cells, the ones learners pick most. Next to it the tooltip would cover them (there is no room
     // above it), so it docks in the bottom-right corner instead, unless the author placed it.
-    const docked = step.kind === 'cell' && (!step.placement || step.placement === 'auto') && window.innerWidth >= DOCK_MIN_W && window.innerHeight >= DOCK_MIN_H;
+    const docked = !!step.cell && (!step.placement || step.placement === 'auto') && window.innerWidth >= DOCK_MIN_W && window.innerHeight >= DOCK_MIN_H;
     if (docked) tip.classList.add('docked');
     const update = () => {
       if (!target.isConnected) {
         onLost?.();
         return;
       }
-      const r = target.getBoundingClientRect();
+      const r = this.boxOverride?.() ?? target.getBoundingClientRect();
       const { hole } = spotlightPanels({ x: r.left, y: r.top, w: r.width, h: r.height }, window.innerWidth, window.innerHeight);
       const box = { left: `${hole.x}px`, top: `${hole.y}px`, width: `${hole.w}px`, height: `${hole.h}px` };
       if (this.spot) Object.assign(this.spot.style, box);
@@ -441,6 +464,47 @@ export class PlayerUI {
       });
     };
     this.stopAuto = autoUpdate(target, tip, update, { animationFrame: false });
+    this.redraw = update;
+  }
+
+  /**
+   * Says `text` to screen readers (a Sheets cell the player selected, D208), after the step's own
+   * announcement has been read: said at once, it would replace it.
+   */
+  say(text: string): void {
+    const token = this.tip;
+    setTimeout(() => {
+      if (this.tip === token && token?.isConnected) this.announce(text);
+    }, SAY_AFTER_MS);
+  }
+
+  /**
+   * Replaces the step's action hint with `text` (a Sheets tab to open first, D208), or puts it back
+   * with null. A step without a hint line (it moves on with Next) shows it as a short message.
+   */
+  setHint(text: string | null): void {
+    const h = this.hintLine;
+    if (!h || !h.el.isConnected) {
+      if (text) this.flash(text, 'warn');
+      return;
+    }
+    const next = text ?? h.text;
+    if (h.el.textContent === next) return;
+    h.el.textContent = next;
+    if (text) this.say(text);
+  }
+
+  /**
+   * The spotlight and ring follow `box` (D208: the Sheets cell the player selected) while it gives
+   * one, and the step's element otherwise. The cell moves with the grid's own scrolling, which the
+   * element's observers don't see, so it is followed a few times a second.
+   */
+  pointAt(box: () => DOMRect | null): void {
+    if (!this.redraw) return;
+    this.boxOverride = box;
+    this.redraw();
+    if (this.followTimer) clearInterval(this.followTimer);
+    this.followTimer = setInterval(() => this.redraw?.(), FOLLOW_MS);
   }
 
   showCard(kind: Card, view: RunView): void {
@@ -521,6 +585,11 @@ export class PlayerUI {
     releaseOverlay(this);
     this.stopAuto?.();
     this.stopAuto = null;
+    this.boxOverride = null;
+    this.redraw = null;
+    this.hintLine = null;
+    if (this.followTimer) clearInterval(this.followTimer);
+    this.followTimer = null;
     this.stopPress?.();
     this.stopPress = null;
     if (this.lastHole && this.ring) this.lastHole.at = performance.now(); // on screen until now

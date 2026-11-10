@@ -27,7 +27,7 @@ async function dragCells(app: Page, from: [number, number], to: [number, number]
   await app.mouse.up();
 }
 
-test('Sheets cells: record a click, a drag and a typed reference; play them by mouse and keyboard (closed root)', async ({ context, ext, site }) => {
+test('Sheets cells: record a click, a drag and a typed reference; play them: each cell selected by the player, ringed, then clicked; a range with Next', async ({ context, ext, site }) => {
   await ext.grant('http://127.0.0.1/*');
   const app = await context.newPage();
   await app.goto(`${site.main}/sheet.html`);
@@ -62,39 +62,50 @@ test('Sheets cells: record a click, a drag and a typed reference; play them by m
   ]);
   expect(rec.steps[2]!.cell).toEqual({ ref: 'B2:D5', sheet: 'Totals' });
 
-  // Played in a closed overlay root: the Name Box is highlighted; only the right cell moves on.
-  await app.goto(`${site.main}/sheet.html?waymark-test-closed`);
+  // Played (D208): the player selects each cell once and rings the real cell; the learner then clicks it.
+  await app.goto(`${site.main}/sheet.html`);
   await expect.poll(() => marker(app, 'loaded')).toBe('yes');
   await ext.message('run.start', { tabId, guideId: rec.guideId });
   await app.bringToFront();
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
-  expect(await app.evaluate(() => document.querySelector('waymark-overlay')?.shadowRoot ?? null)).toBeNull();
+  await expect(app.locator('#t-name-box')).toHaveValue('C5');
+  const overlay = app.locator('waymark-overlay');
+  const c5 = await cellPoint(app, 2, 4);
+  await expect.poll(async () => {
+    const r = (await overlay.locator('.ring').boundingBox())!;
+    return r.x < c5.x && c5.x < r.x + r.width && r.y < c5.y && c5.y < r.y + r.height;
+  }).toBe(true);
   // The tooltip docks away from the grid: the cells near the Name Box stay clickable.
   for (const [c, r] of [[0, 0], [2, 4], [4, 6]] as const) {
     const p = await cellPoint(app, c, r);
     expect(await app.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, p)).toMatch(/^(grid|waffle-rich-text-editor)$/); // the page's own grid or cell editor
   }
   if (process.env.WAYMARK_SHOT) await app.screenshot({ path: process.env.WAYMARK_SHOT });
+  await app.waitForTimeout(600);
+  expect(await marker(app, 'player')).toBe('drawn:0'); // the player's own selection doesn't count
   await clickCell(app, 2, 3); // C4: not the step's cell
-  await app.waitForTimeout(800);
+  await app.waitForTimeout(600);
   expect(await marker(app, 'player')).toBe('drawn:0');
+  // Moved away: not selected again by itself; Show again does.
+  await expect(app.locator('#t-name-box')).toHaveValue('C4');
+  await overlay.locator('[data-action="show-cell"]').click();
+  await expect(app.locator('#t-name-box')).toHaveValue('C5');
   await clickCell(app, 2, 4); // C5
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:1');
   await app.getByRole('button', { name: 'Totals' }).click();
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:2');
-  await dragCells(app, [1, 1], [3, 4]);
+  // A range: selected by the player, then Next.
+  await expect(app.locator('#t-name-box')).toHaveValue('B2:D5');
+  await overlay.locator('[data-action="next"]').click();
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:3');
   await app.getByRole('button', { name: 'Sort A to Z' }).click();
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('drawn:4');
-  // By keyboard: type the cell into the highlighted Name Box.
-  await app.locator('#t-name-box').focus();
-  await app.keyboard.press('Control+A');
-  await app.keyboard.type('F9');
-  await app.keyboard.press('Enter');
+  await expect(app.locator('#t-name-box')).toHaveValue('F9');
+  await clickCell(app, 5, 8); // F9
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
 });
 
-test('Sheets cells: the same cell on another sheet does not move on; the arrow keys do', async ({ context, ext, site }) => {
+test('D208: on another sheet tab, "Open the … tab" and nothing selected; then the cell is selected once (closed root)', async ({ context, ext, site }) => {
   await ext.grant('http://127.0.0.1/*');
   const app = await context.newPage();
   await app.goto(`${site.main}/sheet.html`);
@@ -106,18 +117,119 @@ test('Sheets cells: the same cell on another sheet does not move on; the arrow k
   await app.waitForTimeout(250);
   const rec = await ext.message<{ guideId: string }>('rec.stop', {});
 
-  await app.reload();
+  await app.goto(`${site.main}/sheet.html?waymark-test-closed`);
   await expect.poll(() => marker(app, 'loaded')).toBe('yes');
   await app.getByRole('button', { name: 'Totals' }).click();
   await ext.message('run.start', { tabId, guideId: rec.guideId });
   await app.bringToFront();
   await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
-  await clickCell(app, 1, 2); // B3, but on Totals
-  await app.waitForTimeout(800);
-  expect(await marker(app, 'player')).toBe('drawn:0');
-  await app.getByRole('button', { name: 'Budget' }).click(); // back to A1 on Budget
-  await clickCell(app, 1, 1); // B2, then the arrow key down to B3
-  await app.keyboard.press('ArrowDown');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('sheet');
+  await app.waitForTimeout(500);
+  await expect(app.locator('#t-name-box')).toHaveValue('A1'); // nothing selected on Totals
+  await expect(app.locator('.docs-sheet-active-tab')).toHaveText('Totals');
+  await app.getByRole('button', { name: 'Budget' }).click();
   await expect(app.locator('#t-name-box')).toHaveValue('B3');
+  await clickCell(app, 1, 2); // B3
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
+});
+
+test('D208: never selects while a cell is being typed into; a typing step is one step and moves on at Tab', async ({ context, ext, site }) => {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/sheet.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await ext.message('rec.start', { tabId, title: 'Fill in' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await clickCell(app, 2, 4); // C5
+  await app.waitForTimeout(150);
+  await app.keyboard.type('12');
+  await app.keyboard.press('Tab');
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string; steps: { kind: string; title: string }[] }>('rec.stop', {});
+  expect(rec.steps.map((s) => `${s.kind}: ${s.title}`)).toEqual(['input: Enter a value in **C5** on **Budget**']);
+
+  await app.goto(`${site.main}/sheet.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  // The learner is typing into A1 when the guide starts: the player waits.
+  await clickCell(app, 0, 0);
+  await app.keyboard.type('half');
+  await ext.message('run.start', { tabId, guideId: rec.guideId });
+  await app.bringToFront();
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('editing');
+  await expect(app.locator('#t-name-box')).toHaveValue('A1');
+  await expect(app.locator('#last-action')).toHaveText(''); // nothing committed
+  await app.keyboard.press('Escape');
+  await app.evaluate(() => (document.getElementById('waffle-rich-text-editor')!.textContent = '')); // Esc cancels, as in Sheets
+  await expect(app.locator('#t-name-box')).toHaveValue('C5');
+  await app.keyboard.type('12');
+  await app.keyboard.press('Tab');
+  await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
+  await expect(app.locator('#last-action')).toHaveText('C5=12');
+});
+
+/** Records one cell step on Budget's B3 and returns its guide. */
+async function oneCellGuide(context: import('@playwright/test').BrowserContext, ext: import('./fixtures').ExtensionHelper, site: { main: string }) {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/sheet.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await ext.message('rec.start', { tabId, title: 'One cell' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await clickCell(app, 1, 2); // B3 on Budget
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string }>('rec.stop', {});
+  return { app, tabId, guideId: rec.guideId };
+}
+
+test('D208 review fix: a learner who opened a cell (F2) and emptied it is never committed over: the player waits until Esc', async ({ context, ext, site }) => {
+  const { app, tabId, guideId } = await oneCellGuide(context, ext, site);
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.evaluate(() => (window as unknown as { fxSetCell(r: string, v: string): void }).fxSetCell('C6', '100'));
+  await clickCell(app, 2, 5); // C6
+  await app.keyboard.press('F2');
+  await app.keyboard.press('End');
+  for (let i = 0; i < 3; i++) await app.keyboard.press('Backspace');
+  await expect(app.locator('#waffle-rich-text-editor')).toHaveText(''); // editing, and empty
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('editing');
+  await app.waitForTimeout(1500);
+  await expect(app.locator('#t-name-box')).toHaveValue('C6'); // nothing selected
+  await expect(app.locator('#last-action')).toHaveText('C6=100'); // nothing committed
+  await app.locator('#waffle-rich-text-editor').press('Escape');
+  await expect(app.locator('#t-name-box')).toHaveValue('B3');
+  await expect(app.locator('#last-action')).toHaveText('C6=100');
+});
+
+test('D208 review fix: a renamed tab says Waymark could not find it; a redraw during the wait for a tab keeps waiting', async ({ context, ext, site }) => {
+  const { app, tabId, guideId } = await oneCellGuide(context, ext, site);
+  // Renamed since the guide was made.
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.evaluate(() => (document.querySelector('.docs-sheet-tab-name')!.textContent = 'Budget 2026'));
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('failed');
+  await expect(app.locator('#t-name-box')).toHaveValue('A1');
+  await ext.message('run.stop', { tabId }).catch(() => undefined);
+
+  // On the other tab; the Name Box is re-rendered meanwhile (the step is drawn again).
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.getByRole('button', { name: 'Totals' }).click();
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('sheet');
+  const draws = Number((await marker(app, 'draws')) ?? 0);
+  await app.evaluate(() => {
+    const old = document.getElementById('t-name-box')!;
+    old.replaceWith(old.cloneNode(true));
+  });
+  await expect.poll(async () => Number((await marker(app, 'draws')) ?? 0), { timeout: 10_000 }).toBeGreaterThan(draws);
+  await app.getByRole('button', { name: 'Budget' }).click();
+  await expect(app.locator('#t-name-box')).toHaveValue('B3');
 });

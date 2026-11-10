@@ -48,7 +48,8 @@ describe('schemas', () => {
     expect(GuideSchema.safeParse({ ...guide(), schemaVersion: 2 }).success).toBe(false);
     expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 2, exportedAt: '', guides: [] }).success).toBe(true);
     expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 3, exportedAt: '', guides: [] }).success).toBe(true); // Sheets cell steps (D206)
-    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 4, exportedAt: '', guides: [] }).success).toBe(false);
+    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 4, exportedAt: '', guides: [] }).success).toBe(true); // typing into a Sheets cell as one step (D208)
+    expect(GuidePackSchema.safeParse({ format: 'waymark-pack', formatVersion: 5, exportedAt: '', guides: [] }).success).toBe(false);
   });
   it('keeps look-alike profiles (D64) and caps their size', () => {
     const g = guide();

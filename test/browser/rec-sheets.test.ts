@@ -4,6 +4,7 @@ import { userEvent } from 'vitest/browser';
 import { createRecorder, type Recorder, type RecorderOp } from '../../src/core/recorder/recorder';
 import { previewClick } from '../../src/core/recorder/preview';
 import { watchAdvance } from '../../src/core/player/advance';
+import { activeCellRect, createEditTracker, selectViaNameBox } from '../../src/core/sheets';
 import { buildFingerprint } from '../../src/core/fingerprint';
 import type { Step } from '../../src/core/model/schema';
 import { PlayerUI } from '../../src/content/player/ui';
@@ -140,7 +141,7 @@ describe('recording Sheets cells: fixes from the review', () => {
 });
 
 describe('#115: the owner\'s sheet (a filter menu from the grid, cells typed with Tab)', () => {
-  it('typing into the next cell after Tab adds a cell step before it', async () => {
+  it('typing into the next cell after Tab is a step of its own (D208: one step with selecting it)', async () => {
     const editor = Object.assign(document.createElement('div'), { contentEditable: 'true' });
     editor.setAttribute('role', 'combobox');
     editor.setAttribute('aria-label', 'B2');
@@ -155,7 +156,12 @@ describe('#115: the owner\'s sheet (a filter menu from the grid, cells typed wit
     editor.textContent = '';
     await userEvent.keyboard('7');
     await settle();
-    expect(steps().map((s) => `${s.kind}: ${s.title}`)).toEqual(['cell: Select cell **B2** on **Budget**', 'input: Enter B2', 'cell: Select cell **C2** on **Budget**', 'input: Enter C2']);
+    // D208: selecting a cell and typing into it is one step
+    expect(steps().map((s) => `${s.kind}: ${s.title}`)).toEqual(['input: Enter a value in **B2** on **Budget**', 'input: Enter a value in **C2** on **Budget**']);
+    expect(steps().map((s) => s.cell)).toEqual([
+      { ref: 'B2', sheet: 'Budget' },
+      { ref: 'C2', sheet: 'Budget' },
+    ]);
   });
 
   it('a step in a menu opened by a click on the grid is flagged "in a menu"; the click selects nothing', async () => {
@@ -213,25 +219,74 @@ describe('playing Sheets cells', () => {
 
   const cellStep = (cell: Step['cell']): Step => ({ id: 's', kind: 'cell', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell });
 
-  it('moves on when the Name Box shows the cell on that sheet, however it was selected', async () => {
+  it('D208: the selection alone never moves it on (the player selected it); a click on that cell does', async () => {
+    // B2's selection border, as Sheets draws it (the shared handler maps the left half of the canvas to B2).
+    const b = canvas.getBoundingClientRect();
+    const piece = Object.assign(document.createElement('div'), { className: 'range-border active-cell-border' });
+    piece.style.cssText = `position:fixed;left:${b.left}px;top:${b.top}px;width:120px;height:90px;pointer-events:none`;
+    root.append(piece);
     let advanced = 0;
-    const stop = watchAdvance({ step: cellStep({ ref: 'C3', sheet: 'Budget' }), targets: [box], onAdvance: () => advanced++ });
-    box.value = 'C4';
+    const stop = watchAdvance({ step: cellStep({ ref: 'B2', sheet: 'Budget' }), targets: [box], onAdvance: () => advanced++ });
+    box.value = 'B2'; // the player selected it
     await settle(400);
     expect(advanced).toBe(0);
-    box.value = 'C3';
-    await settle(400);
+    await userEvent.click(canvas, { position: { x: 300, y: 50 } }); // another cell (D4)
+    await settle(300);
+    expect(advanced).toBe(0);
+    await userEvent.click(canvas, { position: { x: 50, y: 50 } }); // B2
+    await settle(300);
     expect(advanced).toBe(1);
     stop();
   });
 
-  it('not on another sheet', async () => {
+  it('D208: not on another sheet; a range moves on with Next only', async () => {
     let advanced = 0;
-    const stop = watchAdvance({ step: cellStep({ ref: 'A1', sheet: 'Totals' }), targets: [box], onAdvance: () => advanced++ });
-    await settle(400);
+    let stop = watchAdvance({ step: cellStep({ ref: 'B2', sheet: 'Totals' }), targets: [box], onAdvance: () => advanced++ });
+    await userEvent.click(canvas, { position: { x: 50, y: 50 } }); // B2, but on Budget
+    await settle(300);
     expect(advanced).toBe(0);
-    document.querySelector('.docs-sheet-tab-name')!.textContent = 'Totals';
-    await settle(400);
+    stop();
+    stop = watchAdvance({ step: cellStep({ ref: 'B2:D4', sheet: 'Budget' }), targets: [box], onAdvance: () => advanced++ });
+    box.value = 'B2:D4';
+    await userEvent.click(canvas, { position: { x: 50, y: 50 } });
+    await settle(300);
+    expect(advanced).toBe(0);
+    stop();
+  });
+
+  it('D208: keys typed into the Name Box or with Ctrl held are not typing into the cell', async () => {
+    let advanced = 0;
+    const stop = watchAdvance({ step: cellStep({ ref: 'A1', sheet: 'Budget' }), targets: [box], onAdvance: () => advanced++ });
+    box.focus();
+    await userEvent.keyboard('x');
+    box.value = 'A1';
+    canvas.focus();
+    await userEvent.keyboard('{Control>}c{/Control}');
+    await settle(300);
+    expect(advanced).toBe(0);
+    await userEvent.keyboard('7'); // typing on the grid, A1 selected
+    await settle(300);
+    expect(advanced).toBe(1);
+    stop();
+  });
+
+  it('D208: typing into the cell ("Enter a value in B2") moves on at Enter or Tab with something typed, the cell selected', async () => {
+    const editor = Object.assign(document.createElement('div'), { contentEditable: 'true', id: 'waffle-rich-text-editor' });
+    canvas.parentElement!.append(editor);
+    editor.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        editor.textContent = '';
+      }
+    });
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'input', title: 'Enter a value in **B2**', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell: { ref: 'B2', sheet: 'Budget' } };
+    const stop = watchAdvance({ step, targets: [box], onAdvance: () => advanced++ });
+    box.value = 'B2';
+    editor.focus();
+    await userEvent.keyboard('{Enter}'); // nothing typed
+    expect(advanced).toBe(0);
+    await userEvent.keyboard('5{Tab}');
     expect(advanced).toBe(1);
     stop();
   });
@@ -361,6 +416,126 @@ describe('#115 review fixes', () => {
     editor.focus();
     await userEvent.keyboard('9');
     await settle(400);
-    expect(steps().map((s) => `${s.kind}: ${s.title}`)).toEqual(['cell: Select cell **C3** on **Budget**', 'input: Enter C3']);
+    expect(steps().map((s) => `${s.kind}: ${s.title}`)).toEqual(['input: Enter a value in **C3** on **Budget**']);
+  });
+});
+
+describe('D208 (#119): "Show me" on a cell step', () => {
+  it('types the reference into the Name Box and presses Enter; names another sheet in quotes', () => {
+    const seen: string[] = [];
+    box.addEventListener('keydown', (e) => e.key === 'Enter' && seen.push(box.value));
+    expect(selectViaNameBox(document, { ref: 'C5', sheet: 'Budget' })).toBe(true);
+    expect(selectViaNameBox(document, { ref: 'B3', sheet: "Q1's totals" })).toBe(true);
+    expect(seen).toEqual(['C5', "'Q1''s totals'!B3"]);
+    box.remove();
+    expect(selectViaNameBox(document, { ref: 'C5' })).toBe(false);
+  });
+
+  it('the selected cell\'s box is the union of the selection border pieces; none without them', () => {
+    expect(activeCellRect(document)).toBeNull();
+    const parts = [
+      [100, 50, 120, 2],
+      [100, 70, 120, 2],
+      [100, 50, 2, 22],
+      [218, 50, 2, 22],
+    ].map(([x, y, w, h]) => {
+      const d = document.createElement('div');
+      d.className = 'range-border active-cell-border';
+      d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+      root.append(d);
+      return d;
+    });
+    const r = activeCellRect(document)!;
+    expect([r.x, r.y, r.width, r.height]).toEqual([100, 50, 120, 22]);
+    parts.forEach((p) => p.remove());
+  });
+
+  it('D208: never selects while the cell editor holds typed text; the read-only copy of the cell doesn\'t count', () => {
+    const copy = Object.assign(document.createElement('div'), { className: 'cell-input disabled-input', textContent: 'Female' });
+    copy.setAttribute('contenteditable', 'false');
+    const editor = Object.assign(document.createElement('div'), { id: 'waffle-rich-text-editor', className: 'cell-input' });
+    editor.setAttribute('contenteditable', 'true');
+    canvas.parentElement!.append(copy, editor);
+    const seen: string[] = [];
+    box.addEventListener('keydown', (e) => e.key === 'Enter' && seen.push(box.value));
+    expect(selectViaNameBox(document, { ref: 'C5' })).toBe(true);
+    editor.textContent = '12';
+    expect(selectViaNameBox(document, { ref: 'D6' })).toBe(false);
+    expect(seen).toEqual(['C5']);
+  });
+});
+
+describe('D208 review fixes', () => {
+  const border = (x: number, y: number, w: number, h: number) => {
+    const d = document.createElement('div');
+    d.className = 'range-border active-cell-border';
+    d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:none`;
+    root.append(d);
+    return d;
+  };
+
+  it('a typing step on a cell: Ctrl or Alt+Enter (a new line) and Tab in a formula (a suggestion) do not move it on', async () => {
+    const editor = Object.assign(document.createElement('div'), { contentEditable: 'true', id: 'waffle-rich-text-editor' });
+    canvas.parentElement!.append(editor);
+    editor.addEventListener('keydown', (e) => (e.key === 'Tab' || e.key === 'Enter') && e.preventDefault());
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'input', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell: { ref: 'B2', sheet: 'Budget' } };
+    const stop = watchAdvance({ step, targets: [box], onAdvance: () => advanced++ });
+    box.value = 'B2';
+    editor.focus();
+    await userEvent.keyboard('5{Control>}{Enter}{/Control}{Alt>}{Enter}{/Alt}');
+    expect(advanced).toBe(0);
+    editor.textContent = '=SUM(';
+    await userEvent.keyboard('{Tab}');
+    expect(advanced).toBe(0);
+    editor.textContent = '42';
+    await userEvent.keyboard('{Enter}');
+    expect(advanced).toBe(1);
+    stop();
+  });
+
+  it('a lone cell step: a click on another cell does not count even while a slow sheet still shows the old cell', async () => {
+    // The player selected B2; its border is at the grid's top-left. This sheet is slow: a click
+    // changes nothing in the Name Box for a while.
+    box.value = 'B2';
+    const b = canvas.getBoundingClientRect();
+    const piece = border(b.left, b.top, 60, 30);
+    canvas.addEventListener('mousedown', (e) => e.stopImmediatePropagation(), { capture: true });
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'cell', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell: { ref: 'B2', sheet: 'Budget' } };
+    const stop = watchAdvance({ step, targets: [box], onAdvance: () => advanced++ });
+    await userEvent.click(canvas, { position: { x: 300, y: 100 } }); // another cell; the Name Box still says B2
+    await settle(300);
+    expect(advanced).toBe(0);
+    await userEvent.click(canvas, { position: { x: 20, y: 10 } }); // inside B2's border
+    await settle(300);
+    expect(advanced).toBe(1);
+    stop();
+    piece.remove();
+  });
+
+  it('the edit tracker: F2, typing and a double-click start editing; Tab, Esc and a click on another cell end it', async () => {
+    const t = createEditTracker(document);
+    const b = canvas.getBoundingClientRect();
+    const piece = border(b.left, b.top, 60, 30);
+    canvas.focus();
+    expect(t.editing()).toBe(false);
+    await userEvent.keyboard('{F2}');
+    expect(t.editing()).toBe(true);
+    await userEvent.keyboard('{Tab}');
+    expect(t.editing()).toBe(false);
+    canvas.focus(); // Tab left the grid
+    await userEvent.keyboard('x');
+    expect(t.editing()).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    expect(t.editing()).toBe(false);
+    await userEvent.dblClick(canvas, { position: { x: 20, y: 10 } });
+    expect(t.editing()).toBe(true);
+    await userEvent.click(canvas, { position: { x: 20, y: 10 } }); // inside the cell being edited: still editing
+    expect(t.editing()).toBe(true);
+    await userEvent.click(canvas, { position: { x: 300, y: 100 } }); // another cell commits
+    expect(t.editing()).toBe(false);
+    t.stop();
+    piece.remove();
   });
 });
