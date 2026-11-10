@@ -6,6 +6,8 @@ All notable changes to Waymark are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-10
+
 ### Changed
 - Google Sheets: a step on a cell now highlights the cell itself. Waymark selects it when the step starts (only the selection, never a value, and never while you're typing), and **Show again** selects it again. Selecting a cell and typing into it is one step, "Enter a value in B8", which moves on at Enter or Tab. Guide files with such steps need this version of Waymark (D208, #119).
 
@@ -266,7 +268,8 @@ The first version: record a walkthrough of a web app and play it back on the liv
 - WXT, strict TypeScript, Manifest V3 with no `content_scripts` and no `host_permissions` (checked in CI). Typed, validated messages with per-sender allowlists.
 - Element fingerprints and a matcher that prefers "not found" to a wrong element, with a robustness suite (D1–D41).
 
-[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/ThomasDevJS/Waymark/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.12.0
 [0.11.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.11.0
 [0.10.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.10.0
 [0.9.0]: https://github.com/ThomasDevJS/Waymark/releases/tag/v0.9.0
