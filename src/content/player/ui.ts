@@ -20,6 +20,8 @@ import { isRange } from '../../core/sheets';
 const DOCK_GAP_PX = 16;
 /** How often the ring follows a box that moves on its own (a Sheets cell, D208). */
 const FOLLOW_MS = 150;
+/** A screen-reader message waits this long, so the step's own announcement is heard first (D208). */
+const SAY_AFTER_MS = 1500;
 const DOCK_BOTTOM_PX = 84;
 /** Smaller than this, a docked tooltip would sit on the grid's top-left anyway: it floats next to the Name Box. */
 const DOCK_MIN_W = 720;
@@ -466,25 +468,37 @@ export class PlayerUI {
   }
 
   /**
-   * The spotlight and ring follow `box` (D208: the Sheets cell "Show me" selected) while it gives
-   * one, and the step's element otherwise. The cell moves with the grid's own scrolling, which the
-   * element's observers don't see, so it is followed a few times a second.
+   * Says `text` to screen readers (a Sheets cell the player selected, D208), after the step's own
+   * announcement has been read: said at once, it would replace it.
    */
-  /** Says `text` to screen readers (a Sheets cell the player selected, D208). */
   say(text: string): void {
-    this.announce(text);
+    const token = this.tip;
+    setTimeout(() => {
+      if (this.tip === token && token?.isConnected) this.announce(text);
+    }, SAY_AFTER_MS);
   }
 
-  /** Replaces the step's action hint with `text` (a Sheets tab to open first, D208), or puts it back with null. */
+  /**
+   * Replaces the step's action hint with `text` (a Sheets tab to open first, D208), or puts it back
+   * with null. A step without a hint line (it moves on with Next) shows it as a short message.
+   */
   setHint(text: string | null): void {
     const h = this.hintLine;
-    if (!h || !h.el.isConnected) return;
+    if (!h || !h.el.isConnected) {
+      if (text) this.flash(text, 'warn');
+      return;
+    }
     const next = text ?? h.text;
     if (h.el.textContent === next) return;
     h.el.textContent = next;
-    if (text) this.announce(text);
+    if (text) this.say(text);
   }
 
+  /**
+   * The spotlight and ring follow `box` (D208: the Sheets cell the player selected) while it gives
+   * one, and the step's element otherwise. The cell moves with the grid's own scrolling, which the
+   * element's observers don't see, so it is followed a few times a second.
+   */
   pointAt(box: () => DOMRect | null): void {
     if (!this.redraw) return;
     this.boxOverride = box;

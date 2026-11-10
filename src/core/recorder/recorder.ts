@@ -329,9 +329,11 @@ export function createRecorder(opts: RecorderOptions): Recorder {
     const box = nameBox(doc);
     if (!c || !box) return false;
     if (last && last.kind === 'input' && last.el === el && lastCell && sameCell(lastCell, c)) return true; // still typing
-    if (!(lastCell && sameCell(lastCell, c))) {
+    // The guide's last step is this cell's step; anything else (another step since, another cell) needs one.
+    const atCell = () => !!last && last.kind === 'cell' && !last.skipped && !!lastCell && sameCell(lastCell, c);
+    if (!atCell()) {
       refreshCell('typing into a cell');
-      if (!(lastCell && sameCell(lastCell, c))) {
+      if (!atCell()) {
         dbg('cell', () => ({ why: 'Sheets: typing into a cell the guide has not selected: its step first (#115)' }));
         const step = add('cell', box, fpOf(box), cellStep(box, c).title, undefined, undefined, { cell: c });
         if (!step) return false;

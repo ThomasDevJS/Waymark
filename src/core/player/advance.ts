@@ -15,7 +15,7 @@
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
-import { isCellEditor, isCellSelected, isRange } from '../sheets';
+import { activeCellRect, isCellEditor, isCellSelected, isRange } from '../sheets';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { ariaRole } from '../debug/log';
 
@@ -119,10 +119,6 @@ export function watchAdvance(w: AdvanceWatch): () => void {
     };
   }
 
-  // A Google Sheets cell (D206): the target is the Name Box, which shows the selected cell after a
-  // click on the grid, the arrow keys or a reference typed into it. Sheets sets its value from
-  // script (no events), so it is read a few times a second. Already selected when drawn: it moves
-  // on after a short look.
   // A Google Sheets cell (D206, D208). The player selects the cell itself when the step is drawn,
   // so the selection can't count: a cell step moves on when the learner acts on that cell (a click
   // on the grid, or typing into it, with the cell still selected; checked after Sheets' own
@@ -145,8 +141,21 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       };
     }
     if (kind === 'cell') {
+      // Where the press landed: on a heavy sheet the Name Box may still show the step's cell 120 ms
+      // after a click on another one, so the press must also be inside the selected cell's box
+      // (review of D208).
+      let press: { x: number; y: number } | null = null;
+      on(doc, 'pointerdown', (e) => {
+        const p = e as PointerEvent;
+        press = trusted(e) ? { x: p.clientX, y: p.clientY } : null;
+      });
+      const pressInCell = () => {
+        const r = activeCellRect(doc);
+        return !!press && !!r && press.x >= r.left && press.x <= r.right && press.y >= r.top && press.y <= r.bottom;
+      };
       const acted = (why: string) => (e: Event) => {
         if (!trusted(e)) return;
+        const byPointer = e.type === 'pointerup';
         if (e.type === 'keydown') {
           const k = e as KeyboardEvent;
           if (k.ctrlKey || k.metaKey || k.altKey) return; // a shortcut (copy, undo), not typing
@@ -156,7 +165,7 @@ export function watchAdvance(w: AdvanceWatch): () => void {
           if (!(t instanceof Element) || !(isCellEditor(t, doc) || t.closest('#waffle-grid-container'))) return;
         } else if (!e.composedPath().some((n) => n instanceof Element && n.id === 'waffle-grid-container')) return;
         later(() => {
-          if (isCellSelected(doc, want)) advance(why);
+          if (isCellSelected(doc, want) && (!byPointer || pressInCell())) advance(why);
         });
       };
       on(doc, 'pointerup', acted('a click on the step\'s cell'));
@@ -165,9 +174,14 @@ export function watchAdvance(w: AdvanceWatch): () => void {
       on(doc, 'keydown', (e) => {
         const k = e as KeyboardEvent;
         if ((k.key !== 'Enter' && k.key !== 'Tab') || k.isComposing || !trusted(e)) return;
+        // Alt or Ctrl+Enter adds a line in the cell; they commit nothing.
+        if (k.altKey || k.ctrlKey || k.metaKey || k.shiftKey) return;
         const t = e.composedPath()[0];
+        if (!(t instanceof Element) || !isCellEditor(t, doc) || !hasValue(t) || !isCellSelected(doc, want)) return;
+        // Tab while typing a formula picks a suggestion; it doesn't commit.
+        if (k.key === 'Tab' && (t.textContent ?? '').trimStart().startsWith('=')) return;
         // Checked at keydown, before Sheets commits the cell and clears its editor.
-        if (t instanceof Element && isCellEditor(t, doc) && hasValue(t) && isCellSelected(doc, want)) advance(`${k.key} in the step's cell with something typed`);
+        advance(`${k.key} in the step's cell with something typed`);
       });
     }
     return () => {

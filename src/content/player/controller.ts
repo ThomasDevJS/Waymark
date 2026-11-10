@@ -17,7 +17,7 @@ import { bestSpeechVoice } from '../../core/voice/voice';
 import { presentSignals } from '../../core/matcher/signals';
 import { dlog, debugOn, flushDebug } from '../debug';
 import { PlayerUI } from './ui';
-import { activeCellRect, activeSheet, isCellSelected, isEditingCell, isRange, isSheetsPage, selectViaNameBox } from '../../core/sheets';
+import { activeCellRect, activeSheet, createEditTracker, isCellSelected, isEditingCell, isRange, isSheetsPage, selectViaNameBox, sheetNames } from '../../core/sheets';
 import { fetchProfile } from '../profile';
 import type { ProfileOptions } from '../../core/model/profile';
 import { matchStrength } from '../../core/stats/plays';
@@ -107,8 +107,17 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
   let drawnFor: string | null = null;
   /** A Sheets cell step's wait for its sheet tab or for the cell editor to be empty (D208). */
   let cellTimer: ReturnType<typeof setInterval> | null = null;
-  /** The step whose cell the player selected (D208): once per step. */
-  let cellSelectedFor: string | null = null;
+  /** The step whose cell the player selected or gave up on (D208): once per step. */
+  let cellDoneFor: string | null = null;
+  /** The step whose cell the player is waiting to select (its sheet tab, or a cell being edited). */
+  let cellWaitFor: string | null = null;
+  /** The hint the wait put up, put back after a redraw. */
+  let cellHint: { token: string; text: string } | null = null;
+  /**
+   * The learner's own editing (D208), followed from the start: a cell opened before the guide
+   * started must count too. Three capture listeners, read only by Sheets cell steps.
+   */
+  let editTracker: { editing(): boolean; stop(): void } | null = createEditTracker(document);
   const stopCellAssist = () => {
     if (cellTimer) clearInterval(cellTimer);
     cellTimer = null;
@@ -123,24 +132,45 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
    */
   function selectCellOnce(v: RunView, again = false) {
     const cell = v.step?.cell;
+    const token = v.stepToken;
+    if (!cell || !token || !isSheetsPage(document)) return stopCellAssist();
+    // Once per step: a redraw (the Name Box re-rendered) neither selects again nor ends a wait;
+    // its hint comes back. Show again and Repeat select again.
+    if (!again && (cellDoneFor === token || (cellTimer && cellWaitFor === token))) {
+      if (cellHint?.token === token) ui.setHint(cellHint.text);
+      return;
+    }
     stopCellAssist();
-    if (!cell || !isSheetsPage(document)) return;
-    // Once per step: a redraw (the Name Box re-rendered) doesn't select it again; Show again and Repeat do.
-    if (!again && cellSelectedFor === v.stepToken) return;
-    cellSelectedFor = v.stepToken;
-    const attempt = () => {
-      if (view?.stepToken !== v.stepToken) return stopCellAssist();
-      if (cell.sheet && activeSheet(document) !== cell.sheet) {
-        ui.setHint(`Open the “${cell.sheet}” tab first.`);
-        testMark('cell-wait', 'sheet');
-        return;
-      }
-      if (isEditingCell(document)) {
-        testMark('cell-wait', 'editing');
-        return;
-      }
-      ui.setHint(null);
+    cellWaitFor = token;
+    const hint = (text: string | null) => {
+      cellHint = text ? { token, text } : null;
+      ui.setHint(text);
+    };
+    const done = () => {
+      cellDoneFor = token;
       stopCellAssist();
+    };
+    const attempt = () => {
+      if (view?.stepToken !== token) return stopCellAssist();
+      if (cell.sheet && activeSheet(document) !== cell.sheet) {
+        const names = sheetNames(document);
+        if (names && !names.includes(cell.sheet)) {
+          // Renamed or deleted since the guide was made: nothing to wait for.
+          dlog('play', 'cell.no-sheet', { step: v.stepIndex + 1 });
+          testMark('cell-wait', 'failed');
+          hint(`Waymark couldn’t find the “${cell.sheet}” tab. Select ${cell.ref} yourself, then press Next.`);
+          return done();
+        }
+        testMark('cell-wait', 'sheet');
+        return hint(`Open the “${cell.sheet}” tab first.`);
+      }
+      // Never over a cell being edited: Sheets would save what is in its editor, even nothing.
+      if (isEditingCell(document) || editTracker?.editing()) {
+        testMark('cell-wait', 'editing');
+        return hint('Finish the cell you’re typing in (Enter, or Esc to cancel) first.');
+      }
+      hint(null);
+      done();
       const what = `${isRange(cell.ref) ? 'Cells' : 'Cell'} ${cell.ref}`;
       if (isCellSelected(document, cell)) {
         ui.say(`${what} is selected.`);
@@ -151,10 +181,10 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       const ok = selectViaNameBox(document, cell);
       dlog('play', 'cell.select', () => ({ step: v.stepIndex + 1, again, nameBox: ok }));
       testMark('cell-selected', `${v.stepIndex}`);
-      // Sheets didn't take it (a renamed sheet, a cell beyond the grid): leave the Name Box as it was,
-      // and its focus, so the learner's typing doesn't land there.
+      // Sheets didn't take it (a cell beyond the grid): leave the Name Box as it was, and its focus,
+      // so the learner's typing doesn't land there.
       setTimeout(() => {
-        if (view?.stepToken !== v.stepToken) return;
+        if (view?.stepToken !== token) return;
         if (isCellSelected(document, cell)) {
           ui.say(`${what} selected.`);
           return;
@@ -165,7 +195,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
         }
         dlog('play', 'cell.select.failed', { step: v.stepIndex + 1 });
         testMark('cell-wait', 'failed');
-        ui.setHint(`Waymark couldn’t select ${cell.ref}. Select it yourself, then press Next.`);
+        hint(`Waymark couldn’t select ${cell.ref}. Select it yourself, then press Next.`);
       }, CELL_CHECK_MS);
     };
     cellTimer = setInterval(attempt, CELL_WAIT_MS);
@@ -240,7 +270,7 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       if (!v?.step || v.status !== 'running') return;
       testMark('repeat', String(Number(document.documentElement.getAttribute('data-waymark-test-repeat') ?? 0) + 1));
       dlog('play', 'repeat', { step: v.stepIndex + 1 });
-      cellSelectedFor = null; // the learner asked: a Sheets cell is selected again (D208)
+      cellDoneFor = null; // the learner asked: a Sheets cell is selected again (D208)
       startSearch(v);
       send('run.replay', { stepId: v.step.id }).catch(() => undefined);
     },
@@ -601,6 +631,9 @@ export function startPlayerClient(deps: PlayerDeps): { apply(view: RunView): voi
       offReleased();
       endFixing();
       clearStep();
+      stopCellAssist();
+      editTracker?.stop();
+      editTracker = null;
       removeEventListener('pagehide', onHide);
       try {
         chrome.runtime.onMessage.removeListener(onMessage);

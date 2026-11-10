@@ -4,7 +4,7 @@ import { userEvent } from 'vitest/browser';
 import { createRecorder, type Recorder, type RecorderOp } from '../../src/core/recorder/recorder';
 import { previewClick } from '../../src/core/recorder/preview';
 import { watchAdvance } from '../../src/core/player/advance';
-import { activeCellRect, selectViaNameBox } from '../../src/core/sheets';
+import { activeCellRect, createEditTracker, selectViaNameBox } from '../../src/core/sheets';
 import { buildFingerprint } from '../../src/core/fingerprint';
 import type { Step } from '../../src/core/model/schema';
 import { PlayerUI } from '../../src/content/player/ui';
@@ -220,6 +220,11 @@ describe('playing Sheets cells', () => {
   const cellStep = (cell: Step['cell']): Step => ({ id: 's', kind: 'cell', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell });
 
   it('D208: the selection alone never moves it on (the player selected it); a click on that cell does', async () => {
+    // B2's selection border, as Sheets draws it (the shared handler maps the left half of the canvas to B2).
+    const b = canvas.getBoundingClientRect();
+    const piece = Object.assign(document.createElement('div'), { className: 'range-border active-cell-border' });
+    piece.style.cssText = `position:fixed;left:${b.left}px;top:${b.top}px;width:120px;height:90px;pointer-events:none`;
+    root.append(piece);
     let advanced = 0;
     const stop = watchAdvance({ step: cellStep({ ref: 'B2', sheet: 'Budget' }), targets: [box], onAdvance: () => advanced++ });
     box.value = 'B2'; // the player selected it
@@ -457,5 +462,80 @@ describe('D208 (#119): "Show me" on a cell step', () => {
     editor.textContent = '12';
     expect(selectViaNameBox(document, { ref: 'D6' })).toBe(false);
     expect(seen).toEqual(['C5']);
+  });
+});
+
+describe('D208 review fixes', () => {
+  const border = (x: number, y: number, w: number, h: number) => {
+    const d = document.createElement('div');
+    d.className = 'range-border active-cell-border';
+    d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:none`;
+    root.append(d);
+    return d;
+  };
+
+  it('a typing step on a cell: Ctrl or Alt+Enter (a new line) and Tab in a formula (a suggestion) do not move it on', async () => {
+    const editor = Object.assign(document.createElement('div'), { contentEditable: 'true', id: 'waffle-rich-text-editor' });
+    canvas.parentElement!.append(editor);
+    editor.addEventListener('keydown', (e) => (e.key === 'Tab' || e.key === 'Enter') && e.preventDefault());
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'input', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell: { ref: 'B2', sheet: 'Budget' } };
+    const stop = watchAdvance({ step, targets: [box], onAdvance: () => advanced++ });
+    box.value = 'B2';
+    editor.focus();
+    await userEvent.keyboard('5{Control>}{Enter}{/Control}{Alt>}{Enter}{/Alt}');
+    expect(advanced).toBe(0);
+    editor.textContent = '=SUM(';
+    await userEvent.keyboard('{Tab}');
+    expect(advanced).toBe(0);
+    editor.textContent = '42';
+    await userEvent.keyboard('{Enter}');
+    expect(advanced).toBe(1);
+    stop();
+  });
+
+  it('a lone cell step: a click on another cell does not count even while a slow sheet still shows the old cell', async () => {
+    // The player selected B2; its border is at the grid's top-left. This sheet is slow: a click
+    // changes nothing in the Name Box for a while.
+    box.value = 'B2';
+    const b = canvas.getBoundingClientRect();
+    const piece = border(b.left, b.top, 60, 30);
+    canvas.addEventListener('mousedown', (e) => e.stopImmediatePropagation(), { capture: true });
+    let advanced = 0;
+    const step: Step = { id: 's', kind: 'cell', title: 't', url: { kind: 'pattern', value: '/' }, advance: 'action', target: buildFingerprint(box), cell: { ref: 'B2', sheet: 'Budget' } };
+    const stop = watchAdvance({ step, targets: [box], onAdvance: () => advanced++ });
+    await userEvent.click(canvas, { position: { x: 300, y: 100 } }); // another cell; the Name Box still says B2
+    await settle(300);
+    expect(advanced).toBe(0);
+    await userEvent.click(canvas, { position: { x: 20, y: 10 } }); // inside B2's border
+    await settle(300);
+    expect(advanced).toBe(1);
+    stop();
+    piece.remove();
+  });
+
+  it('the edit tracker: F2, typing and a double-click start editing; Tab, Esc and a click on another cell end it', async () => {
+    const t = createEditTracker(document);
+    const b = canvas.getBoundingClientRect();
+    const piece = border(b.left, b.top, 60, 30);
+    canvas.focus();
+    expect(t.editing()).toBe(false);
+    await userEvent.keyboard('{F2}');
+    expect(t.editing()).toBe(true);
+    await userEvent.keyboard('{Tab}');
+    expect(t.editing()).toBe(false);
+    canvas.focus(); // Tab left the grid
+    await userEvent.keyboard('x');
+    expect(t.editing()).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    expect(t.editing()).toBe(false);
+    await userEvent.dblClick(canvas, { position: { x: 20, y: 10 } });
+    expect(t.editing()).toBe(true);
+    await userEvent.click(canvas, { position: { x: 20, y: 10 } }); // inside the cell being edited: still editing
+    expect(t.editing()).toBe(true);
+    await userEvent.click(canvas, { position: { x: 300, y: 100 } }); // another cell commits
+    expect(t.editing()).toBe(false);
+    t.stop();
+    piece.remove();
   });
 });

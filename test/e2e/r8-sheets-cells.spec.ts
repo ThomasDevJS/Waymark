@@ -168,3 +168,68 @@ test('D208: never selects while a cell is being typed into; a typing step is one
   await expect.poll(() => marker(app, 'player'), { timeout: 10_000 }).toBe('done');
   await expect(app.locator('#last-action')).toHaveText('C5=12');
 });
+
+/** Records one cell step on Budget's B3 and returns its guide. */
+async function oneCellGuide(context: import('@playwright/test').BrowserContext, ext: import('./fixtures').ExtensionHelper, site: { main: string }) {
+  await ext.grant('http://127.0.0.1/*');
+  const app = await context.newPage();
+  await app.goto(`${site.main}/sheet.html`);
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  const tabId = await (await ext.sw()).evaluate(async () => (await chrome.tabs.query({ url: 'http://127.0.0.1/*' }))[0]!.id!);
+  await ext.message('rec.start', { tabId, title: 'One cell' });
+  await expect.poll(() => marker(app, 'recording')).toBe('on');
+  await clickCell(app, 1, 2); // B3 on Budget
+  await app.waitForTimeout(300);
+  const rec = await ext.message<{ guideId: string }>('rec.stop', {});
+  return { app, tabId, guideId: rec.guideId };
+}
+
+test('D208 review fix: a learner who opened a cell (F2) and emptied it is never committed over: the player waits until Esc', async ({ context, ext, site }) => {
+  const { app, tabId, guideId } = await oneCellGuide(context, ext, site);
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.evaluate(() => (window as unknown as { fxSetCell(r: string, v: string): void }).fxSetCell('C6', '100'));
+  await clickCell(app, 2, 5); // C6
+  await app.keyboard.press('F2');
+  await app.keyboard.press('End');
+  for (let i = 0; i < 3; i++) await app.keyboard.press('Backspace');
+  await expect(app.locator('#waffle-rich-text-editor')).toHaveText(''); // editing, and empty
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('editing');
+  await app.waitForTimeout(1500);
+  await expect(app.locator('#t-name-box')).toHaveValue('C6'); // nothing selected
+  await expect(app.locator('#last-action')).toHaveText('C6=100'); // nothing committed
+  await app.locator('#waffle-rich-text-editor').press('Escape');
+  await expect(app.locator('#t-name-box')).toHaveValue('B3');
+  await expect(app.locator('#last-action')).toHaveText('C6=100');
+});
+
+test('D208 review fix: a renamed tab says Waymark could not find it; a redraw during the wait for a tab keeps waiting', async ({ context, ext, site }) => {
+  const { app, tabId, guideId } = await oneCellGuide(context, ext, site);
+  // Renamed since the guide was made.
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.evaluate(() => (document.querySelector('.docs-sheet-tab-name')!.textContent = 'Budget 2026'));
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('failed');
+  await expect(app.locator('#t-name-box')).toHaveValue('A1');
+  await ext.message('run.stop', { tabId }).catch(() => undefined);
+
+  // On the other tab; the Name Box is re-rendered meanwhile (the step is drawn again).
+  await app.reload();
+  await expect.poll(() => marker(app, 'loaded')).toBe('yes');
+  await app.getByRole('button', { name: 'Totals' }).click();
+  await ext.message('run.start', { tabId, guideId });
+  await expect.poll(() => marker(app, 'player'), { timeout: 15_000 }).toBe('drawn:0');
+  await expect.poll(() => marker(app, 'cell-wait')).toBe('sheet');
+  const draws = Number((await marker(app, 'draws')) ?? 0);
+  await app.evaluate(() => {
+    const old = document.getElementById('t-name-box')!;
+    old.replaceWith(old.cloneNode(true));
+  });
+  await expect.poll(async () => Number((await marker(app, 'draws')) ?? 0), { timeout: 10_000 }).toBeGreaterThan(draws);
+  await app.getByRole('button', { name: 'Budget' }).click();
+  await expect(app.locator('#t-name-box')).toHaveValue('B3');
+});

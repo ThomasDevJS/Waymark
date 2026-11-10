@@ -109,17 +109,70 @@ export function isSheetsPage(doc: Document): boolean {
 }
 
 /**
- * Sheets' cell editor holds typed text: a cell is being typed into (D208). Only the editable one
- * counts: Sheets keeps a read-only copy (`.cell-input.disabled-input`) holding the selected cell's
- * value at all times (checked on a public sheet).
+ * Sheets' cell editor holds typed text (D208). Only the in-cell editor and the focused field count:
+ * Sheets keeps copies of the selected cell's value elsewhere (`.cell-input.disabled-input`, the
+ * formula bar) that hold text when nobody is typing (checked on a public sheet).
  */
 export function isEditingCell(doc: Document): boolean {
-  const editable = (e: Element) => e.getAttribute('contenteditable') === 'true' || e.getAttribute('contenteditable') === '' || e instanceof HTMLTextAreaElement;
-  const editors = new Set<Element>([...doc.querySelectorAll('#waffle-rich-text-editor, .cell-input')].filter(editable));
+  const text = (e: Element | null) => {
+    if (!e) return '';
+    if (e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement) return e.value;
+    return (e as HTMLElement).isContentEditable ? (e.textContent ?? '') : '';
+  };
+  if (text(doc.getElementById('waffle-rich-text-editor')).trim()) return true;
   const active = doc.activeElement;
-  if (active && active !== nameBox(doc) && editable(active) && isCellEditor(active, doc)) editors.add(active);
-  for (const e of editors) if ((e.textContent ?? (e as HTMLTextAreaElement).value ?? '').trim()) return true;
-  return false;
+  return !!active && active !== nameBox(doc) && isCellEditor(active, doc) && !!text(active).trim();
+}
+
+/**
+ * Whether the learner is editing a cell, followed from their own keys and clicks (D208): an editor
+ * emptied to retype a cell still has a value Sheets would replace with nothing on blur, so text
+ * alone can't tell. F2, Enter on a cell, typing and a double-click start editing; Enter or Tab
+ * (they commit), Esc, a click outside the cell and a sheet tab end it. Unsure keys (arrows,
+ * Backspace) leave it as it was.
+ */
+export function createEditTracker(doc: Document): { editing(): boolean; stop(): void } {
+  let editing = false;
+  const inGrid = (e: Event) => e.composedPath().some((n) => n instanceof Element && (n.id === 'waffle-grid-container' || n.id === 'waffle-rich-text-editor'));
+  const onKey = (e: Event) => {
+    const k = e as KeyboardEvent;
+    if (!k.isTrusted || !inGrid(e)) return;
+    if (k.isComposing) editing = true;
+    else if (k.key === 'Escape' || k.key === 'Tab') editing = false;
+    else if (k.key === 'Enter' && !k.altKey && !k.ctrlKey && !k.metaKey) editing = !editing;
+    else if (k.key === 'F2') editing = true;
+    else if (k.key.length === 1 && !k.ctrlKey && !k.metaKey && !k.altKey) editing = true;
+  };
+  const onDown = (e: Event) => {
+    if (!e.isTrusted) return;
+    const p = e as PointerEvent;
+    if (e.composedPath().some((n) => n instanceof Element && n.classList?.contains('docs-sheet-tab'))) editing = false;
+    else if (inGrid(e)) {
+      const r = activeCellRect(doc);
+      const inside = !!r && p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom;
+      if (!inside) editing = false; // a click on another cell commits; inside, it places the caret
+    }
+  };
+  const onDouble = (e: Event) => {
+    if (e.isTrusted && inGrid(e)) editing = true;
+  };
+  doc.addEventListener('keydown', onKey, true);
+  doc.addEventListener('pointerdown', onDown, true);
+  doc.addEventListener('dblclick', onDouble, true);
+  return {
+    editing: () => editing,
+    stop() {
+      doc.removeEventListener('keydown', onKey, true);
+      doc.removeEventListener('pointerdown', onDown, true);
+      doc.removeEventListener('dblclick', onDouble, true);
+    },
+  };
+}
+
+/** The sheet tabs' names, or null when the page shows none (D208). */
+export function sheetNames(doc: Document): string[] | null {
+  const names = [...doc.querySelectorAll('.docs-sheet-tab .docs-sheet-tab-name')].map((n) => (n.textContent ?? '').trim());
+  return names.length ? names : null;
 }
 
 /** A range ("B5:D9"), not a single cell. */
