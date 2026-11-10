@@ -3,7 +3,7 @@
  * untrusted input: capped at 5 MB and 500 steps per guide, validated with the Zod schema, and
  * newer schema or format versions are rejected with a message, never silently trimmed.
  */
-import { BASE_FORMAT_VERSION, FORMAT_VERSION, HOVER_FORMAT_VERSION, GuidePackSchema, SCHEMA_VERSION, type Guide, type GuidePack } from '../model/schema';
+import { BASE_FORMAT_VERSION, CELL_FORMAT_VERSION, FORMAT_VERSION, HOVER_FORMAT_VERSION, GuidePackSchema, SCHEMA_VERSION, type Guide, type GuidePack } from '../model/schema';
 import { newId } from '../model/ids';
 import { isEmptyProfile, profileProblem, SiteProfileSchema, type SiteProfile } from '../model/profile';
 import { isSiteOrigin } from '../model/schema';
@@ -67,11 +67,12 @@ export function parsePack(text: string): ParseResult {
   return { ok: true, pack: parsed.data, profiles, droppedProfiles: dropped };
 }
 
-/** The oldest format that can hold these guides: 3 with a Sheets cell step (D206) or an "in a menu" flag (#115), 2 with a hover step (D204), else 1. */
+/** The oldest format that can hold these guides: 4 with typing into a Sheets cell as one step (D208), 3 with a cell step (D206) or an "in a menu" flag (#115), 2 with a hover step (D204), else 1. */
 export function packFormatFor(guides: Pick<Guide, 'steps'>[]): GuidePack['formatVersion'] {
   const kinds = new Set(guides.flatMap((g) => g.steps.map((s) => s.kind)));
   const inMenu = guides.some((g) => g.steps.some((s) => s.flags?.includes('in-menu')));
-  if (kinds.has('cell') || inMenu) return FORMAT_VERSION;
+  if (guides.some((g) => g.steps.some((s) => s.kind === 'input' && s.cell))) return FORMAT_VERSION;
+  if (kinds.has('cell') || inMenu) return CELL_FORMAT_VERSION;
   if (kinds.has('hover')) return HOVER_FORMAT_VERSION;
   return BASE_FORMAT_VERSION;
 }

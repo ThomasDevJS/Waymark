@@ -70,3 +70,8 @@ const ROLE_WORDS: Record<string, string> = {
 export function roleWord(role: string | undefined): string {
   return (role && ROLE_WORDS[role]) ?? 'the element';
 }
+
+/** Typing into a Google Sheets cell, as one step with selecting it (D208): "Enter a value in **B8**". */
+export function cellInputTitle(ref: string, sheet?: string): string {
+  return `Enter a value in **${escapeMd(ref)}**${sheet ? ` on **${escapeMd(sheet)}**` : ''}`;
+}

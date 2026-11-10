@@ -14,7 +14,8 @@ export const SCHEMA_VERSION = 1 as const;
  * step (D204), 3 with a Sheets cell step (D206). Packs without either are still written as 1,
  * which every version reads.
  */
-export const FORMAT_VERSION = 3 as const;
+export const FORMAT_VERSION = 4 as const;
+export const CELL_FORMAT_VERSION = 3 as const;
 export const HOVER_FORMAT_VERSION = 2 as const;
 export const BASE_FORMAT_VERSION = 1 as const;
 export const MAX_STEPS_PER_GUIDE = 500;
@@ -126,7 +127,10 @@ export const StepSchema = z.object({
   placement: z.enum(['auto', 'top', 'bottom', 'left', 'right']).optional(),
   /** Recorder warnings shown in the editor (see docs/DECISIONS.md D15). */
   flags: z.array(StepFlagSchema).max(5).optional(),
-  /** A Google Sheets cell or range to select (kind `cell`, D206); the target is the Name Box. */
+  /**
+   * A Google Sheets cell or range: to select (kind `cell`, D206), or to type into (kind `input`,
+   * D208: the cell step and the typing merged). The target is the Name Box.
+   */
   cell: z
     .object({
       ref: z.string().regex(/^[A-Z]{1,3}[1-9]\d{0,6}(?::[A-Z]{1,3}[1-9]\d{0,6})?$/),
@@ -148,11 +152,11 @@ export const GuideSchema = z.object({
   appOrigins: z.array(SiteOriginSchema).min(1).max(50),
   startUrl: shortStr(2000),
   matchUrls: z.array(UrlRuleSchema).max(50),
-  // A Sheets cell step carries its cell, and only it does (D206): one without would never advance.
+  // A Sheets cell step carries its cell (D206); a typing step may (a cell typed into, D208); no other step does.
   steps: z
     .array(StepSchema)
     .max(MAX_STEPS_PER_GUIDE)
-    .refine((steps) => steps.every((s) => (s.kind === 'cell') === !!s.cell), 'a cell step needs its cell, and only a cell step has one'),
+    .refine((steps) => steps.every((s) => (s.kind === 'cell' ? !!s.cell : !s.cell || s.kind === 'input')), 'a cell step needs its cell; only cell and typing steps have one'),
   version: z.number().int().nonnegative(),
   source: z.enum(['local', 'library']),
   updatedAt: shortStr(64),
@@ -175,7 +179,7 @@ export type RunState = z.infer<typeof RunStateSchema>;
 
 export const GuidePackSchema = z.object({
   format: z.literal('waymark-pack'),
-  formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(HOVER_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
+  formatVersion: z.union([z.literal(BASE_FORMAT_VERSION), z.literal(HOVER_FORMAT_VERSION), z.literal(CELL_FORMAT_VERSION), z.literal(FORMAT_VERSION)]),
   exportedAt: shortStr(64),
   guides: z.array(GuideSchema),
   // Site profiles of the guides' sites (D213). Checked one by one in parsePack: a bad one is

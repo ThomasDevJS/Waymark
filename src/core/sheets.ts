@@ -66,6 +66,61 @@ export function isCellSelected(doc: Document, want: CellRef): boolean {
  */
 export function isCellEditor(el: Element, doc: Document): boolean {
   if (!nameBox(doc) || !doc.getElementById('waffle-grid-container')) return false;
+  if (el.id === 'waffle-rich-text-editor') return true; // Sheets' own (checked on a public sheet)
   const label = normalizeRef(el.getAttribute('aria-label') ?? '');
   return (!!label && label === readCell(doc)?.ref) || !!el.closest('#waffle-grid-container');
 }
+
+/**
+ * A cell step (D208): select the cell the way a person would, by typing its reference into the
+ * Name Box and pressing Enter. Another sheet is named in the reference (`'Totals'!B3`). It changes
+ * the selection only, never a value: only on a page with Sheets' Name Box and grid, and never while
+ * the cell editor holds typed text (Enter would commit it).
+ */
+export function selectViaNameBox(doc: Document, cell: CellRef): boolean {
+  if (!isSheetsPage(doc) || isEditingCell(doc)) return false;
+  const box = nameBox(doc);
+  const ref = normalizeRef(cell.ref);
+  if (!box || !ref) return false;
+  const other = cell.sheet && activeSheet(doc) !== cell.sheet;
+  box.focus();
+  box.value = other ? `'${cell.sheet!.replace(/'/g, "''")}'!${ref}` : ref;
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  for (const type of ['keydown', 'keypress', 'keyup']) {
+    box.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true } as KeyboardEventInit));
+  }
+  return true;
+}
+
+/** Where the selected cell is on screen: the union of Sheets' selection border pieces, or null. */
+export function activeCellRect(doc: Document): DOMRect | null {
+  const parts = [...doc.querySelectorAll('.active-cell-border')].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+  if (!parts.length) return null;
+  const left = Math.min(...parts.map((r) => r.left));
+  const top = Math.min(...parts.map((r) => r.top));
+  const right = Math.max(...parts.map((r) => r.right));
+  const bottom = Math.max(...parts.map((r) => r.bottom));
+  return right - left < 4 || bottom - top < 4 ? null : new DOMRect(left, top, right - left, bottom - top);
+}
+
+/** A page with Sheets' Name Box and grid (D208: the only page Waymark selects anything on). */
+export function isSheetsPage(doc: Document): boolean {
+  return !!nameBox(doc) && !!doc.getElementById('waffle-grid-container');
+}
+
+/**
+ * Sheets' cell editor holds typed text: a cell is being typed into (D208). Only the editable one
+ * counts: Sheets keeps a read-only copy (`.cell-input.disabled-input`) holding the selected cell's
+ * value at all times (checked on a public sheet).
+ */
+export function isEditingCell(doc: Document): boolean {
+  const editable = (e: Element) => e.getAttribute('contenteditable') === 'true' || e.getAttribute('contenteditable') === '' || e instanceof HTMLTextAreaElement;
+  const editors = new Set<Element>([...doc.querySelectorAll('#waffle-rich-text-editor, .cell-input')].filter(editable));
+  const active = doc.activeElement;
+  if (active && active !== nameBox(doc) && editable(active) && isCellEditor(active, doc)) editors.add(active);
+  for (const e of editors) if ((e.textContent ?? (e as HTMLTextAreaElement).value ?? '').trim()) return true;
+  return false;
+}
+
+/** A range ("B5:D9"), not a single cell. */
+export const isRange = (ref: string) => ref.includes(':');

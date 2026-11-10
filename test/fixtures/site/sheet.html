@@ -13,6 +13,7 @@
       .waffle-name-box { width: 80px; }
       #waffle-grid-container { position: relative; height: 420px; overflow: hidden; }
       #waffle-grid-container canvas { display: block; }
+      .active-cell-border { position: absolute; border: 2px solid #1a73e8; box-sizing: border-box; pointer-events: none; }
       #waffle-rich-text-editor { position: absolute; min-width: 80px; height: 20px; outline: none; font: 12px sans-serif; background: transparent; }
       #filter-menu { position: absolute; background: #fff; border: 1px solid #999; padding: 4px; width: 140px; }
       #filter-menu [role='menuitemcheckbox'] { padding: 4px; cursor: pointer; }
@@ -44,6 +45,8 @@
       <div class="grid4-inner-container"><canvas id="grid" width="760" height="420"></canvas></div>
       <!-- #115: as in Sheets, typing goes into a cell editor named after the selected cell. -->
       <div id="waffle-rich-text-editor" class="cell-input" contenteditable="true" role="combobox" aria-label="A1" spellcheck="false"></div>
+      <!-- D208: as in Sheets, the selected cell's border is an element; no other cell has one. -->
+      <div class="range-border active-cell-border" id="fx-active-border"></div>
     </div>
     <!-- #115: the filter button is drawn in column C's header; its menu is an ordinary element. -->
     <div id="filter-menu" role="menu" aria-label="Filter" style="display: none">
@@ -89,6 +92,14 @@
         const g = canvas.parentElement.parentElement.getBoundingClientRect();
         Object.assign(editor.style, { left: `${r.left - g.left + HEAD_W + sel.c0 * W + 4}px`, top: `${r.top - g.top + HEAD_H + sel.r0 * H + 2}px` });
         editor.setAttribute('aria-label', `${col(sel.c0)}${sel.r0 + 1}`);
+        const [c0, c1] = [Math.min(sel.c0, sel.c1), Math.max(sel.c0, sel.c1)];
+        const [r0, r1] = [Math.min(sel.r0, sel.r1), Math.max(sel.r0, sel.r1)];
+        Object.assign(document.getElementById('fx-active-border').style, {
+          left: `${r.left - g.left + HEAD_W + c0 * W}px`,
+          top: `${r.top - g.top + HEAD_H + r0 * H}px`,
+          width: `${(c1 - c0 + 1) * W}px`,
+          height: `${(r1 - r0 + 1) * H}px`,
+        });
       }
       function select(s) {
         sel = s;
@@ -161,7 +172,17 @@
       // A reference typed into the Name Box, then Enter, selects it (a named range is left as typed).
       box.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
-        const m = /^([A-H])([1-9]\d?)(?::([A-H])([1-9]\d?))?$/i.exec(box.value.trim());
+        // A reference may name another sheet, as in Sheets: 'Totals'!B3 (quotes doubled inside).
+        let text = box.value.trim();
+        const q = /^'((?:[^']|'')+)'!(.+)$/.exec(text);
+        if (q) {
+          const name = q[1].replace(/''/g, "'");
+          const tab = [...document.querySelectorAll('.docs-sheet-tab')].find((t) => t.textContent.trim() === name);
+          if (!tab) return;
+          tab.click();
+          text = q[2];
+        }
+        const m = /^([A-H])([1-9]\d?)(?::([A-H])([1-9]\d?))?$/i.exec(text);
         if (!m) return;
         const c0 = m[1].toUpperCase().charCodeAt(0) - 65;
         const r0 = Number(m[2]) - 1;

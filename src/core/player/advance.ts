@@ -9,17 +9,18 @@
  * | navigate | the URL matches the step's URL rule (handled by the controller)                |
  * | note     | Next                                                                            |
  * | hover    | the pointer is on the target, keyboard focus reaches it, or a click on it (D204) |
- * | cell     | the Sheets Name Box shows the step's cell (and sheet), however it was selected (D206) |
+ * | cell     | a click on the step's Sheets cell or typing into it, with the cell selected (the player selected it, D206, D208); a range: Next |
+ * | input+cell | Enter or Tab in Sheets' cell editor with something typed, the step's cell selected (D208) |
  * | input+   | also Tab out of a filled field (focus left it), and Tab or Enter in Sheets' cell editor (D207) |
  */
 import type { Step } from '../model/schema';
 import { isNativeCheck, isNativeSelect } from '../recorder/classify';
-import { isCellEditor, isCellSelected } from '../sheets';
+import { isCellEditor, isCellSelected, isRange } from '../sheets';
 import { resolveTargetFromPath, tagOf } from '../fingerprint/dom';
 import { ariaRole } from '../debug/log';
 
-/** How often a Sheets cell step reads the Name Box (D206). */
-const CELL_POLL_MS = 250;
+/** After a click or a key, Sheets moves the selection in its own handlers: checked this much later (D208). */
+const CELL_ACT_MS = 120;
 
 export const SUBMIT_NAV_MS = 1500;
 /** A press on the target and a click on its ancestor within this time are one click (D61). */
@@ -122,12 +123,58 @@ export function watchAdvance(w: AdvanceWatch): () => void {
   // click on the grid, the arrow keys or a reference typed into it. Sheets sets its value from
   // script (no events), so it is read a few times a second. Already selected when drawn: it moves
   // on after a short look.
-  if (kind === 'cell' && w.step.cell) {
+  // A Google Sheets cell (D206, D208). The player selects the cell itself when the step is drawn,
+  // so the selection can't count: a cell step moves on when the learner acts on that cell (a click
+  // on the grid, or typing into it, with the cell still selected; checked after Sheets' own
+  // handlers) or presses Next. Typing into a cell ("Enter a value in B8") moves on at Enter or
+  // Tab in Sheets' cell editor with something typed, the cell still the selected one.
+  if (w.step.cell && (kind === 'cell' || kind === 'input')) {
     const want = w.step.cell;
-    const timer = setInterval(() => {
-      if (isCellSelected(doc, want)) advance('the Name Box shows the step\'s cell');
-    }, CELL_POLL_MS);
-    return () => clearInterval(timer);
+    const later = (fn: () => void) => {
+      const t = setTimeout(() => {
+        timers.delete(t);
+        fn();
+      }, CELL_ACT_MS);
+      timers.add(t);
+    };
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    // A range: a click collapses it, so only Next moves the step on.
+    if (kind === 'cell' && isRange(want.ref)) {
+      return () => {
+        fired = true;
+      };
+    }
+    if (kind === 'cell') {
+      const acted = (why: string) => (e: Event) => {
+        if (!trusted(e)) return;
+        if (e.type === 'keydown') {
+          const k = e as KeyboardEvent;
+          if (k.ctrlKey || k.metaKey || k.altKey) return; // a shortcut (copy, undo), not typing
+          if (k.key.length !== 1 && k.key !== 'Enter' && k.key !== 'F2') return; // typing, or opening the cell's editor
+          // Into the cell: the grid or Sheets' cell editor, not the Name Box or another field.
+          const t = e.composedPath()[0];
+          if (!(t instanceof Element) || !(isCellEditor(t, doc) || t.closest('#waffle-grid-container'))) return;
+        } else if (!e.composedPath().some((n) => n instanceof Element && n.id === 'waffle-grid-container')) return;
+        later(() => {
+          if (isCellSelected(doc, want)) advance(why);
+        });
+      };
+      on(doc, 'pointerup', acted('a click on the step\'s cell'));
+      on(doc, 'keydown', acted('typing into the step\'s cell'));
+    } else {
+      on(doc, 'keydown', (e) => {
+        const k = e as KeyboardEvent;
+        if ((k.key !== 'Enter' && k.key !== 'Tab') || k.isComposing || !trusted(e)) return;
+        const t = e.composedPath()[0];
+        // Checked at keydown, before Sheets commits the cell and clears its editor.
+        if (t instanceof Element && isCellEditor(t, doc) && hasValue(t) && isCellSelected(doc, want)) advance(`${k.key} in the step's cell with something typed`);
+      });
+    }
+    return () => {
+      fired = true;
+      timers.forEach(clearTimeout);
+      for (const [t, type, fn] of listeners) t.removeEventListener(type, fn, { capture: true });
+    };
   }
 
   if (kind === 'click' || (kind === 'select' && primary && !isNativeSelect(primary)) || (kind === 'check' && primary && !isNativeCheck(primary))) {

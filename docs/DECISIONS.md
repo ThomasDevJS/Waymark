@@ -1578,6 +1578,44 @@ A security, data, rendering, accessibility and copy review. Tests that fail on t
   - `test/unit/sheets.test.ts` ("#115"): pack format 3 for the flag; `isCellEditor`.
   - Fixes from the independent review, each with a test that fails on the first version (`rec-sheets.test.ts` "#115 review fixes", `fix-step.test.ts`): Tab no longer moves a typing step on in fields that keep Tab (code and rich-text editors), was any Tab with a value; no false "in a menu" for content that loads later or after a grid click that selected a cell; no second cell step when typing beats a slow sheet's second read; re-pick keeps the flag; the "Looking for" card waits 3 s unless the step is in a menu.
 
+### D208. Sheets cell steps: the player selects the cell and rings it (first action on a page)
+*9 Nov 2026 · SPEC: Summary (principles), Data model (`cell` on typing steps, pack format), Recorder, Player (advancing, cell steps); issue #119 (bug, the owner on 0.11.0); amends D206 and D207; the owner's decision D-10 (b)*
+
+- **Finding**: a cell step ringed the Name Box (D206). The owner clicked the cell while recording and expected the cell itself to be highlighted. The owner uses guides to train newcomers to fill in sheet templates (an insurance case, say), so the real cell must be ringed.
+- **Why the player has to select it**:
+  - Sheets draws the grid on a canvas. The page has the position of the **selected** cell only (`.active-cell-border`; checked on a public sheet); other cells have no geometry until selected.
+  - Guessing a cell's place from the recording was rejected: column widths, scroll, zoom and frozen rows change, so it could show a wrong cell.
+  - Selecting through the Name Box (its value, then Enter, as untrusted events) works on real Sheets. On a public sheet, the player selected D13, its border gave the ring's box, and focus went back to Sheets' cell editor.
+- **Change of principle**: this is the **first action Waymark takes on a page**. Until now it only pointed. It is held to these rules:
+  - the selection only, never a value: an A1 reference from the schema's regex, never a formula or a named range;
+  - only on a page with Sheets' Name Box and grid (`isSheetsPage`);
+  - never while Sheets' cell editor holds typed text, since Enter would commit it. The player waits. Only the editable editor counts: Sheets keeps a read-only copy (`.cell-input.disabled-input`) holding the selected cell's value at all times;
+  - when the step names a sheet that isn't the active tab, the hint says "Open the "…" tab first" and nothing is selected until the learner opens it;
+  - once per step: if the learner moves away, the player doesn't select again. **Show again** (named "Select cell C5 again" for screen readers) and Repeat do;
+  - if Sheets doesn't take the reference (a renamed sheet), the Name Box gets its old value back and loses focus, so the learner's typing doesn't land there, and the hint says to select it themselves, then Next.
+- **Selection can't count as the action**, since the player made it:
+  - **Typing steps**: a cell step followed by typing into that cell is recorded as one step, "Enter a value in **B8** (on **Sheet**)": kind `input`, with `cell`, targeting the Name Box. It moves on at Enter or Tab in Sheets' cell editor with something typed, the cell still selected. This is checked at keydown, before Sheets clears the editor. Tab to the next cell and typing there is the next such step.
+  - **A lone cell step** (nothing typed after it) moves on at a trusted click on the grid, or typing into the grid or the cell editor (not the Name Box, not with Ctrl, Cmd or Alt held), with that cell still selected. Next also works.
+  - **A range** ("B5:D9") is selected, but a click collapses it and Sheets' border shows the active cell only. So the ring stays on the Name Box and the step moves on with Next.
+- **Ring**: the spotlight and ring follow the cell's box from `.active-cell-border` (every 150 ms, since the grid scrolls on its own) while it is the selected cell, and the Name Box otherwise. The tooltip docks bottom-right (D206). The hint reads "Waymark selected the highlighted cell. Click it to continue, or press Next.", or "Type into the highlighted cell, then press Enter or Tab." for a typing step.
+- **Pack format 4** with a typing step that has a cell. 0.11.0 would reject the field on an input step, so it says "made by a newer version" instead. Guides recorded by 0.11.0 (a cell step, then "Enter C3" on the editor) still play: the cell is selected, typing moves the cell step on, then the editor step moves on at Enter or Tab (D207).
+- **Known gap**: when the tooltip is not docked (a window under 720 × 520, or the author placed it), it is anchored to the Name Box, not the cell.
+- **Tests**:
+  - `test/browser/rec-sheets.test.ts` (D208): the selection alone never moves the step on, a click on the cell does; another sheet; ranges only with Next; keys in the Name Box or with Ctrl don't count; a typing step moves on at Tab with text, not at Enter with none; selecting refuses while the editor holds text, and the read-only copy doesn't count; the Name Box gets the reference with sheet quoting; the selected cell's box; recording merges typing into one step (after a click, by Tab, on a slow sheet).
+  - `test/e2e/r8-sheets-cells.spec.ts`:
+    - the player selects C5 and the ring covers it; its own selection doesn't count; a click on another cell doesn't count, and nothing is re-selected; Show again; the click moves on;
+    - a range moves on with Next;
+    - another sheet: "Open the tab" and nothing selected, then selected once the tab is open (closed root);
+    - a learner mid-typing: the player waits, nothing is committed, then the typing step moves on at Tab and the value lands in C5.
+  - `test/e2e/r9-sheets-menus.spec.ts`: the owner's flow with merged typing steps.
+- **Fixes from the independent review of the first version (option a, "Show me")**, kept here:
+  - never selecting over typed text;
+  - ranges;
+  - the Name Box restored after a failed reference;
+  - an announcement and a named button;
+  - no re-selecting on a redraw;
+  - shortcut keys don't count as typing.
+
 ## 2026-11-06 — Search among a page's guides (issue #69)
 
 ### D170. A search box for "For this page" and the `?` menu, from 6 guides
